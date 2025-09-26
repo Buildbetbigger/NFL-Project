@@ -1,8 +1,8 @@
-streamlit==1.29.0
-pandas==2.1.4
-PuLP==2.7.0
-numpy==1.26.2
-scipy==1.11.4
-matplotlib==3.8.2
-seaborn==0.13.0
-anthropic==0.34.2
+streamlit
+pandas
+numpy
+scipy
+matplotlib
+seaborn
+pulp>=2.7.0
+anthropic
