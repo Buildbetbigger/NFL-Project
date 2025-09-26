@@ -56,28 +56,31 @@ class OptimizerConfig:
         'super_leverage': (0, 5)       # <5% ownership
     }
     
-    # Bucket constraints for different strategies
+    class OptimizerConfig:
+    # ... other settings ...
+    
+    # RELAXED BUCKET RULES
     BUCKET_RULES = {
         'balanced': {
-            'mega_chalk': (0, 2),
-            'chalk': (1, 3),
-            'pivot': (1, 3),
-            'leverage': (0, 2),
-            'super_leverage': (0, 1)
+            'mega_chalk': (0, 6),      # Allow any number
+            'chalk': (0, 6),            # Allow any number
+            'pivot': (0, 6),            # Allow any number
+            'leverage': (0, 6),         # Allow any number
+            'super_leverage': (0, 6)    # Allow any number
         },
         'contrarian': {
-            'mega_chalk': (0, 1),
-            'chalk': (0, 2),
-            'pivot': (2, 4),
-            'leverage': (1, 3),
-            'super_leverage': (0, 2)
+            'mega_chalk': (0, 6),       
+            'chalk': (0, 6),            
+            'pivot': (0, 6),            
+            'leverage': (0, 6),         
+            'super_leverage': (0, 6)    
         },
         'leverage': {
-            'mega_chalk': (0, 0),
-            'chalk': (0, 1),
-            'pivot': (1, 3),
-            'leverage': (2, 4),
-            'super_leverage': (1, 2)
+            'mega_chalk': (0, 6),       
+            'chalk': (0, 6),            
+            'pivot': (0, 6),            
+            'leverage': (0, 6),         
+            'super_leverage': (0, 6)    
         }
     }
 
