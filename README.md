@@ -1,2 +1,0 @@
-# NFL-Project
-Optimizer
