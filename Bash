@@ -1,0 +1,3 @@
+git add .
+git commit -m "Fix: Use default PuLP solver for cloud compatibility"
+git push
