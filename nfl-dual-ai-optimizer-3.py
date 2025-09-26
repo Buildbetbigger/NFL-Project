@@ -116,16 +116,16 @@ class ClaudeAPIManager:
                 self.client = None
     
     def test_connection(self):
-    """Test API connection"""
-    try:
-        # Just verify the client initialized
-        if self.client:
-            return True
-        else:
+        """Test API connection"""
+        try:
+            # Just verify the client initialized
+            if self.client:
+                return True
+            else:
+                return False
+        except Exception as e:
+            st.error(f"API connection test failed: {e}")
             return False
-    except Exception as e:
-        st.error(f"API connection test failed: {e}")
-        return False
     
     def get_ai_response(self, prompt: str, system_prompt: str = None) -> str:
         """Get response from Claude API"""
