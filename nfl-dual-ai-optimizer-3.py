@@ -43,7 +43,7 @@ class OptimizerConfig:
     FIELD_SIZE = 100000
     
     # API Configuration
-    CLAUDE_MODEL = "claude-3-sonnet-20241022"
+    CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
     MAX_TOKENS = 2000
     TEMPERATURE = 0.7
     
