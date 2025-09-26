@@ -1,7 +1,41 @@
+# Python
 *.pyc
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables (SENSITIVE!)
 .env
-*.csv
 .streamlit/secrets.toml
+
+# Virtual environments
 venv/
+env/
+ENV/
+venv.bak/
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Data files (usually large/personal)
+*.csv
+*.xlsx
+*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
