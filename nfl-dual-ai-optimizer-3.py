@@ -516,604 +516,787 @@ class AIRecommendation:
                 constraints.append((rule['constraint'], rule.get('weight', 1.0)))
         return constraints
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (CORRECTED)
-# Captain Pivots, Correlations, and Tournament Simulation
+# NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (AI-AS-CHEF VERSION)
+# Version 6.0 - AI-Driven Core Components with Enforcement
+
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Tuple, Optional, Set, Any
+from dataclasses import dataclass
+import streamlit as st
+import json
 
 # ============================================================================
-# GPP CAPTAIN PIVOT GENERATOR
+# AI ENFORCEMENT ENGINE
 # ============================================================================
 
-class GPPCaptainPivotGenerator:
-    """GPP-focused captain pivot generation"""
+class AIEnforcementEngine:
+    """Core engine for enforcing AI decisions throughout optimization"""
     
-    @staticmethod
-    def generate_gpp_pivots(lineup: Dict, df: pd.DataFrame, max_pivots: int = 5,
-                           target_ownership: float = 15.0) -> List[Dict]:
-        """Generate GPP-optimal captain pivot variations"""
-        captain = lineup['Captain']
-        flex_players = lineup['FLEX']
-        
-        salaries = df.set_index('Player')['Salary'].to_dict()
-        points = df.set_index('Player')['Projected_Points'].to_dict()
-        ownership = df.set_index('Player')['Ownership'].to_dict()
-        positions = df.set_index('Player')['Position'].to_dict()
-        
-        pivot_lineups = []
-        
-        # Prioritize low-owned FLEX players for captain pivots
-        flex_candidates = []
-        for p in flex_players:
-            own = ownership.get(p, 5)
-            if own < 20:  # Only consider sub-20% for GPP pivots
-                flex_candidates.append((p, own))
-        
-        # Sort by ownership (lowest first for max leverage)
-        flex_candidates.sort(key=lambda x: x[1])
-        
-        for new_captain, captain_own in flex_candidates[:max_pivots]:
-            old_captain_salary = salaries.get(captain, 0)
-            new_captain_salary = salaries.get(new_captain, 0)
-            
-            salary_freed = old_captain_salary * 0.5
-            salary_needed = new_captain_salary * 0.5
-            
-            if salary_freed >= salary_needed - 200:  # Allow small salary overrun for GPP
-                new_flex = [p for p in flex_players if p != new_captain] + [captain]
-                
-                pivot_lineup = lineup.copy()
-                pivot_lineup['Captain'] = new_captain
-                pivot_lineup['FLEX'] = new_flex
-                
-                # GPP-specific pivot types
-                if captain_own < 5:
-                    pivot_type = '💎 Super Leverage'
-                elif captain_own < 10:
-                    pivot_type = '🟢 Leverage'
-                elif captain_own < 15:
-                    pivot_type = '🟡 Contrarian'
-                else:
-                    pivot_type = '⚠️ Standard'
-                
-                pivot_lineup['Pivot_Type'] = pivot_type
-                pivot_lineup['Original_Captain'] = captain
-                
-                # Calculate GPP metrics
-                total_proj = points.get(new_captain, 0) * 1.5 + sum(points.get(p, 0) for p in new_flex)
-                total_own = ownership.get(new_captain, 5) * 1.5 + sum(ownership.get(p, 5) for p in new_flex)
-                
-                # GPP leverage calculation
-                leverage_gain = (ownership.get(captain, 20) - captain_own) * 1.5
-                
-                pivot_lineup['Projected'] = round(total_proj, 2)
-                pivot_lineup['Total_Ownership'] = round(total_own, 1)
-                pivot_lineup['Captain_Own%'] = round(captain_own, 1)
-                pivot_lineup['Leverage_Gain'] = round(leverage_gain, 1)
-                pivot_lineup['GPP_Score'] = round(total_proj * (1 + leverage_gain/50), 1)
-                pivot_lineup['Captain_Position'] = positions.get(new_captain, 'Unknown')
-                pivot_lineup['Is_Elite_GPP'] = total_own < 70  # Elite GPP lineup threshold
-                
-                pivot_lineups.append(pivot_lineup)
-        
-        # Sort by GPP score
-        pivot_lineups.sort(key=lambda x: x['GPP_Score'], reverse=True)
-        return pivot_lineups
+    def __init__(self, enforcement_level: AIEnforcementLevel = AIEnforcementLevel.MANDATORY):
+        self.enforcement_level = enforcement_level
+        self.logger = get_logger()
+        self.enforcement_history = []
     
-    @staticmethod
-    def find_optimal_gpp_pivots(lineup: Dict, df: pd.DataFrame, 
-                               field_size: str = 'large_field') -> List[Dict]:
-        """Find pivots optimized for specific GPP field size"""
+    def create_enforcement_rules(self, ai_recommendations: Dict[AIStrategistType, AIRecommendation]) -> Dict:
+        """Convert AI recommendations into enforceable optimization rules"""
         
-        # Get ownership targets for field size
-        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
-        target_ownership = (min_own + max_own) / 2
+        rules = {
+            'hard_constraints': [],  # Must be satisfied
+            'soft_constraints': [],  # Should be satisfied with weights
+            'objective_modifiers': {},  # Modifications to objective function
+            'variable_locks': {},  # Specific variable assignments
+        }
         
-        pivots = GPPCaptainPivotGenerator.generate_gpp_pivots(
-            lineup, df, max_pivots=7, target_ownership=target_ownership
+        # Find consensus among AIs
+        consensus = self._find_consensus(ai_recommendations)
+        
+        # Create rules based on consensus and enforcement level
+        if self.enforcement_level == AIEnforcementLevel.MANDATORY:
+            # All consensus decisions become hard constraints
+            rules['hard_constraints'].extend(self._create_hard_constraints(consensus['must_play'], 'include'))
+            rules['hard_constraints'].extend(self._create_hard_constraints(consensus['never_play'], 'exclude'))
+            rules['variable_locks']['captain'] = consensus['consensus_captains']
+            
+        elif self.enforcement_level == AIEnforcementLevel.STRONG:
+            # Consensus becomes hard, majority becomes soft
+            rules['hard_constraints'].extend(self._create_hard_constraints(consensus['must_play'], 'include'))
+            rules['soft_constraints'].extend(self._create_soft_constraints(consensus['should_play'], 'include', 0.8))
+            
+        # Add AI-specific modifiers
+        for ai_type, rec in ai_recommendations.items():
+            if rec.confidence > OptimizerConfig.MIN_AI_CONFIDENCE:
+                rules['objective_modifiers'].update(self._create_objective_modifiers(rec))
+        
+        self.logger.log_ai_decision(
+            "enforcement_rules_created",
+            "AIEnforcementEngine",
+            True,
+            {'num_hard': len(rules['hard_constraints']), 
+             'num_soft': len(rules['soft_constraints'])}
         )
         
-        # Filter pivots by field size criteria
-        if field_size == 'milly_maker':
-            # Only super leverage pivots for Milly
-            pivots = [p for p in pivots if p['Captain_Own%'] < 10]
-        elif field_size == 'large_field':
-            # Sub-15% captains for large field
-            pivots = [p for p in pivots if p['Captain_Own%'] < 15]
-        
-        return pivots[:5]  # Return top 5
-
-# ============================================================================
-# GPP CORRELATION ENGINE
-# ============================================================================
-
-class GPPCorrelationEngine:
-    """GPP-focused correlation calculations"""
+        return rules
     
-    @staticmethod
-    def calculate_gpp_correlations(df: pd.DataFrame, game_context: Dict) -> Dict[Tuple[str, str], float]:
-        """Calculate GPP-specific correlations with emphasis on ceiling"""
-        correlations = {}
+    def _find_consensus(self, ai_recommendations: Dict[AIStrategistType, AIRecommendation]) -> Dict:
+        """Find consensus among AI recommendations"""
         
-        players = df['Player'].tolist()
-        positions = df.set_index('Player')['Position'].to_dict()
-        teams = df.set_index('Player')['Team'].to_dict()
-        ownership = df.set_index('Player')['Ownership'].to_dict()
-        
-        for i, p1 in enumerate(players):
-            for p2 in players[i+1:]:
-                team1, team2 = teams.get(p1), teams.get(p2)
-                pos1, pos2 = positions.get(p1), positions.get(p2)
-                own1, own2 = ownership.get(p1, 5), ownership.get(p2, 5)
-                
-                correlation = 0
-                leverage_bonus = 0  # GPP-specific bonus for low-owned correlations
-                
-                if team1 == team2:
-                    # Same team correlations
-                    if pos1 == 'QB' and pos2 in ['WR', 'TE']:
-                        correlation = OptimizerConfig.QB_PASS_CATCHER_CORR
-                        # GPP bonus for low-owned stacks
-                        if own1 < 15 and own2 < 10:
-                            leverage_bonus = 0.15
-                        # Extra correlation in projected shootouts
-                        if game_context.get('total', 48) > 52:
-                            correlation += 0.15
-                    elif pos1 == 'QB' and pos2 == 'RB':
-                        correlation = OptimizerConfig.QB_RB_CORR
-                        # More negative in blowouts (bad for GPP)
-                        if abs(game_context.get('spread', 0)) > 7:
-                            correlation -= 0.15
-                    elif pos1 in ['WR', 'TE'] and pos2 in ['WR', 'TE']:
-                        correlation = OptimizerConfig.SAME_TEAM_WR_CORR
-                        # Reduce correlation for GPP (avoid doubling up on pass catchers)
-                        if own1 > 20 or own2 > 20:
-                            correlation -= 0.05
-                    elif pos1 == 'RB' and pos2 == 'RB':
-                        correlation = -0.6  # Very negative for GPP
-                
-                else:
-                    # Opposing team correlations (game stacks)
-                    if pos1 == 'QB' and pos2 == 'QB':
-                        correlation = OptimizerConfig.OPPOSING_QB_CORR
-                        # Much higher in projected shootouts
-                        if game_context.get('total', 48) > 54:
-                            correlation += 0.25
-                        # GPP leverage bonus for low-owned QB stacks
-                        if own1 < 20 and own2 < 20:
-                            leverage_bonus = 0.20
-                    elif pos1 == 'QB' and pos2 in ['WR', 'TE']:
-                        # Bring-back correlation
-                        correlation = 0.15
-                        if game_context.get('total', 48) > 52:
-                            correlation += 0.10
-                    elif pos1 in ['WR', 'TE'] and pos2 in ['WR', 'TE']:
-                        # Opposing pass catchers in shootout
-                        if game_context.get('total', 48) > 52:
-                            correlation = 0.10
-                    elif 'DST' in [pos1, pos2]:
-                        correlation = OptimizerConfig.DST_OPPOSING_CORR
-                        # Even more negative in high-scoring games
-                        if game_context.get('total', 48) > 50:
-                            correlation -= 0.15
-                
-                # Apply leverage bonus
-                final_correlation = correlation + leverage_bonus
-                
-                if abs(final_correlation) > 0.05:  # Only store meaningful correlations
-                    correlations[(p1, p2)] = final_correlation
-        
-        return correlations
-    
-    @staticmethod
-    def identify_gpp_stacks(df: pd.DataFrame, correlations: Dict, 
-                           field_size: str = 'large_field') -> List[Dict]:
-        """Identify GPP-optimal stacking opportunities"""
-        stacks = []
-        
-        # Get ownership targets for field size
-        if field_size == 'milly_maker':
-            max_combined_own = 30
-        elif field_size == 'large_field':
-            max_combined_own = 40
-        else:
-            max_combined_own = 50
-        
-        # Find all positive correlations
-        for (p1, p2), corr in correlations.items():
-            if corr > 0.15:  # Meaningful positive correlation for GPP
-                ownership1 = df[df['Player'] == p1]['Ownership'].values[0] if len(df[df['Player'] == p1]) > 0 else 5
-                ownership2 = df[df['Player'] == p2]['Ownership'].values[0] if len(df[df['Player'] == p2]) > 0 else 5
-                combined_own = ownership1 + ownership2
-                
-                # Calculate GPP stack score
-                leverage_score = max(0, 50 - combined_own)
-                gpp_score = corr * 100 + leverage_score
-                
-                # Determine stack type
-                if combined_own < 20:
-                    stack_type = '💎 Elite Leverage'
-                elif combined_own < 30:
-                    stack_type = '🟢 Leverage'
-                elif combined_own < 40:
-                    stack_type = '🟡 Contrarian'
-                else:
-                    stack_type = '⚠️ Chalky'
-                
-                if combined_own <= max_combined_own:  # Only include if meets field size criteria
-                    stacks.append({
-                        'player1': p1,
-                        'player2': p2,
-                        'correlation': corr,
-                        'combined_ownership': combined_own,
-                        'leverage': leverage_score,
-                        'gpp_score': gpp_score,
-                        'stack_type': stack_type,
-                        'is_game_stack': df[df['Player'] == p1]['Team'].values[0] != df[df['Player'] == p2]['Team'].values[0]
-                    })
-        
-        # Sort by GPP score
-        stacks.sort(key=lambda x: x['gpp_score'], reverse=True)
-        return stacks[:20]  # Return top 20 stacks
-
-# ============================================================================
-# GPP TOURNAMENT SIMULATOR WITH ROBUST ERROR HANDLING (CORRECTED VERSION)
-# ============================================================================
-
-class GPPTournamentSimulator:
-    """GPP-specific tournament simulation with emphasis on ceiling"""
-    
-    @staticmethod
-    def simulate_gpp_tournament(lineup: Dict, df: pd.DataFrame, 
-                               correlations: Dict, n_sims: int = 5000,
-                               field_size: str = 'large_field') -> Dict[str, float]:
-        """Simplified but stable GPP simulation with proper correlation handling"""
-        
-        # Extract lineup data
-        captain = lineup['Captain']
-        flex_players = lineup['FLEX'] if isinstance(lineup['FLEX'], list) else lineup['FLEX']
-        all_players = [captain] + list(flex_players)
-        
-        # Get player data
-        projections = df.set_index('Player')['Projected_Points'].to_dict()
-        ownership = df.set_index('Player')['Ownership'].to_dict()
-        positions = df.set_index('Player')['Position'].to_dict()
-        teams = df.set_index('Player')['Team'].to_dict()
-        
-        # Validate we have data for all players
-        for player in all_players:
-            if player not in projections:
-                projections[player] = 10  # Default fallback
-            if player not in ownership:
-                ownership[player] = OptimizerConfig.DEFAULT_OWNERSHIP
-        
-        # GPP variance adjustment based on field size
-        variance_multiplier = {
-            'milly_maker': 1.3,
-            'large_field': 1.2,
-            'medium_field': 1.1,
-            'small_field': 1.0
-        }.get(field_size, 1.2)
-        
-        # Run simulations with simplified but stable approach
-        simulation_results = []
-        
-        for sim_num in range(n_sims):
-            player_scores = {}
-            
-            # Step 1: Generate base scores with ownership-based variance
-            for player in all_players:
-                mean = projections[player]
-                own = ownership[player]
-                
-                # Lower ownership = higher variance (GPP key insight)
-                ownership_variance_boost = max(0, (20 - min(own, 20)) / 40)
-                base_volatility = OptimizerConfig.BASE_VOLATILITY * variance_multiplier
-                player_volatility = base_volatility * (1 + ownership_variance_boost)
-                
-                # Generate base score
-                std_dev = mean * player_volatility
-                score = np.random.normal(mean, std_dev)
-                
-                # Apply floor (can't go negative)
-                player_scores[player] = max(0, score)
-            
-            # Step 2: Apply correlations as adjustments
-            # This is more stable than trying to build a full correlation matrix
-            correlation_adjustments = {}
-            for player in all_players:
-                correlation_adjustments[player] = 0
-            
-            # Process each correlation pair
-            for i, p1 in enumerate(all_players):
-                for j, p2 in enumerate(all_players):
-                    if i >= j:  # Skip self and already processed pairs
-                        continue
-                    
-                    pair = tuple(sorted([p1, p2]))
-                    if pair in correlations:
-                        corr_value = correlations[pair]
-                        
-                        # Apply correlation through score adjustments
-                        if abs(corr_value) > 0.1:  # Only meaningful correlations
-                            # If both players are doing well/poorly, enhance that
-                            p1_deviation = (player_scores[p1] - projections[p1]) / projections[p1]
-                            p2_deviation = (player_scores[p2] - projections[p2]) / projections[p2]
-                            
-                            if corr_value > 0:  # Positive correlation
-                                # If one is high, boost the other
-                                if p1_deviation > 0.2:
-                                    correlation_adjustments[p2] += projections[p2] * corr_value * 0.2
-                                if p2_deviation > 0.2:
-                                    correlation_adjustments[p1] += projections[p1] * corr_value * 0.2
-                                # If one is low, reduce the other
-                                if p1_deviation < -0.2:
-                                    correlation_adjustments[p2] -= projections[p2] * corr_value * 0.15
-                                if p2_deviation < -0.2:
-                                    correlation_adjustments[p1] -= projections[p1] * corr_value * 0.15
-                            else:  # Negative correlation
-                                # If one is high, reduce the other
-                                if p1_deviation > 0.2:
-                                    correlation_adjustments[p2] -= projections[p2] * abs(corr_value) * 0.15
-                                if p2_deviation > 0.2:
-                                    correlation_adjustments[p1] -= projections[p1] * abs(corr_value) * 0.15
-            
-            # Apply correlation adjustments
-            for player in all_players:
-                player_scores[player] = max(0, player_scores[player] + correlation_adjustments[player])
-            
-            # Step 3: Apply GPP-specific volatility events
-            for player in all_players:
-                own = ownership[player]
-                
-                # Injury/bust risk
-                injury_rate = OptimizerConfig.INJURY_RATE
-                if own > 30:  # Higher injury impact for chalk
-                    injury_rate *= 1.5
-                
-                if np.random.random() < injury_rate:
-                    # Player busts
-                    player_scores[player] *= np.random.uniform(0, 0.3)
-                
-                # Boom potential (KEY FOR GPP)
-                boom_rate = OptimizerConfig.BOOM_RATE
-                boom_multiplier = 1.5
-                
-                if own < 5:  # Super leverage players
-                    boom_rate *= 3
-                    boom_multiplier = np.random.uniform(2.5, 4.0)
-                elif own < 10:  # Leverage plays
-                    boom_rate *= 2
-                    boom_multiplier = np.random.uniform(2.0, 3.0)
-                elif own < 15:  # Contrarian plays
-                    boom_rate *= 1.5
-                    boom_multiplier = np.random.uniform(1.8, 2.5)
-                else:  # Normal plays
-                    boom_multiplier = np.random.uniform(1.5, 2.0)
-                
-                if np.random.random() < boom_rate:
-                    # Player booms
-                    player_scores[player] *= boom_multiplier
-            
-            # Step 4: Handle special position cases
-            for player in all_players:
-                pos = positions.get(player, '')
-                
-                # QBs have more stable floors but also higher ceilings in GPP
-                if pos == 'QB':
-                    player_scores[player] = max(player_scores[player], projections[player] * 0.4)
-                    if player_scores[player] > projections[player] * 1.5:
-                        # QB having a huge game, boost pass catchers
-                        team = teams.get(player)
-                        for other_player in all_players:
-                            if teams.get(other_player) == team and positions.get(other_player) in ['WR', 'TE']:
-                                player_scores[other_player] *= 1.15
-                
-                # RBs can have huge games but also complete duds
-                elif pos == 'RB':
-                    if np.random.random() < 0.1:  # 10% chance of breakaway game
-                        player_scores[player] *= np.random.uniform(1.5, 2.5)
-                    elif np.random.random() < 0.15:  # 15% chance of game script dud
-                        player_scores[player] *= np.random.uniform(0.2, 0.5)
-            
-            # Calculate final lineup score
-            captain_score = player_scores[captain] * OptimizerConfig.CAPTAIN_MULTIPLIER
-            flex_score = sum(player_scores[p] for p in flex_players)
-            total_score = captain_score + flex_score
-            
-            simulation_results.append(total_score)
-        
-        # Convert to numpy array for percentile calculations
-        results = np.array(simulation_results)
-        
-        # Calculate comprehensive GPP metrics
-        metrics = {
-            'Mean': round(np.mean(results), 2),
-            'Std': round(np.std(results), 2),
-            'Floor_10th': round(np.percentile(results, 10), 2),
-            'Floor_25th': round(np.percentile(results, 25), 2),
-            'Median': round(np.percentile(results, 50), 2),
-            'Ceiling_75th': round(np.percentile(results, 75), 2),
-            'Ceiling_90th': round(np.percentile(results, 90), 2),
-            'Ceiling_95th': round(np.percentile(results, 95), 2),
-            'Ceiling_98th': round(np.percentile(results, 98), 2),
-            'Ceiling_99th': round(np.percentile(results, 99), 2),
-            'Ceiling_99_9th': round(np.percentile(results, 99.9), 2),
-            'Boom_Rate': round(np.mean(results > np.percentile(results, 95)) * 100, 1),
-            'Elite_Rate': round(np.mean(results > np.percentile(results, 99)) * 100, 2),
-            'Ship_Rate': round(np.mean(results > np.percentile(results, 99.9)) * 100, 3),
-            'Bust_Rate': round(np.mean(results < np.percentile(results, 25)) * 100, 1),
-            'Max_Score': round(np.max(results), 2),
-            'Min_Score': round(np.min(results), 2),
-            'Top_1pct_Avg': round(np.mean(np.sort(results)[-max(1, int(n_sims*0.01)):]), 2),
-            'Bottom_1pct_Avg': round(np.mean(np.sort(results)[:max(1, int(n_sims*0.01))]), 2)
+        consensus = {
+            'consensus_captains': [],  # All 3 AIs agree
+            'majority_captains': [],   # 2 of 3 agree
+            'must_play': [],           # All agree these must play
+            'should_play': [],         # 2 of 3 agree these should play
+            'never_play': [],          # 2+ agree these should be avoided
         }
         
-        # Validate results are reasonable
-        if metrics['Mean'] < 10 or metrics['Mean'] > 300:
-            # Something went wrong, return conservative estimates
-            base_projection = sum(projections[p] for p in flex_players) + projections[captain] * 1.5
-            metrics['Mean'] = round(base_projection, 2)
-            metrics['Median'] = round(base_projection * 0.95, 2)
-            metrics['Ceiling_99th'] = round(base_projection * 1.8, 2)
-            metrics['Floor_10th'] = round(base_projection * 0.5, 2)
+        # Aggregate captain recommendations
+        captain_votes = {}
+        for ai_type, rec in ai_recommendations.items():
+            for captain in rec.captain_targets:
+                if captain not in captain_votes:
+                    captain_votes[captain] = []
+                captain_votes[captain].append(ai_type)
         
-        return metrics
+        # Classify by agreement level
+        for captain, voters in captain_votes.items():
+            if len(voters) == 3:
+                consensus['consensus_captains'].append(captain)
+                self.logger.log_ai_consensus("captain", voters, f"Consensus captain: {captain}")
+            elif len(voters) == 2:
+                consensus['majority_captains'].append(captain)
+                self.logger.log_ai_consensus("captain", voters, f"Majority captain: {captain}")
+        
+        # Aggregate must_play and never_play
+        must_play_votes = {}
+        never_play_votes = {}
+        
+        for ai_type, rec in ai_recommendations.items():
+            for player in rec.must_play:
+                if player not in must_play_votes:
+                    must_play_votes[player] = []
+                must_play_votes[player].append(ai_type)
+            
+            for player in rec.never_play:
+                if player not in never_play_votes:
+                    never_play_votes[player] = []
+                never_play_votes[player].append(ai_type)
+        
+        # Classify must_play by agreement
+        for player, voters in must_play_votes.items():
+            if len(voters) == 3:
+                consensus['must_play'].append(player)
+            elif len(voters) == 2:
+                consensus['should_play'].append(player)
+        
+        # Classify never_play (2+ agreement for fades)
+        for player, voters in never_play_votes.items():
+            if len(voters) >= 2:
+                consensus['never_play'].append(player)
+        
+        return consensus
+    
+    def _create_hard_constraints(self, players: List[str], constraint_type: str) -> List[Dict]:
+        """Create hard constraints for optimization"""
+        constraints = []
+        
+        for player in players:
+            if constraint_type == 'include':
+                constraints.append({
+                    'type': 'hard',
+                    'player': player,
+                    'rule': 'must_include',
+                    'description': f"AI consensus: must include {player}"
+                })
+            elif constraint_type == 'exclude':
+                constraints.append({
+                    'type': 'hard',
+                    'player': player,
+                    'rule': 'must_exclude',
+                    'description': f"AI consensus: must exclude {player}"
+                })
+        
+        return constraints
+    
+    def _create_soft_constraints(self, players: List[str], constraint_type: str, weight: float) -> List[Dict]:
+        """Create weighted soft constraints"""
+        constraints = []
+        
+        for player in players:
+            constraints.append({
+                'type': 'soft',
+                'player': player,
+                'rule': f"should_{constraint_type}",
+                'weight': weight,
+                'description': f"AI majority: should {constraint_type} {player}"
+            })
+        
+        return constraints
+    
+    def _create_objective_modifiers(self, recommendation: AIRecommendation) -> Dict:
+        """Create objective function modifiers based on AI recommendation"""
+        modifiers = {}
+        
+        # Boost recommended players
+        for player in recommendation.captain_targets:
+            modifiers[player] = modifiers.get(player, 1.0) * (1.0 + recommendation.confidence * 0.3)
+        
+        for player in recommendation.must_play:
+            modifiers[player] = modifiers.get(player, 1.0) * (1.0 + recommendation.confidence * 0.2)
+        
+        # Penalize fade targets
+        for player in recommendation.never_play:
+            modifiers[player] = modifiers.get(player, 1.0) * (1.0 - recommendation.confidence * 0.3)
+        
+        return modifiers
+    
+    def validate_lineup_against_ai(self, lineup: Dict, ai_rules: Dict) -> Tuple[bool, List[str]]:
+        """Validate that a lineup satisfies AI requirements"""
+        violations = []
+        
+        lineup_players = [lineup.get('Captain')] + lineup.get('FLEX', [])
+        
+        # Check hard constraints
+        for constraint in ai_rules.get('hard_constraints', []):
+            player = constraint['player']
+            rule = constraint['rule']
+            
+            if rule == 'must_include' and player not in lineup_players:
+                violations.append(f"Missing required player: {player}")
+            elif rule == 'must_exclude' and player in lineup_players:
+                violations.append(f"Included banned player: {player}")
+        
+        # Check captain requirements
+        required_captains = ai_rules.get('variable_locks', {}).get('captain', [])
+        if required_captains and lineup.get('Captain') not in required_captains:
+            violations.append(f"Captain {lineup.get('Captain')} not in AI requirements: {required_captains}")
+        
+        is_valid = len(violations) == 0
+        
+        # Track enforcement
+        self.enforcement_history.append({
+            'lineup': lineup.get('Lineup', 0),
+            'valid': is_valid,
+            'violations': violations
+        })
+        
+        return is_valid, violations
+
+# ============================================================================
+# AI-DRIVEN OWNERSHIP BUCKET MANAGER
+# ============================================================================
+
+class AIOwnershipBucketManager:
+    """Enhanced bucket manager that respects AI decisions"""
+    
+    def __init__(self, ai_enforcement_engine: Optional[AIEnforcementEngine] = None):
+        self.thresholds = OptimizerConfig.OWNERSHIP_BUCKETS
+        self.ai_engine = ai_enforcement_engine
+        self.logger = get_logger()
+    
+    def categorize_players_with_ai(self, df: pd.DataFrame, 
+                                   ai_recommendations: Dict[AIStrategistType, AIRecommendation]) -> Dict:
+        """Categorize players considering AI input"""
+        
+        # Standard categorization first
+        buckets = self.categorize_players(df)
+        
+        if self.ai_engine and ai_recommendations:
+            # Apply AI overrides
+            consensus = self.ai_engine._find_consensus(ai_recommendations)
+            
+            # Move consensus captains to their own category
+            buckets['ai_consensus_captains'] = consensus['consensus_captains']
+            
+            # Remove them from other buckets
+            for captain in consensus['consensus_captains']:
+                for bucket_name, players in buckets.items():
+                    if bucket_name != 'ai_consensus_captains' and captain in players:
+                        players.remove(captain)
+            
+            # Create AI leverage category
+            buckets['ai_leverage'] = []
+            for ai_type, rec in ai_recommendations.items():
+                if ai_type == AIStrategistType.CONTRARIAN_NARRATIVE:
+                    # Contrarian AI's unique picks are leverage
+                    buckets['ai_leverage'].extend([
+                        p for p in rec.captain_targets 
+                        if p not in consensus['consensus_captains']
+                    ])
+            
+            self.logger.log(f"AI-enhanced buckets: {len(buckets['ai_consensus_captains'])} consensus captains", "DEBUG")
+        
+        return buckets
+    
+    def categorize_players(self, df: pd.DataFrame) -> Dict[str, List[str]]:
+        """Standard categorization by ownership"""
+        buckets = {
+            'mega_chalk': [],
+            'chalk': [],
+            'pivot': [],
+            'leverage': [],
+            'super_leverage': []
+        }
+        
+        for _, row in df.iterrows():
+            player = row['Player']
+            ownership = row['Ownership']
+            
+            if ownership >= self.thresholds['mega_chalk']:
+                buckets['mega_chalk'].append(player)
+            elif ownership >= self.thresholds['chalk']:
+                buckets['chalk'].append(player)
+            elif ownership >= self.thresholds['pivot']:
+                buckets['pivot'].append(player)
+            elif ownership >= self.thresholds['leverage']:
+                buckets['leverage'].append(player)
+            else:
+                buckets['super_leverage'].append(player)
+        
+        return buckets
+    
+    def calculate_ai_leverage_score(self, lineup_players: List[str], df: pd.DataFrame,
+                                   ai_recommendations: Dict[AIStrategistType, AIRecommendation]) -> float:
+        """Calculate leverage score with AI weighting"""
+        
+        base_score = self.calculate_gpp_leverage(lineup_players, df)
+        
+        if not ai_recommendations:
+            return base_score
+        
+        # Bonus for using AI contrarian picks
+        ai_bonus = 0
+        for player in lineup_players:
+            for ai_type, rec in ai_recommendations.items():
+                if ai_type == AIStrategistType.CONTRARIAN_NARRATIVE:
+                    if player in rec.captain_targets:
+                        ai_bonus += 3
+                    elif player in rec.must_play:
+                        ai_bonus += 2
+                elif player in rec.captain_targets:
+                    ai_bonus += 1
+        
+        return base_score + ai_bonus
+    
+    def calculate_gpp_leverage(self, lineup_players: List[str], df: pd.DataFrame) -> float:
+        """Calculate standard GPP leverage score"""
+        score = 0
+        
+        for player in lineup_players:
+            if player in df['Player'].values:
+                ownership = df[df['Player'] == player]['Ownership'].values[0]
+                
+                if ownership < 5:
+                    score += 3
+                elif ownership < 10:
+                    score += 2
+                elif ownership < 15:
+                    score += 1
+                elif ownership > 30:
+                    score -= 2
+                elif ownership > 20:
+                    score -= 1
+        
+        return score
+    
+    def get_gpp_summary(self, lineup_players: List[str], df: pd.DataFrame, 
+                       field_size: str, ai_enforced: bool = False) -> str:
+        """Get GPP summary with AI enforcement indicator"""
+        
+        ownership_counts = {'<5%': 0, '5-10%': 0, '10-20%': 0, '20-30%': 0, '30%+': 0}
+        
+        for player in lineup_players:
+            if player in df['Player'].values:
+                ownership = df[df['Player'] == player]['Ownership'].values[0]
+                if ownership < 5:
+                    ownership_counts['<5%'] += 1
+                elif ownership < 10:
+                    ownership_counts['5-10%'] += 1
+                elif ownership < 20:
+                    ownership_counts['10-20%'] += 1
+                elif ownership < 30:
+                    ownership_counts['20-30%'] += 1
+                else:
+                    ownership_counts['30%+'] += 1
+        
+        summary = ' | '.join([f"{k}:{v}" for k, v in ownership_counts.items() if v > 0])
+        
+        if ai_enforced:
+            summary = "🤖 AI-ENFORCED | " + summary
+        
+        return summary
+
+# ============================================================================
+# AI-DRIVEN CONFIG VALIDATOR
+# ============================================================================
+
+class AIConfigValidator:
+    """Enhanced validator that ensures AI requirements are feasible"""
     
     @staticmethod
-    def calculate_gpp_win_probability(lineup_scores: np.ndarray, 
-                                     field_size_num: int = 100000) -> Dict[str, float]:
-        """Calculate GPP tournament win probabilities with stable approach"""
+    def validate_ai_requirements(ai_rules: Dict, player_pool: pd.DataFrame) -> Dict:
+        """Validate that AI requirements can be satisfied"""
         
-        # Validate input
-        if len(lineup_scores) == 0:
-            return {
-                'Win_Prob': 0.0,
-                'Top_10_Prob': 0.0,
-                'Top_100_Prob': 0.0,
-                'Top_1pct_Prob': 0.0,
-                'Min_Cash_Prob': 0.0
-            }
+        validation = {
+            'is_valid': True,
+            'errors': [],
+            'warnings': [],
+            'adjustments': []
+        }
         
-        # Model GPP field scores with gamma distribution (right-skewed)
-        field_mean = 85
-        field_std = 20
+        available_players = set(player_pool['Player'].tolist())
         
-        # Calculate gamma parameters from mean and std
-        # gamma distribution: mean = shape * scale, variance = shape * scale^2
-        field_variance = field_std ** 2
-        field_scale = field_variance / field_mean
-        field_shape = field_mean / field_scale
+        # Check hard constraints feasibility
+        must_include = []
+        must_exclude = []
         
-        # Generate field scores
-        try:
-            field_scores = gamma.rvs(field_shape, scale=field_scale, size=field_size_num)
-        except:
-            # Fallback to normal distribution if gamma fails
-            field_scores = np.random.normal(field_mean, field_std, field_size_num)
-        
-        # Add some extreme outliers for GPP realism
-        num_elite = max(1, int(field_size_num * 0.001))  # Top 0.1%
-        elite_scores = np.random.normal(150, 20, num_elite)
-        field_scores[:num_elite] = elite_scores
-        
-        # Calculate probabilities
-        win_prob = 0
-        top_10_prob = 0
-        top_100_prob = 0
-        top_1pct_prob = 0
-        min_cash = int(field_size_num * 0.2)  # Top 20% cash
-        cash_prob = 0
-        
-        # Sample lineup scores for probability calculation
-        sample_size = min(1000, len(lineup_scores))
-        sampled_scores = np.random.choice(lineup_scores, sample_size, replace=True)
-        
-        for score in sampled_scores:
-            placement = np.sum(score > field_scores)
+        for constraint in ai_rules.get('hard_constraints', []):
+            player = constraint['player']
+            rule = constraint['rule']
             
-            if placement == field_size_num - 1:
-                win_prob += 1
-            if placement >= field_size_num - 10:
-                top_10_prob += 1
-            if placement >= field_size_num - 100:
-                top_100_prob += 1
-            if placement >= field_size_num * 0.99:
-                top_1pct_prob += 1
-            if placement >= field_size_num - min_cash:
-                cash_prob += 1
+            if player not in available_players:
+                validation['errors'].append(f"AI required player '{player}' not in pool")
+                validation['is_valid'] = False
+                continue
+            
+            if rule == 'must_include':
+                must_include.append(player)
+            elif rule == 'must_exclude':
+                must_exclude.append(player)
         
+        # Check if we have enough players after exclusions
+        available_after_exclusions = len(available_players) - len(must_exclude)
+        required_spots = 6  # 1 CPT + 5 FLEX
+        
+        if len(must_include) > required_spots:
+            validation['errors'].append(f"AI requires {len(must_include)} players but lineup has {required_spots} spots")
+            validation['is_valid'] = False
+        
+        if available_after_exclusions < required_spots:
+            validation['errors'].append(f"Not enough players after AI exclusions")
+            validation['is_valid'] = False
+        
+        # Check captain requirements
+        required_captains = ai_rules.get('variable_locks', {}).get('captain', [])
+        if required_captains:
+            valid_captains = [c for c in required_captains if c in available_players]
+            if not valid_captains:
+                validation['errors'].append("No valid AI captains in player pool")
+                validation['is_valid'] = False
+            elif len(valid_captains) < len(required_captains):
+                validation['warnings'].append(f"Only {len(valid_captains)} of {len(required_captains)} AI captains available")
+                ai_rules['variable_locks']['captain'] = valid_captains
+                validation['adjustments'].append("Reduced captain pool to available players")
+        
+        # Check salary feasibility with requirements
+        if must_include:
+            must_include_df = player_pool[player_pool['Player'].isin(must_include)]
+            min_required_salary = must_include_df['Salary'].sum()
+            
+            if min_required_salary > OptimizerConfig.SALARY_CAP:
+                validation['errors'].append(f"AI required players cost ${min_required_salary} (exceeds cap)")
+                validation['is_valid'] = False
+        
+        return validation
+    
+    @staticmethod
+    def validate_field_config_with_ai(field_size: str, num_lineups: int, 
+                                      ai_recommendations: Dict) -> Dict:
+        """Validate configuration considering AI strategy distribution"""
+        
+        base_config = OptimizerConfig.FIELD_SIZE_CONFIGS.get(field_size, {})
+        
+        # Get AI strategy distribution
+        ai_distribution = base_config.get('ai_strategy_distribution', {})
+        
+        # Adjust based on AI consensus
+        if ai_recommendations:
+            consensus_count = len([1 for rec in ai_recommendations.values() if rec.confidence > 0.8])
+            
+            if consensus_count == 3:
+                # Strong consensus - increase consensus strategy allocation
+                ai_distribution['ai_consensus'] = min(0.5, ai_distribution.get('ai_consensus', 0.2) * 2)
+            
         return {
-            'Win_Prob': round(win_prob / sample_size * 100, 4),
-            'Top_10_Prob': round(top_10_prob / sample_size * 100, 3),
-            'Top_100_Prob': round(top_100_prob / sample_size * 100, 2),
-            'Top_1pct_Prob': round(top_1pct_prob / sample_size * 100, 2),
-            'Min_Cash_Prob': round(cash_prob / sample_size * 100, 1)
+            **base_config,
+            'ai_strategy_distribution': ai_distribution,
+            'ai_enforcement': base_config.get('ai_enforcement', AIEnforcementLevel.MANDATORY)
         }
+    
+    @staticmethod
+    def get_ai_strategy_distribution(field_size: str, num_lineups: int, 
+                                     ai_consensus_level: str = 'mixed') -> Dict[StrategyType, int]:
+        """Get lineup distribution across AI strategies"""
+        
+        config = OptimizerConfig.FIELD_SIZE_CONFIGS.get(field_size, {})
+        distribution = config.get('ai_strategy_distribution', {})
+        
+        # Convert percentages to lineup counts
+        strategy_counts = {}
+        remaining = num_lineups
+        
+        # Prioritize by consensus level
+        if ai_consensus_level == 'high':
+            # More consensus lineups
+            priority = ['ai_consensus', 'ai_majority', 'ai_mixed', 'ai_contrarian', 'ai_correlation', 'ai_game_theory']
+        elif ai_consensus_level == 'low':
+            # More diverse lineups
+            priority = ['ai_contrarian', 'ai_game_theory', 'ai_correlation', 'ai_mixed', 'ai_majority', 'ai_consensus']
+        else:
+            # Balanced
+            priority = list(distribution.keys())
+        
+        for strategy in priority:
+            if strategy in distribution and remaining > 0:
+                count = int(distribution[strategy] * num_lineups)
+                count = min(count, remaining)
+                if count > 0:
+                    # Convert string to StrategyType enum
+                    try:
+                        strategy_enum = StrategyType[strategy.upper()]
+                        strategy_counts[strategy_enum] = count
+                        remaining -= count
+                    except KeyError:
+                        # New AI strategies not in enum yet, use string
+                        strategy_counts[strategy] = count
+                        remaining -= count
+        
+        # Distribute remaining lineups
+        if remaining > 0:
+            # Add to first strategy
+            first_strategy = list(strategy_counts.keys())[0] if strategy_counts else StrategyType.AI_MIXED
+            if first_strategy in strategy_counts:
+                strategy_counts[first_strategy] += remaining
+            else:
+                strategy_counts[first_strategy] = remaining
+        
+        return strategy_counts
+    
+    @staticmethod
+    def validate_player_pool_for_ai(df: pd.DataFrame, field_size: str, 
+                                    ai_requirements: Dict) -> Dict:
+        """Validate player pool can satisfy AI requirements"""
+        
+        validation = {
+            'is_valid': True,
+            'errors': [],
+            'warnings': [],
+            'ai_feasibility': {}
+        }
+        
+        # Standard validation
+        base_validation = ConfigValidator.validate_player_pool(df, field_size)
+        validation['errors'].extend(base_validation.get('errors', []))
+        validation['warnings'].extend(base_validation.get('warnings', []))
+        
+        # Check AI-specific requirements
+        if ai_requirements:
+            ai_validation = AIConfigValidator.validate_ai_requirements(ai_requirements, df)
+            validation['errors'].extend(ai_validation.get('errors', []))
+            validation['warnings'].extend(ai_validation.get('warnings', []))
+            validation['ai_feasibility'] = ai_validation
+            
+            if not ai_validation['is_valid']:
+                validation['is_valid'] = False
+        
+        return validation
 
 # ============================================================================
-# GPP SCORING CALCULATOR
+# STANDARD CONFIG VALIDATOR (Legacy compatibility)
 # ============================================================================
 
-def calculate_gpp_scores(lineups_df: pd.DataFrame, field_size: str = 'large_field') -> pd.DataFrame:
-    """Calculate GPP-specific scores with heavy ceiling emphasis"""
+class ConfigValidator:
+    """Standard configuration validator for backward compatibility"""
     
-    # GPP scoring weights based on field size
-    if field_size == 'small_field':
-        weights = {
-            'ceiling_95': 0.25,
-            'ceiling_99': 0.20,
-            'ceiling_99_9': 0.10,
-            'ownership': 0.20,
-            'leverage': 0.15,
-            'correlation': 0.10
+    @staticmethod
+    def validate_field_config(field_size: str, num_lineups: int) -> Dict:
+        """Validate and return field configuration"""
+        config = OptimizerConfig.FIELD_SIZE_CONFIGS.get(field_size)
+        
+        if not config:
+            st.warning(f"Unknown field size '{field_size}', using large_field defaults")
+            config = OptimizerConfig.FIELD_SIZE_CONFIGS['large_field']
+        
+        # Adjust unique captains if needed
+        if num_lineups < config['min_unique_captains']:
+            config['min_unique_captains'] = max(1, num_lineups // 2)
+        
+        return config
+    
+    @staticmethod
+    def validate_player_pool(df: pd.DataFrame, field_size: str) -> Dict:
+        """Validate player pool for optimization"""
+        validation = {
+            'is_valid': True,
+            'errors': [],
+            'warnings': []
         }
-    elif field_size == 'medium_field':
-        weights = {
-            'ceiling_95': 0.20,
-            'ceiling_99': 0.25,
-            'ceiling_99_9': 0.15,
-            'ownership': 0.20,
-            'leverage': 0.15,
-            'correlation': 0.05
+        
+        # Check minimum players
+        if len(df) < 12:
+            validation['errors'].append(f"Only {len(df)} players available (minimum 12 recommended)")
+            if len(df) < 6:
+                validation['is_valid'] = False
+        
+        # Check position distribution
+        positions = df['Position'].value_counts()
+        if 'QB' not in positions or positions.get('QB', 0) == 0:
+            validation['warnings'].append("No QB in player pool")
+        
+        # Check team distribution
+        teams = df['Team'].unique()
+        if len(teams) != 2:
+            validation['errors'].append(f"Expected 2 teams, found {len(teams)}")
+            validation['is_valid'] = False
+        
+        # Check salary distribution
+        avg_salary = df['Salary'].mean()
+        if avg_salary < 5000:
+            validation['warnings'].append(f"Low average salary (${avg_salary:.0f})")
+        
+        return validation
+    
+    @staticmethod
+    def get_strategy_distribution(field_size: str, num_lineups: int) -> Dict:
+        """Get standard strategy distribution (for fallback)"""
+        
+        # Use AI strategy distribution if available
+        config = OptimizerConfig.FIELD_SIZE_CONFIGS.get(field_size, {})
+        if 'ai_strategy_distribution' in config:
+            return AIConfigValidator.get_ai_strategy_distribution(field_size, num_lineups)
+        
+        # Fallback to legacy distribution
+        if field_size == 'milly_maker':
+            return {
+                StrategyType.CONTRARIAN: num_lineups // 2,
+                StrategyType.LEVERAGE: num_lineups - (num_lineups // 2)
+            }
+        else:
+            return {
+                StrategyType.LEVERAGE: num_lineups
+            }
+
+# ============================================================================
+# AI SYNTHESIS ENGINE
+# ============================================================================
+
+class AISynthesisEngine:
+    """Synthesizes recommendations from multiple AI strategists"""
+    
+    def __init__(self):
+        self.logger = get_logger()
+        self.synthesis_history = []
+    
+    def synthesize_recommendations(self, 
+                                  game_theory_rec: AIRecommendation,
+                                  correlation_rec: AIRecommendation,
+                                  contrarian_rec: AIRecommendation) -> Dict:
+        """Combine three AI perspectives into unified strategy"""
+        
+        synthesis = {
+            'captain_strategy': {},
+            'player_rankings': {},
+            'stacking_rules': [],
+            'avoidance_rules': [],
+            'narrative': "",
+            'confidence': 0.0,
+            'enforcement_rules': []
         }
-    elif field_size == 'large_field':
-        weights = {
-            'ceiling_95': 0.15,
-            'ceiling_99': 0.30,
-            'ceiling_99_9': 0.20,
-            'ownership': 0.15,
-            'leverage': 0.15,
-            'correlation': 0.05
+        
+        # Combine captain recommendations with weighted voting
+        all_captains = set()
+        captain_votes = {}
+        
+        for rec, weight in [(game_theory_rec, 0.35), (correlation_rec, 0.35), (contrarian_rec, 0.30)]:
+            for captain in rec.captain_targets:
+                all_captains.add(captain)
+                if captain not in captain_votes:
+                    captain_votes[captain] = {'score': 0, 'voters': []}
+                captain_votes[captain]['score'] += weight * rec.confidence
+                captain_votes[captain]['voters'].append(rec.source_ai)
+        
+        # Classify captains by consensus level
+        for captain, data in captain_votes.items():
+            if len(data['voters']) == 3:
+                synthesis['captain_strategy'][captain] = 'consensus'
+            elif len(data['voters']) == 2:
+                synthesis['captain_strategy'][captain] = 'majority'
+            else:
+                synthesis['captain_strategy'][captain] = data['voters'][0].value
+        
+        # Rank all players
+        all_players = set()
+        player_scores = {}
+        
+        for rec in [game_theory_rec, correlation_rec, contrarian_rec]:
+            weight = OptimizerConfig.AI_WEIGHTS[rec.source_ai]
+            
+            # Score captains
+            for captain in rec.captain_targets:
+                all_players.add(captain)
+                player_scores[captain] = player_scores.get(captain, 0) + weight * 1.5
+            
+            # Score must plays
+            for player in rec.must_play:
+                all_players.add(player)
+                player_scores[player] = player_scores.get(player, 0) + weight * 1.0
+            
+            # Penalize never plays
+            for player in rec.never_play:
+                all_players.add(player)
+                player_scores[player] = player_scores.get(player, 0) - weight * 0.5
+        
+        # Create rankings
+        synthesis['player_rankings'] = dict(sorted(player_scores.items(), key=lambda x: x[1], reverse=True))
+        
+        # Combine stacking rules
+        stack_map = {}
+        for rec in [game_theory_rec, correlation_rec, contrarian_rec]:
+            for stack in rec.stacks:
+                stack_key = f"{stack.get('player1')}_{stack.get('player2')}"
+                if stack_key not in stack_map:
+                    stack_map[stack_key] = {'stack': stack, 'support': []}
+                stack_map[stack_key]['support'].append(rec.source_ai)
+        
+        # Prioritize stacks by support
+        for stack_key, data in stack_map.items():
+            if len(data['support']) >= 2:
+                synthesis['stacking_rules'].append({
+                    **data['stack'],
+                    'strength': 'strong',
+                    'support': data['support']
+                })
+            else:
+                synthesis['stacking_rules'].append({
+                    **data['stack'],
+                    'strength': 'moderate',
+                    'support': data['support']
+                })
+        
+        # Combine avoidance rules
+        avoid_players = set()
+        for rec in [game_theory_rec, correlation_rec, contrarian_rec]:
+            avoid_players.update(rec.never_play)
+        synthesis['avoidance_rules'] = list(avoid_players)
+        
+        # Create narrative
+        narratives = []
+        if game_theory_rec.narrative:
+            narratives.append(f"Game Theory: {game_theory_rec.narrative}")
+        if correlation_rec.narrative:
+            narratives.append(f"Correlation: {correlation_rec.narrative}")
+        if contrarian_rec.narrative:
+            narratives.append(f"Contrarian: {contrarian_rec.narrative}")
+        synthesis['narrative'] = " | ".join(narratives)
+        
+        # Calculate combined confidence
+        synthesis['confidence'] = (
+            game_theory_rec.confidence * OptimizerConfig.AI_WEIGHTS[AIStrategistType.GAME_THEORY] +
+            correlation_rec.confidence * OptimizerConfig.AI_WEIGHTS[AIStrategistType.CORRELATION] +
+            contrarian_rec.confidence * OptimizerConfig.AI_WEIGHTS[AIStrategistType.CONTRARIAN_NARRATIVE]
+        )
+        
+        # Create enforcement rules
+        synthesis['enforcement_rules'] = self._create_enforcement_rules(synthesis)
+        
+        # Log synthesis
+        self.logger.log(f"AI Synthesis complete: {len(synthesis['captain_strategy'])} captains, "
+                       f"{len(synthesis['stacking_rules'])} stacks, "
+                       f"confidence: {synthesis['confidence']:.2f}", "INFO")
+        
+        self.synthesis_history.append(synthesis)
+        
+        return synthesis
+    
+    def _create_enforcement_rules(self, synthesis: Dict) -> List[Dict]:
+        """Convert synthesis into enforcement rules"""
+        rules = []
+        
+        # Captain rules
+        consensus_captains = [c for c, level in synthesis['captain_strategy'].items() if level == 'consensus']
+        if consensus_captains:
+            rules.append({
+                'type': 'hard',
+                'rule': 'captain_from_list',
+                'players': consensus_captains,
+                'description': 'Must use consensus captain'
+            })
+        
+        # Stacking rules
+        strong_stacks = [s for s in synthesis['stacking_rules'] if s['strength'] == 'strong']
+        for stack in strong_stacks[:2]:  # Limit to top 2
+            rules.append({
+                'type': 'soft',
+                'rule': 'include_stack',
+                'players': [stack['player1'], stack['player2']],
+                'weight': 0.8,
+                'description': f"Include stack: {stack['player1']}-{stack['player2']}"
+            })
+        
+        # Avoidance rules
+        for player in synthesis['avoidance_rules']:
+            rules.append({
+                'type': 'soft',
+                'rule': 'avoid_player',
+                'player': player,
+                'weight': 0.7,
+                'description': f"Avoid: {player}"
+            })
+        
+        return rules
+    
+    def get_synthesis_summary(self) -> Dict:
+        """Get summary of synthesis history"""
+        if not self.synthesis_history:
+            return {}
+        
+        latest = self.synthesis_history[-1]
+        return {
+            'total_syntheses': len(self.synthesis_history),
+            'latest_confidence': latest['confidence'],
+            'consensus_captains': len([c for c, l in latest['captain_strategy'].items() if l == 'consensus']),
+            'total_captains': len(latest['captain_strategy']),
+            'strong_stacks': len([s for s in latest['stacking_rules'] if s['strength'] == 'strong'])
         }
-    else:  # milly_maker
-        weights = {
-            'ceiling_95': 0.10,
-            'ceiling_99': 0.25,
-            'ceiling_99_9': 0.30,
-            'ownership': 0.15,
-            'leverage': 0.20,
-            'correlation': 0.00
-        }
-    
-    # Calculate GPP score
-    lineups_df['GPP_Score'] = 0
-    
-    # Ceiling components
-    if 'Ceiling_95th' in lineups_df.columns:
-        lineups_df['GPP_Score'] += weights.get('ceiling_95', 0.2) * lineups_df['Ceiling_95th'] * 0.5
-    
-    if 'Ceiling_99th' in lineups_df.columns:
-        lineups_df['GPP_Score'] += weights.get('ceiling_99', 0.25) * lineups_df['Ceiling_99th'] * 0.6
-    
-    if 'Ceiling_99_9th' in lineups_df.columns:
-        lineups_df['GPP_Score'] += weights.get('ceiling_99_9', 0.15) * lineups_df['Ceiling_99_9th'] * 0.7
-    
-    # Ownership component (lower is better for GPP)
-    optimal_ownership = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size][0] + 10
-    lineups_df['GPP_Score'] += weights.get('ownership', 0.15) * (
-        150 - np.abs(lineups_df['Total_Ownership'] - optimal_ownership)
-    ) * 0.5
-    
-    # Leverage score component
-    lineups_df['GPP_Score'] += weights.get('leverage', 0.15) * lineups_df['Leverage_Score'] * 8
-    
-    # Correlation bonus
-    lineups_df['GPP_Score'] += weights.get('correlation', 0.05) * lineups_df['Has_Stack'].astype(int) * 40
-    
-    # Additional GPP metrics
-    if 'Ship_Rate' in lineups_df.columns:
-        lineups_df['Ship_Equity'] = lineups_df['Ship_Rate'] * 1000
-    
-    if 'Elite_Rate' in lineups_df.columns:
-        lineups_df['Elite_Equity'] = lineups_df['Elite_Rate'] * 100
-    
-    # Tournament equity score (combines all factors)
-    lineups_df['Tournament_EV'] = (
-        lineups_df['GPP_Score'] * 0.6 +
-        lineups_df.get('Ship_Equity', 0) * 0.25 +
-        lineups_df.get('Elite_Equity', 0) * 0.15
-    )
-    
-    return lineups_df
 
 # NFL GPP DUAL-AI OPTIMIZER - PART 3: AI STRATEGISTS
 # Game Theory and Correlation AI with GPP Focus
@@ -3693,3 +3876,5 @@ if 'field_size' in st.session_state:
     st.caption(f"GPP Optimizer last run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Field: {current_field} | Cache Status: Active")
 else:
     st.caption(f"GPP Optimizer ready: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | No active session")
+
+
