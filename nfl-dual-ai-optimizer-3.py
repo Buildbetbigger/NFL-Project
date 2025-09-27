@@ -1,3 +1,6 @@
+# NFL GPP DUAL-AI OPTIMIZER - PART 1: IMPORTS AND CONFIGURATION
+# Version 5.0 - GPP Tournament Focus
+
 import streamlit as st
 import pandas as pd
 import pulp
@@ -22,11 +25,15 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
     st.warning("Anthropic package not installed. Install with: pip install anthropic")
 
-st.set_page_config(page_title="NFL Dual-AI Optimizer Pro", page_icon="🏈", layout="wide")
-st.title('🏈 NFL Showdown Optimizer - Professional Edition')
+st.set_page_config(page_title="NFL GPP Optimizer Pro", page_icon="🏈", layout="wide")
+st.title('🏈 NFL GPP Tournament Optimizer - Professional Edition')
 
-# Enhanced Configuration
+# ============================================================================
+# GPP-FOCUSED CONFIGURATION
+# ============================================================================
+
 class OptimizerConfig:
+    """GPP-optimized configuration settings"""
     SALARY_CAP = 50000
     ROSTER_SIZE = 6  # 1 Captain + 5 FLEX
     MAX_PLAYERS_PER_TEAM = 4
@@ -34,65 +41,119 @@ class OptimizerConfig:
     DEFAULT_OWNERSHIP = 5
     MIN_SALARY = 1000
     
+    # GPP-FOCUSED VOLATILITY (increased for more variance)
+    BASE_VOLATILITY = 0.30  # Increased from 0.25
+    HIGH_VOLATILITY = 0.45  # Increased from 0.35
+    INJURY_RATE = 0.08  # Increased from 0.05
+    BOOM_RATE = 0.08  # Increased from 0.05
+    
     # Simulation parameters
-    BASE_VOLATILITY = 0.25
-    HIGH_VOLATILITY = 0.35
     NUM_SIMS = 5000
     FIELD_SIZE = 100000
     
     # API Configuration
-    CLAUDE_MODEL = "claude-3-haiku-20240307"  # Most reliable
+    CLAUDE_MODEL = "claude-3-haiku-20240307"
     MAX_TOKENS = 2000
     TEMPERATURE = 0.7
     
-    # Ownership buckets
+    # GPP-FOCUSED OWNERSHIP BUCKETS
     OWNERSHIP_BUCKETS = {
-        'mega_chalk': (40, 100),      # 40%+ ownership
-        'chalk': (25, 40),             # 25-40% ownership
-        'pivot': (10, 25),             # 10-25% ownership
+        'mega_chalk': (35, 100),      # Lowered from 40%
+        'chalk': (20, 35),             # Lowered from 25%
+        'pivot': (10, 20),             # Tightened range
         'leverage': (5, 10),           # 5-10% ownership
         'super_leverage': (0, 5)       # <5% ownership
     }
     
-    # Flexible bucket rules based on strategy
+    # GPP-ONLY BUCKET RULES
     BUCKET_RULES = {
-        'balanced': {
-            'mega_chalk': (0, 3),      # Allow up to 3 mega chalk
-            'chalk': (0, 4),           # Flexible chalk
-            'pivot': (0, 6),           # Any pivots
-            'leverage': (0, 6),        # Any leverage
-            'super_leverage': (0, 6)   # Any super leverage
-        },
-        'contrarian': {
-            'mega_chalk': (0, 1),      # Max 1 mega chalk
-            'chalk': (0, 2),           # Max 2 chalk
+        'gpp_balanced': {
+            'mega_chalk': (0, 2),      # Max 2 mega chalk
+            'chalk': (0, 3),           # Max 3 chalk
             'pivot': (1, 6),           # At least 1 pivot
             'leverage': (1, 6),        # At least 1 leverage
             'super_leverage': (0, 6)   # Any super leverage
         },
-        'leverage': {
-            'mega_chalk': (0, 0),      # No mega chalk
+        'contrarian': {
+            'mega_chalk': (0, 0),      # NO mega chalk
             'chalk': (0, 1),           # Max 1 chalk
-            'pivot': (1, 6),           # At least 1 pivot
+            'pivot': (2, 6),           # At least 2 pivots
             'leverage': (2, 6),        # At least 2 leverage
             'super_leverage': (1, 6)   # At least 1 super leverage
+        },
+        'super_contrarian': {  # NEW for GPP
+            'mega_chalk': (0, 0),      
+            'chalk': (0, 0),           # NO chalk at all
+            'pivot': (1, 6),           
+            'leverage': (2, 6),        # At least 2 leverage
+            'super_leverage': (2, 6)   # At least 2 super leverage
         }
     }
     
-    # Correlation defaults
-    QB_PASS_CATCHER_CORR = 0.45
-    QB_RB_CORR = -0.15
-    SAME_TEAM_WR_CORR = 0.15
-    OPPOSING_QB_CORR = 0.25
-    DST_OPPOSING_CORR = -0.35
+    # GPP-FOCUSED TARGET OWNERSHIP BY FIELD SIZE
+    GPP_OWNERSHIP_TARGETS = {
+        'small_field': (80, 120),    # Small GPP/Single Entry
+        'medium_field': (70, 100),   # Medium GPP
+        'large_field': (60, 90),     # Large GPP (default)
+        'milly_maker': (50, 80)      # Massive GPP
+    }
+    
+    # GPP FIELD SIZE DEFINITIONS
+    FIELD_SIZES = {
+        'Single Entry': 'small_field',
+        '3-Max': 'small_field',
+        '20-Max': 'medium_field',
+        '150-Max': 'large_field',
+        'Milly Maker': 'milly_maker'
+    }
+    
+    # Correlation values adjusted for GPP
+    QB_PASS_CATCHER_CORR = 0.50  # Increased from 0.45
+    QB_RB_CORR = -0.20  # More negative
+    SAME_TEAM_WR_CORR = 0.10  # Decreased to avoid doubling up
+    OPPOSING_QB_CORR = 0.35  # Increased for shootouts
+    DST_OPPOSING_CORR = -0.40  # More negative
+    
+    # GPP Strategy Weights by Field Size
+    GPP_STRATEGY_WEIGHTS = {
+        'small_field': {
+            'leverage': 0.25,
+            'contrarian': 0.15,
+            'game_stack': 0.25,
+            'stars_scrubs': 0.15,
+            'correlation': 0.20
+        },
+        'medium_field': {
+            'leverage': 0.30,
+            'contrarian': 0.20,
+            'game_stack': 0.20,
+            'stars_scrubs': 0.15,
+            'correlation': 0.15
+        },
+        'large_field': {
+            'leverage': 0.35,
+            'contrarian': 0.25,
+            'game_stack': 0.20,
+            'stars_scrubs': 0.15,
+            'correlation': 0.05
+        },
+        'milly_maker': {
+            'leverage': 0.40,
+            'contrarian': 0.35,
+            'game_stack': 0.15,
+            'stars_scrubs': 0.10,
+            'correlation': 0.00
+        }
+    }
 
 class StrategyType(Enum):
+    """GPP-focused strategies only"""
     LEVERAGE = "leverage"
-    CORRELATION = "correlation"
-    BALANCED = "balanced"
     CONTRARIAN = "contrarian"
+    SUPER_CONTRARIAN = "super_contrarian"
     GAME_STACK = "game_stack"
     STARS_SCRUBS = "stars_scrubs"
+    CORRELATION = "correlation"
 
 @dataclass
 class AIRecommendation:
@@ -105,15 +166,22 @@ class AIRecommendation:
     boosts: List[str]
     strategy_weights: Dict[StrategyType, float]
     key_insights: List[str]
+    gpp_specific_rules: Dict[str, any]  # New field for GPP rules
 
 @dataclass
 class PlayerProjection:
-    """Enhanced player projection with confidence intervals"""
+    """Enhanced player projection with GPP metrics"""
     player: str
     projection: float
     floor: float
     ceiling: float
     volatility: float
+    boom_probability: float  # New for GPP
+    bust_probability: float  # New for GPP
+
+# ============================================================================
+# CLAUDE API MANAGER
+# ============================================================================
 
 class ClaudeAPIManager:
     """Manages Claude API interactions with caching"""
@@ -149,8 +217,9 @@ class ClaudeAPIManager:
             if system_prompt:
                 system = system_prompt
             else:
-                system = """You are an expert DFS analyst. Provide strategic recommendations 
-                           in valid JSON format only, no markdown or extra text."""
+                system = """You are an expert DFS analyst specializing in GPP tournaments. 
+                           Provide strategic recommendations in valid JSON format only, no markdown or extra text.
+                           Focus on tournament-winning strategies with emphasis on ceiling and leverage."""
             
             response = self.client.messages.create(
                 model=OptimizerConfig.CLAUDE_MODEL,
@@ -176,8 +245,12 @@ class ClaudeAPIManager:
             st.error(f"API call failed: {e}")
             return "{}"
 
+# ============================================================================
+# OWNERSHIP BUCKET MANAGER WITH GPP FOCUS
+# ============================================================================
+
 class OwnershipBucketManager:
-    """Advanced ownership bucketing and analysis"""
+    """GPP-focused ownership bucketing and analysis"""
     
     @staticmethod
     def get_bucket(ownership: float) -> str:
@@ -197,34 +270,9 @@ class OwnershipBucketManager:
         return dict(buckets)
     
     @staticmethod
-    def validate_lineup_buckets(lineup_players: List[str], df: pd.DataFrame, 
-                               strategy: str = 'balanced') -> Tuple[bool, str]:
-        """Check if lineup meets bucket constraints"""
-        ownership_dict = df.set_index('Player')['Ownership'].to_dict()
-        bucket_counts = defaultdict(int)
-        
-        for player in lineup_players:
-            ownership = ownership_dict.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
-            bucket = OwnershipBucketManager.get_bucket(ownership)
-            bucket_counts[bucket] += 1
-        
-        rules = OptimizerConfig.BUCKET_RULES.get(strategy, OptimizerConfig.BUCKET_RULES['balanced'])
-        
-        violations = []
-        for bucket_name, (min_count, max_count) in rules.items():
-            count = bucket_counts.get(bucket_name, 0)
-            if count < min_count:
-                violations.append(f"Need at least {min_count} {bucket_name}")
-            if count > max_count:
-                violations.append(f"Too many {bucket_name} ({count}/{max_count})")
-        
-        if violations:
-            return False, "; ".join(violations)
-        return True, "Valid"
-    
-    @staticmethod
-    def get_bucket_summary(lineup_players: List[str], df: pd.DataFrame) -> str:
-        """Get a detailed summary of lineup's ownership profile"""
+    def validate_gpp_lineup(lineup_players: List[str], df: pd.DataFrame, 
+                           field_size: str = 'large_field') -> Tuple[bool, str]:
+        """Validate lineup meets GPP bucket constraints"""
         ownership_dict = df.set_index('Player')['Ownership'].to_dict()
         bucket_counts = defaultdict(int)
         total_ownership = 0
@@ -235,45 +283,102 @@ class OwnershipBucketManager:
             bucket_counts[bucket] += 1
             total_ownership += ownership
         
-        # Create emoji indicators
+        # Get appropriate rules based on field size
+        if field_size == 'milly_maker':
+            rules = OptimizerConfig.BUCKET_RULES['super_contrarian']
+        elif field_size == 'large_field':
+            rules = OptimizerConfig.BUCKET_RULES['contrarian']
+        else:
+            rules = OptimizerConfig.BUCKET_RULES['gpp_balanced']
+        
+        violations = []
+        
+        # Check bucket constraints
+        for bucket_name, (min_count, max_count) in rules.items():
+            count = bucket_counts.get(bucket_name, 0)
+            if count < min_count:
+                violations.append(f"Need at least {min_count} {bucket_name}")
+            if count > max_count:
+                violations.append(f"Too many {bucket_name} ({count}/{max_count})")
+        
+        # Check total ownership for field size
+        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
+        if total_ownership < min_own:
+            violations.append(f"Total ownership too low ({total_ownership:.1f}% < {min_own}%)")
+        if total_ownership > max_own:
+            violations.append(f"Total ownership too high ({total_ownership:.1f}% > {max_own}%)")
+        
+        if violations:
+            return False, "; ".join(violations)
+        return True, "Valid GPP lineup"
+    
+    @staticmethod
+    def get_gpp_summary(lineup_players: List[str], df: pd.DataFrame, field_size: str) -> str:
+        """Get GPP-specific summary of lineup's ownership profile"""
+        ownership_dict = df.set_index('Player')['Ownership'].to_dict()
+        bucket_counts = defaultdict(int)
+        total_ownership = 0
+        
+        for player in lineup_players:
+            ownership = ownership_dict.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
+            bucket = OwnershipBucketManager.get_bucket(ownership)
+            bucket_counts[bucket] += 1
+            total_ownership += ownership
+        
+        # GPP-specific emoji indicators
         bucket_emojis = {
-            'mega_chalk': '🔴',
-            'chalk': '🟠',
-            'pivot': '🟢',
-            'leverage': '🔵',
-            'super_leverage': '🟣'
+            'mega_chalk': '🔴',  # Bad for GPP
+            'chalk': '🟠',       # Caution
+            'pivot': '🟡',       # OK
+            'leverage': '🟢',    # Good
+            'super_leverage': '💎'  # Excellent
         }
         
-        summary = f"Total: {total_ownership:.1f}% | "
+        # Determine GPP quality
+        gpp_quality = "💎 Elite" if total_ownership < 70 else "✅ Good" if total_ownership < 100 else "⚠️ Chalky"
+        
+        summary = f"Own: {total_ownership:.1f}% [{gpp_quality}] | "
         summary += " ".join([f"{bucket_emojis.get(k, '')} {k}:{v}" 
                            for k, v in bucket_counts.items() if v > 0])
         return summary
     
     @staticmethod
-    def calculate_lineup_leverage(lineup_players: List[str], df: pd.DataFrame) -> float:
-        """Calculate overall leverage score for a lineup"""
+    def calculate_gpp_leverage(lineup_players: List[str], df: pd.DataFrame) -> float:
+        """Calculate GPP-specific leverage score"""
         ownership_dict = df.set_index('Player')['Ownership'].to_dict()
         leverage_score = 0
         
         for player in lineup_players:
             ownership = ownership_dict.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
-            if ownership < 5:
+            if ownership < 3:
+                leverage_score += 5  # Huge bonus for super low owned
+            elif ownership < 5:
                 leverage_score += 3
             elif ownership < 10:
                 leverage_score += 2
-            elif ownership < 25:
+            elif ownership < 15:
                 leverage_score += 1
-            elif ownership > 40:
+            elif ownership > 35:
+                leverage_score -= 2  # Penalty for mega chalk
+            elif ownership > 25:
                 leverage_score -= 1
         
         return leverage_score
 
-class CaptainPivotGenerator:
-    """Advanced captain pivot generation with salary optimization"""
+# NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS
+# Captain Pivots, Correlations, and Tournament Simulation
+
+# ============================================================================
+# GPP CAPTAIN PIVOT GENERATOR
+# ============================================================================
+
+class GPPCaptainPivotGenerator:
+    """GPP-focused captain pivot generation"""
     
     @staticmethod
-    def generate_pivots(lineup: Dict, df: pd.DataFrame, max_pivots: int = 3) -> List[Dict]:
-        """Generate captain pivot variations with enhanced metrics"""
+    def generate_gpp_pivots(lineup: Dict, df: pd.DataFrame, max_pivots: int = 5,
+                           target_ownership: float = 15.0) -> List[Dict]:
+        """Generate GPP-optimal captain pivot variations"""
         captain = lineup['Captain']
         flex_players = lineup['FLEX']
         
@@ -284,149 +389,260 @@ class CaptainPivotGenerator:
         
         pivot_lineups = []
         
-        # Sort FLEX players by leverage potential
-        flex_leverage = [(p, ownership.get(p, 5)) for p in flex_players]
-        flex_leverage.sort(key=lambda x: x[1])  # Lower ownership first
+        # Prioritize low-owned FLEX players for captain pivots
+        flex_candidates = []
+        for p in flex_players:
+            own = ownership.get(p, 5)
+            if own < 20:  # Only consider sub-20% for GPP pivots
+                flex_candidates.append((p, own))
         
-        for new_captain, captain_own in flex_leverage[:max_pivots]:
+        # Sort by ownership (lowest first for max leverage)
+        flex_candidates.sort(key=lambda x: x[1])
+        
+        for new_captain, captain_own in flex_candidates[:max_pivots]:
             old_captain_salary = salaries.get(captain, 0)
             new_captain_salary = salaries.get(new_captain, 0)
             
             salary_freed = old_captain_salary * 0.5
             salary_needed = new_captain_salary * 0.5
             
-            if salary_freed >= salary_needed - 100:  # Allow small salary overrun
+            if salary_freed >= salary_needed - 200:  # Allow small salary overrun for GPP
                 new_flex = [p for p in flex_players if p != new_captain] + [captain]
                 
                 pivot_lineup = lineup.copy()
                 pivot_lineup['Captain'] = new_captain
                 pivot_lineup['FLEX'] = new_flex
-                pivot_lineup['Pivot_Type'] = 'Leverage Swap' if captain_own < 10 else 'Standard Swap'
+                
+                # GPP-specific pivot types
+                if captain_own < 5:
+                    pivot_type = '💎 Super Leverage'
+                elif captain_own < 10:
+                    pivot_type = '🟢 Leverage'
+                elif captain_own < 15:
+                    pivot_type = '🟡 Contrarian'
+                else:
+                    pivot_type = '⚠️ Standard'
+                
+                pivot_lineup['Pivot_Type'] = pivot_type
                 pivot_lineup['Original_Captain'] = captain
                 
-                # Calculate metrics
+                # Calculate GPP metrics
                 total_proj = points.get(new_captain, 0) * 1.5 + sum(points.get(p, 0) for p in new_flex)
                 total_own = ownership.get(new_captain, 5) * 1.5 + sum(ownership.get(p, 5) for p in new_flex)
                 
+                # GPP leverage calculation
+                leverage_gain = (ownership.get(captain, 20) - captain_own) * 1.5
+                
                 pivot_lineup['Projected'] = round(total_proj, 2)
                 pivot_lineup['Total_Ownership'] = round(total_own, 1)
-                pivot_lineup['Ownership_Delta'] = round(total_own - lineup.get('Total_Ownership', 100), 1)
-                pivot_lineup['Leverage_Gain'] = round((lineup.get('Total_Ownership', 100) - total_own) / 10, 1)
+                pivot_lineup['Captain_Own%'] = round(captain_own, 1)
+                pivot_lineup['Leverage_Gain'] = round(leverage_gain, 1)
+                pivot_lineup['GPP_Score'] = round(total_proj * (1 + leverage_gain/50), 1)
                 pivot_lineup['Captain_Position'] = positions.get(new_captain, 'Unknown')
+                pivot_lineup['Is_Elite_GPP'] = total_own < 70  # Elite GPP lineup threshold
                 
                 pivot_lineups.append(pivot_lineup)
         
+        # Sort by GPP score
+        pivot_lineups.sort(key=lambda x: x['GPP_Score'], reverse=True)
         return pivot_lineups
     
     @staticmethod
-    def find_optimal_pivots(lineup: Dict, df: pd.DataFrame, 
-                           target_ownership: float = 80) -> List[Dict]:
-        """Find pivots that hit a target ownership level"""
-        pivots = CaptainPivotGenerator.generate_pivots(lineup, df, max_pivots=5)
+    def find_optimal_gpp_pivots(lineup: Dict, df: pd.DataFrame, 
+                               field_size: str = 'large_field') -> List[Dict]:
+        """Find pivots optimized for specific GPP field size"""
         
-        # Sort by distance to target ownership
-        for pivot in pivots:
-            pivot['Target_Distance'] = abs(pivot['Total_Ownership'] - target_ownership)
+        # Get ownership targets for field size
+        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
+        target_ownership = (min_own + max_own) / 2
         
-        pivots.sort(key=lambda x: x['Target_Distance'])
-        return pivots[:3]
+        pivots = GPPCaptainPivotGenerator.generate_gpp_pivots(
+            lineup, df, max_pivots=7, target_ownership=target_ownership
+        )
+        
+        # Filter pivots by field size criteria
+        if field_size == 'milly_maker':
+            # Only super leverage pivots for Milly
+            pivots = [p for p in pivots if p['Captain_Own%'] < 10]
+        elif field_size == 'large_field':
+            # Sub-15% captains for large field
+            pivots = [p for p in pivots if p['Captain_Own%'] < 15]
+        
+        return pivots[:5]  # Return top 5
 
-class CorrelationEngine:
-    """Advanced correlation calculations for stacking"""
+# ============================================================================
+# GPP CORRELATION ENGINE
+# ============================================================================
+
+class GPPCorrelationEngine:
+    """GPP-focused correlation calculations"""
     
     @staticmethod
-    def calculate_dynamic_correlations(df: pd.DataFrame, game_context: Dict) -> Dict[Tuple[str, str], float]:
-        """Calculate correlations based on positions, teams, and game context"""
+    def calculate_gpp_correlations(df: pd.DataFrame, game_context: Dict) -> Dict[Tuple[str, str], float]:
+        """Calculate GPP-specific correlations with emphasis on ceiling"""
         correlations = {}
         
         players = df['Player'].tolist()
         positions = df.set_index('Player')['Position'].to_dict()
         teams = df.set_index('Player')['Team'].to_dict()
+        ownership = df.set_index('Player')['Ownership'].to_dict()
         
         for i, p1 in enumerate(players):
             for p2 in players[i+1:]:
                 team1, team2 = teams.get(p1), teams.get(p2)
                 pos1, pos2 = positions.get(p1), positions.get(p2)
+                own1, own2 = ownership.get(p1, 5), ownership.get(p2, 5)
                 
                 correlation = 0
+                leverage_bonus = 0  # GPP-specific bonus for low-owned correlations
                 
                 if team1 == team2:
                     # Same team correlations
                     if pos1 == 'QB' and pos2 in ['WR', 'TE']:
                         correlation = OptimizerConfig.QB_PASS_CATCHER_CORR
-                        # Adjust for game total
-                        if game_context.get('total', 48) > 52:
-                            correlation += 0.1  # Higher correlation in shootouts
-                    elif pos1 == 'QB' and pos2 == 'RB':
-                        correlation = OptimizerConfig.QB_RB_CORR
-                        # More negative in likely blowouts
-                        if abs(game_context.get('spread', 0)) > 7:
-                            correlation -= 0.1
-                    elif pos1 in ['WR', 'TE'] and pos2 in ['WR', 'TE']:
-                        correlation = OptimizerConfig.SAME_TEAM_WR_CORR
-                    elif pos1 == 'RB' and pos2 == 'RB':
-                        correlation = -0.5  # RBs rarely both succeed
-                
-                else:
-                    # Opposing team correlations
-                    if pos1 == 'QB' and pos2 == 'QB':
-                        correlation = OptimizerConfig.OPPOSING_QB_CORR
-                        # Higher in projected shootouts
+                        # GPP bonus for low-owned stacks
+                        if own1 < 15 and own2 < 10:
+                            leverage_bonus = 0.15
+                        # Extra correlation in projected shootouts
                         if game_context.get('total', 48) > 52:
                             correlation += 0.15
+                    elif pos1 == 'QB' and pos2 == 'RB':
+                        correlation = OptimizerConfig.QB_RB_CORR
+                        # More negative in blowouts (bad for GPP)
+                        if abs(game_context.get('spread', 0)) > 7:
+                            correlation -= 0.15
+                    elif pos1 in ['WR', 'TE'] and pos2 in ['WR', 'TE']:
+                        correlation = OptimizerConfig.SAME_TEAM_WR_CORR
+                        # Reduce correlation for GPP (avoid doubling up on pass catchers)
+                        if own1 > 20 or own2 > 20:
+                            correlation -= 0.05
+                    elif pos1 == 'RB' and pos2 == 'RB':
+                        correlation = -0.6  # Very negative for GPP
+                
+                else:
+                    # Opposing team correlations (game stacks)
+                    if pos1 == 'QB' and pos2 == 'QB':
+                        correlation = OptimizerConfig.OPPOSING_QB_CORR
+                        # Much higher in projected shootouts
+                        if game_context.get('total', 48) > 54:
+                            correlation += 0.25
+                        # GPP leverage bonus for low-owned QB stacks
+                        if own1 < 20 and own2 < 20:
+                            leverage_bonus = 0.20
                     elif pos1 == 'QB' and pos2 in ['WR', 'TE']:
-                        # Opposing QB-WR has slight positive correlation (shootouts)
-                        correlation = 0.1
+                        # Bring-back correlation
+                        correlation = 0.15
+                        if game_context.get('total', 48) > 52:
+                            correlation += 0.10
+                    elif pos1 in ['WR', 'TE'] and pos2 in ['WR', 'TE']:
+                        # Opposing pass catchers in shootout
+                        if game_context.get('total', 48) > 52:
+                            correlation = 0.10
                     elif 'DST' in [pos1, pos2]:
                         correlation = OptimizerConfig.DST_OPPOSING_CORR
+                        # Even more negative in high-scoring games
+                        if game_context.get('total', 48) > 50:
+                            correlation -= 0.15
                 
-                if correlation != 0:
-                    correlations[(p1, p2)] = correlation
+                # Apply leverage bonus
+                final_correlation = correlation + leverage_bonus
+                
+                if abs(final_correlation) > 0.05:  # Only store meaningful correlations
+                    correlations[(p1, p2)] = final_correlation
         
         return correlations
     
     @staticmethod
-    def identify_optimal_stacks(df: pd.DataFrame, correlations: Dict) -> List[Dict]:
-        """Identify the best stacking opportunities"""
+    def identify_gpp_stacks(df: pd.DataFrame, correlations: Dict, 
+                           field_size: str = 'large_field') -> List[Dict]:
+        """Identify GPP-optimal stacking opportunities"""
         stacks = []
+        
+        # Get ownership targets for field size
+        if field_size == 'milly_maker':
+            max_combined_own = 30
+        elif field_size == 'large_field':
+            max_combined_own = 40
+        else:
+            max_combined_own = 50
         
         # Find all positive correlations
         for (p1, p2), corr in correlations.items():
-            if corr > 0.2:  # Meaningful positive correlation
+            if corr > 0.15:  # Meaningful positive correlation for GPP
                 ownership1 = df[df['Player'] == p1]['Ownership'].values[0] if len(df[df['Player'] == p1]) > 0 else 5
                 ownership2 = df[df['Player'] == p2]['Ownership'].values[0] if len(df[df['Player'] == p2]) > 0 else 5
+                combined_own = ownership1 + ownership2
                 
-                stacks.append({
-                    'player1': p1,
-                    'player2': p2,
-                    'correlation': corr,
-                    'combined_ownership': ownership1 + ownership2,
-                    'leverage': max(0, 50 - (ownership1 + ownership2))  # Lower ownership = more leverage
-                })
+                # Calculate GPP stack score
+                leverage_score = max(0, 50 - combined_own)
+                gpp_score = corr * 100 + leverage_score
+                
+                # Determine stack type
+                if combined_own < 20:
+                    stack_type = '💎 Elite Leverage'
+                elif combined_own < 30:
+                    stack_type = '🟢 Leverage'
+                elif combined_own < 40:
+                    stack_type = '🟡 Contrarian'
+                else:
+                    stack_type = '⚠️ Chalky'
+                
+                if combined_own <= max_combined_own:  # Only include if meets field size criteria
+                    stacks.append({
+                        'player1': p1,
+                        'player2': p2,
+                        'correlation': corr,
+                        'combined_ownership': combined_own,
+                        'leverage': leverage_score,
+                        'gpp_score': gpp_score,
+                        'stack_type': stack_type,
+                        'is_game_stack': df[df['Player'] == p1]['Team'].values[0] != df[df['Player'] == p2]['Team'].values[0]
+                    })
         
-        # Sort by correlation * leverage
-        stacks.sort(key=lambda x: x['correlation'] * (1 + x['leverage']/100), reverse=True)
-        return stacks[:10]
+        # Sort by GPP score
+        stacks.sort(key=lambda x: x['gpp_score'], reverse=True)
+        return stacks[:20]  # Return top 20 stacks
 
-class TournamentSimulator:
-    """Advanced tournament simulation with realistic distributions"""
+# ============================================================================
+# GPP TOURNAMENT SIMULATOR
+# ============================================================================
+
+class GPPTournamentSimulator:
+    """GPP-specific tournament simulation with emphasis on ceiling"""
     
     @staticmethod
-    def simulate_with_correlation(lineup: Dict, df: pd.DataFrame, 
-                                 correlations: Dict, n_sims: int = 5000) -> Dict[str, float]:
-        """Run correlated tournament simulations"""
+    def simulate_gpp_tournament(lineup: Dict, df: pd.DataFrame, 
+                               correlations: Dict, n_sims: int = 5000,
+                               field_size: str = 'large_field') -> Dict[str, float]:
+        """GPP-focused simulation with higher variance and ceiling emphasis"""
         captain = lineup['Captain']
         flex_players = lineup['FLEX'] if isinstance(lineup['FLEX'], list) else lineup['FLEX']
         all_players = [captain] + list(flex_players)
         
         projections = df.set_index('Player')['Projected_Points'].to_dict()
+        ownership = df.set_index('Player')['Ownership'].to_dict()
         
         # Build correlation matrix
         n_players = len(all_players)
         means = np.array([projections.get(p, 0) for p in all_players])
         
-        # Create covariance matrix
-        cov_matrix = np.eye(n_players) * (OptimizerConfig.BASE_VOLATILITY ** 2)
+        # GPP variance adjustment based on ownership and field size
+        variance_multiplier = 1.0
+        if field_size == 'milly_maker':
+            variance_multiplier = 1.3  # Much higher variance for Milly
+        elif field_size == 'large_field':
+            variance_multiplier = 1.2
+        
+        variances = []
+        for p in all_players:
+            own = ownership.get(p, 5)
+            # Lower ownership = higher variance (more GPP upside)
+            ownership_mult = 1.0 + max(0, (20 - own) / 30)
+            var = (OptimizerConfig.HIGH_VOLATILITY * variance_multiplier * ownership_mult) ** 2
+            variances.append(var)
+        
+        # Create covariance matrix with adjusted variances
+        cov_matrix = np.diag(variances)
         
         for i in range(n_players):
             for j in range(i+1, n_players):
@@ -434,410 +650,638 @@ class TournamentSimulator:
                 pair = tuple(sorted([p1, p2]))
                 if pair in correlations:
                     correlation = correlations[pair]
-                    cov_matrix[i, j] = correlation * OptimizerConfig.BASE_VOLATILITY ** 2
+                    cov_matrix[i, j] = correlation * np.sqrt(variances[i] * variances[j])
                     cov_matrix[j, i] = cov_matrix[i, j]
         
         try:
-            # Use gamma distribution for more realistic DFS scoring
+            # Generate simulations
             sims = multivariate_normal(mean=means, cov=cov_matrix, allow_singular=True).rvs(n_sims)
-            
-            # Apply realistic constraints
             sims = np.maximum(0, sims)  # No negative scores
             
-            # Add injury/boom-bust volatility
+            # GPP-specific volatility events
             for i in range(n_players):
-                # 5% chance of injury (score < 25% of projection)
-                injury_mask = np.random.random(n_sims) < 0.05
-                sims[injury_mask, i] *= np.random.uniform(0, 0.25, injury_mask.sum())
+                own = ownership.get(all_players[i], 5)
                 
-                # 5% chance of boom (score > 200% of projection)
-                boom_mask = np.random.random(n_sims) < 0.05
-                sims[boom_mask, i] *= np.random.uniform(2.0, 3.0, boom_mask.sum())
+                # Injury risk (higher for chalky players in GPP)
+                injury_rate = OptimizerConfig.INJURY_RATE
+                if own > 30:  # Higher injury risk for chalk
+                    injury_rate *= 1.5
+                injury_mask = np.random.random(n_sims) < injury_rate
+                sims[injury_mask, i] *= np.random.uniform(0, 0.15, injury_mask.sum())
+                
+                # Boom potential (much higher for low-owned players)
+                if own < 5:
+                    boom_rate = OptimizerConfig.BOOM_RATE * 3
+                    boom_range = (3.0, 5.0)  # Massive booms
+                elif own < 10:
+                    boom_rate = OptimizerConfig.BOOM_RATE * 2
+                    boom_range = (2.5, 4.0)
+                elif own < 15:
+                    boom_rate = OptimizerConfig.BOOM_RATE * 1.5
+                    boom_range = (2.0, 3.0)
+                else:
+                    boom_rate = OptimizerConfig.BOOM_RATE
+                    boom_range = (1.5, 2.5)
+                
+                boom_mask = np.random.random(n_sims) < boom_rate
+                sims[boom_mask, i] *= np.random.uniform(boom_range[0], boom_range[1], boom_mask.sum())
             
             # Calculate lineup scores
             captain_scores = sims[:, 0] * OptimizerConfig.CAPTAIN_MULTIPLIER
             flex_scores = np.sum(sims[:, 1:], axis=1)
             total_scores = captain_scores + flex_scores
             
+            # GPP-specific metrics
             return {
                 'Mean': round(np.mean(total_scores), 2),
                 'Std': round(np.std(total_scores), 2),
                 'Floor_10th': round(np.percentile(total_scores, 10), 2),
+                'Floor_25th': round(np.percentile(total_scores, 25), 2),
                 'Median': round(np.percentile(total_scores, 50), 2),
                 'Ceiling_75th': round(np.percentile(total_scores, 75), 2),
                 'Ceiling_90th': round(np.percentile(total_scores, 90), 2),
                 'Ceiling_95th': round(np.percentile(total_scores, 95), 2),
+                'Ceiling_98th': round(np.percentile(total_scores, 98), 2),
                 'Ceiling_99th': round(np.percentile(total_scores, 99), 2),
-                'Boom_Rate': round(np.mean(total_scores > np.percentile(total_scores, 95)) * 100, 1)
+                'Ceiling_99_9th': round(np.percentile(total_scores, 99.9), 2),
+                'Boom_Rate': round(np.mean(total_scores > np.percentile(total_scores, 95)) * 100, 1),
+                'Elite_Rate': round(np.mean(total_scores > np.percentile(total_scores, 99)) * 100, 2),
+                'Ship_Rate': round(np.mean(total_scores > np.percentile(total_scores, 99.9)) * 100, 3),
+                'Bust_Rate': round(np.mean(total_scores < np.percentile(total_scores, 25)) * 100, 1),
+                'Max_Score': round(np.max(total_scores), 2),
+                'Top_1pct_Avg': round(np.mean(np.sort(total_scores)[-int(n_sims*0.01):]), 2)
             }
             
         except Exception as e:
             st.warning(f"Simulation error: {e}")
-            # Fallback to simple calculation
+            # Fallback calculation
             total_proj = projections.get(captain, 0) * 1.5 + sum(projections.get(p, 0) for p in flex_players)
             return {
                 'Mean': round(total_proj, 2),
-                'Std': round(total_proj * 0.25, 2),
-                'Floor_10th': round(total_proj * 0.7, 2),
-                'Median': round(total_proj, 2),
-                'Ceiling_75th': round(total_proj * 1.15, 2),
-                'Ceiling_90th': round(total_proj * 1.3, 2),
-                'Ceiling_95th': round(total_proj * 1.4, 2),
-                'Ceiling_99th': round(total_proj * 1.6, 2),
-                'Boom_Rate': 5.0
+                'Std': round(total_proj * 0.35, 2),
+                'Floor_10th': round(total_proj * 0.60, 2),
+                'Floor_25th': round(total_proj * 0.75, 2),
+                'Median': round(total_proj * 0.95, 2),
+                'Ceiling_75th': round(total_proj * 1.25, 2),
+                'Ceiling_90th': round(total_proj * 1.45, 2),
+                'Ceiling_95th': round(total_proj * 1.60, 2),
+                'Ceiling_98th': round(total_proj * 1.75, 2),
+                'Ceiling_99th': round(total_proj * 1.85, 2),
+                'Ceiling_99_9th': round(total_proj * 2.10, 2),
+                'Boom_Rate': 5.0,
+                'Elite_Rate': 1.0,
+                'Ship_Rate': 0.1,
+                'Bust_Rate': 25.0,
+                'Max_Score': round(total_proj * 2.2, 2),
+                'Top_1pct_Avg': round(total_proj * 1.9, 2)
             }
     
     @staticmethod
-    def calculate_win_probability(lineup_score_distribution: np.ndarray, 
-                                 field_size: int = 100000) -> Dict[str, float]:
-        """Calculate tournament win probabilities"""
-        # Model field scores with gamma distribution (right-skewed)
-        field_mean = 90
-        field_shape = 4
+    def calculate_gpp_win_probability(lineup_scores: np.ndarray, 
+                                     field_size_num: int = 100000) -> Dict[str, float]:
+        """Calculate GPP tournament win probabilities"""
+        # Model GPP field scores with right-skewed distribution
+        field_mean = 85
+        field_shape = 3.5  # Lower shape = more right skew for GPP
         field_scale = field_mean / field_shape
         
         # Simulate field scores
-        field_scores = gamma.rvs(field_shape, scale=field_scale, size=field_size)
+        field_scores = gamma.rvs(field_shape, scale=field_scale, size=field_size_num)
+        
+        # Add some extreme scores (GPP has more variance)
+        num_elite = int(field_size_num * 0.001)  # Top 0.1% are elite
+        elite_scores = gamma.rvs(5, scale=30, size=num_elite) + 100
+        field_scores[:num_elite] = elite_scores
         
         win_prob = 0
         top_10_prob = 0
         top_100_prob = 0
-        cash_prob = 0  # Top 20%
+        top_1pct_prob = 0
+        min_cash = int(field_size_num * 0.2)  # Top 20% cash
+        cash_prob = 0
         
-        for score in lineup_score_distribution[:1000]:  # Sample for speed
+        sample_size = min(1000, len(lineup_scores))
+        for score in np.random.choice(lineup_scores, sample_size):
             placement = np.sum(score > field_scores)
-            percentile = placement / field_size
             
-            if placement == field_size:
+            if placement == field_size_num - 1:
                 win_prob += 1
-            if placement >= field_size - 10:
+            if placement >= field_size_num - 10:
                 top_10_prob += 1
-            if placement >= field_size - 100:
+            if placement >= field_size_num - 100:
                 top_100_prob += 1
-            if percentile >= 0.8:
+            if placement >= field_size_num * 0.99:
+                top_1pct_prob += 1
+            if placement >= field_size_num - min_cash:
                 cash_prob += 1
         
-        n_samples = min(1000, len(lineup_score_distribution))
-        
         return {
-            'Win_Prob': round(win_prob / n_samples * 100, 3),
-            'Top_10_Prob': round(top_10_prob / n_samples * 100, 2),
-            'Top_100_Prob': round(top_100_prob / n_samples * 100, 2),
-            'Cash_Prob': round(cash_prob / n_samples * 100, 1)
+            'Win_Prob': round(win_prob / sample_size * 100, 4),
+            'Top_10_Prob': round(top_10_prob / sample_size * 100, 3),
+            'Top_100_Prob': round(top_100_prob / sample_size * 100, 2),
+            'Top_1pct_Prob': round(top_1pct_prob / sample_size * 100, 2),
+            'Min_Cash_Prob': round(cash_prob / sample_size * 100, 1)
         }
 
-class GameTheoryStrategist:
-    """AI Strategist 1: Advanced game theory and ownership leverage"""
+# ============================================================================
+# GPP SCORING CALCULATOR
+# ============================================================================
+
+def calculate_gpp_scores(lineups_df: pd.DataFrame, field_size: str = 'large_field') -> pd.DataFrame:
+    """Calculate GPP-specific scores with heavy ceiling emphasis"""
+    
+    # GPP scoring weights based on field size
+    if field_size == 'small_field':
+        weights = {
+            'ceiling_95': 0.25,
+            'ceiling_99': 0.20,
+            'ceiling_99_9': 0.10,
+            'ownership': 0.20,
+            'leverage': 0.15,
+            'correlation': 0.10
+        }
+    elif field_size == 'medium_field':
+        weights = {
+            'ceiling_95': 0.20,
+            'ceiling_99': 0.25,
+            'ceiling_99_9': 0.15,
+            'ownership': 0.20,
+            'leverage': 0.15,
+            'correlation': 0.05
+        }
+    elif field_size == 'large_field':
+        weights = {
+            'ceiling_95': 0.15,
+            'ceiling_99': 0.30,
+            'ceiling_99_9': 0.20,
+            'ownership': 0.15,
+            'leverage': 0.15,
+            'correlation': 0.05
+        }
+    else:  # milly_maker
+        weights = {
+            'ceiling_95': 0.10,
+            'ceiling_99': 0.25,
+            'ceiling_99_9': 0.30,
+            'ownership': 0.15,
+            'leverage': 0.20,
+            'correlation': 0.00
+        }
+    
+    # Calculate GPP score
+    lineups_df['GPP_Score'] = 0
+    
+    # Ceiling components
+    if 'Ceiling_95th' in lineups_df.columns:
+        lineups_df['GPP_Score'] += weights.get('ceiling_95', 0.2) * lineups_df['Ceiling_95th'] * 0.5
+    
+    if 'Ceiling_99th' in lineups_df.columns:
+        lineups_df['GPP_Score'] += weights.get('ceiling_99', 0.25) * lineups_df['Ceiling_99th'] * 0.6
+    
+    if 'Ceiling_99_9th' in lineups_df.columns:
+        lineups_df['GPP_Score'] += weights.get('ceiling_99_9', 0.15) * lineups_df['Ceiling_99_9th'] * 0.7
+    
+    # Ownership component (lower is better for GPP)
+    optimal_ownership = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size][0] + 10
+    lineups_df['GPP_Score'] += weights.get('ownership', 0.15) * (
+        150 - np.abs(lineups_df['Total_Ownership'] - optimal_ownership)
+    ) * 0.5
+    
+    # Leverage score component
+    lineups_df['GPP_Score'] += weights.get('leverage', 0.15) * lineups_df['Leverage_Score'] * 8
+    
+    # Correlation bonus
+    lineups_df['GPP_Score'] += weights.get('correlation', 0.05) * lineups_df['Has_Stack'].astype(int) * 40
+    
+    # Additional GPP metrics
+    if 'Ship_Rate' in lineups_df.columns:
+        lineups_df['Ship_Equity'] = lineups_df['Ship_Rate'] * 1000
+    
+    if 'Elite_Rate' in lineups_df.columns:
+        lineups_df['Elite_Equity'] = lineups_df['Elite_Rate'] * 100
+    
+    # Tournament equity score (combines all factors)
+    lineups_df['Tournament_EV'] = (
+        lineups_df['GPP_Score'] * 0.6 +
+        lineups_df.get('Ship_Equity', 0) * 0.25 +
+        lineups_df.get('Elite_Equity', 0) * 0.15
+    )
+    
+    return lineups_df
+
+# NFL GPP DUAL-AI OPTIMIZER - PART 3: AI STRATEGISTS
+# Game Theory and Correlation AI with GPP Focus
+
+# ============================================================================
+# GPP GAME THEORY STRATEGIST
+# ============================================================================
+
+class GPPGameTheoryStrategist:
+    """AI Strategist 1: GPP Game Theory and ownership leverage"""
     
     def __init__(self, api_manager: ClaudeAPIManager = None):
         self.api_manager = api_manager
     
-    def generate_prompt(self, df: pd.DataFrame, game_info: Dict) -> str:
-        """Generate comprehensive game theory prompt"""
+    def generate_prompt(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field') -> str:
+        """Generate GPP-focused game theory prompt"""
         
         bucket_manager = OwnershipBucketManager()
         buckets = bucket_manager.categorize_players(df)
         
-        # Get key players by category
+        # Get ownership targets for field size
+        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
+        
+        # Get key players by GPP categories
         mega_chalk = df[df['Player'].isin(buckets.get('mega_chalk', []))].nlargest(5, 'Ownership')[
             ['Player', 'Position', 'Team', 'Ownership', 'Projected_Points', 'Salary']]
-        leverage_plays = df[df['Player'].isin(buckets.get('leverage', []) + buckets.get('super_leverage', []))].nlargest(
+        
+        super_leverage = df[df['Player'].isin(buckets.get('super_leverage', []))].nlargest(
             10, 'Projected_Points')[['Player', 'Position', 'Team', 'Ownership', 'Projected_Points', 'Salary']]
         
-        # Calculate value plays
-        df['Value'] = df['Projected_Points'] / (df['Salary'] / 1000)
-        top_values = df.nlargest(5, 'Value')[['Player', 'Position', 'Value', 'Ownership']]
+        leverage_plays = df[df['Player'].isin(buckets.get('leverage', []))].nlargest(
+            10, 'Projected_Points')[['Player', 'Position', 'Team', 'Ownership', 'Projected_Points', 'Salary']]
+        
+        # Calculate GPP value plays (high ceiling, low ownership)
+        df['GPP_Value'] = (df['Projected_Points'] / (df['Salary'] / 1000)) * (20 / (df['Ownership'] + 5))
+        top_gpp_values = df.nlargest(10, 'GPP_Value')[['Player', 'Position', 'GPP_Value', 'Ownership']]
+        
+        # Field size strategy
+        field_strategy = {
+            'small_field': "Focus on slightly contrarian plays with 80-120% cumulative ownership",
+            'medium_field': "Target 70-100% ownership with at least 2 leverage plays",
+            'large_field': "Maximize leverage with 60-90% ownership, fade mega chalk",
+            'milly_maker': "Ultra-contrarian with 50-80% ownership, zero chalk tolerance"
+        }
         
         return f"""
-        As an expert DFS Game Theory strategist, analyze this NFL Showdown slate:
+        As an expert GPP tournament strategist, analyze this NFL Showdown slate for {field_size.upper()} tournaments:
         
         GAME CONTEXT:
         Teams: {game_info.get('teams', 'Unknown')}
         Total: {game_info.get('total', 0)} | Spread: {game_info.get('spread', 0)}
+        Field Type: {field_size} ({field_strategy.get(field_size, 'Standard GPP')})
         
-        MEGA CHALK PLAYERS (40%+ ownership):
+        MEGA CHALK (35%+ ownership - AVOID IN GPP):
         {mega_chalk.to_string() if not mega_chalk.empty else 'None'}
         
-        LEVERAGE OPPORTUNITIES (<10% ownership with upside):
+        SUPER LEVERAGE (<5% ownership - GPP GOLD):
+        {super_leverage.to_string() if not super_leverage.empty else 'None'}
+        
+        LEVERAGE PLAYS (5-10% ownership - GPP TARGETS):
         {leverage_plays.to_string() if not leverage_plays.empty else 'None'}
         
-        TOP VALUE PLAYS:
-        {top_values.to_string()}
+        TOP GPP VALUE PLAYS (Ceiling + Low Ownership):
+        {top_gpp_values.to_string()}
         
         OWNERSHIP DISTRIBUTION:
-        - Mega Chalk (40%+): {len(buckets.get('mega_chalk', []))} players
-        - Chalk (25-40%): {len(buckets.get('chalk', []))} players
-        - Pivot (10-25%): {len(buckets.get('pivot', []))} players
-        - Leverage (<10%): {len(buckets.get('leverage', []) + buckets.get('super_leverage', []))} players
+        - Mega Chalk (35%+): {len(buckets.get('mega_chalk', []))} players
+        - Chalk (20-35%): {len(buckets.get('chalk', []))} players  
+        - Pivot (10-20%): {len(buckets.get('pivot', []))} players
+        - Leverage (5-10%): {len(buckets.get('leverage', []))} players
+        - Super Leverage (<5%): {len(buckets.get('super_leverage', []))} players
         
-        Provide strategic recommendations considering:
-        1. Which chalk plays are actually -EV due to ownership?
-        2. Which low-owned players have hidden ceiling?
-        3. Optimal cumulative ownership targets?
-        4. Game theory optimal captain selections?
-        5. Contrarian roster constructions that maintain projection?
+        GPP STRATEGY REQUIREMENTS:
+        - Target cumulative ownership: {min_own}-{max_own}%
+        - Prioritize ceiling over floor
+        - Identify tournament-winning leverage
+        
+        Provide GPP-specific recommendations:
+        1. Which chalk is actually bad chalk (low ceiling despite ownership)?
+        2. Which low-owned players have tournament-winning upside?
+        3. Optimal captain leverage plays (sub-15% ownership)?
+        4. How to differentiate lineups while maintaining projection?
+        5. Contrarian game theory for this specific field size?
         
         Return ONLY valid JSON:
         {{
-            "leverage_captains": ["player1", "player2", "player3"],
-            "must_fades": ["overowned1", "overowned2"],
-            "must_plays": ["leverage1", "leverage2"],
-            "hidden_gems": ["gem1", "gem2"],
-            "construction_rules": {{
-                "max_mega_chalk": 1,
-                "min_leverage": 2,
-                "target_ownership": {{"min": 70, "max": 110}}
+            "gpp_captain_targets": ["leverage_captain1", "leverage_captain2", "leverage_captain3"],
+            "super_leverage_plays": ["gem1", "gem2", "gem3"],
+            "must_fade_chalk": ["overowned1", "overowned2"],
+            "tournament_winners": ["upside1", "upside2"],
+            "gpp_construction_rules": {{
+                "max_chalk_players": 1,
+                "min_sub10_ownership": 2,
+                "target_total_ownership": {{"min": {min_own}, "max": {max_own}}},
+                "required_leverage_captain": true
             }},
-            "contrarian_stacks": [
-                {{"player1": "name1", "player2": "name2", "combined_own": 15}}
+            "leverage_stacks": [
+                {{"player1": "low_own1", "player2": "low_own2", "combined_ownership": 15}}
             ],
-            "game_theory_insights": [
-                "Key strategic insight 1",
-                "Key strategic insight 2"
+            "differentiation_strategy": "specific approach for uniqueness",
+            "field_size_adjustments": "specific tweaks for {field_size}",
+            "gpp_insights": [
+                "Key tournament insight 1",
+                "Key tournament insight 2"
             ],
+            "win_probability_boosters": ["factor1", "factor2"],
             "confidence_score": 0.85
         }}
         """
     
-    def parse_response(self, response: str, df: pd.DataFrame) -> AIRecommendation:
-        """Parse and validate game theory response"""
+    def parse_response(self, response: str, df: pd.DataFrame, field_size: str) -> AIRecommendation:
+        """Parse and validate GPP game theory response"""
         try:
             data = json.loads(response) if response else {}
         except:
             data = {}
         
-        # Extract construction rules
-        rules = data.get('construction_rules', {})
-        max_chalk = rules.get('max_mega_chalk', 2)
-        min_leverage = rules.get('min_leverage', 1)
+        # Extract GPP construction rules
+        rules = data.get('gpp_construction_rules', {})
+        max_chalk = rules.get('max_chalk_players', 1)
+        min_leverage = rules.get('min_sub10_ownership', 2)
         
-        # Determine strategy weights based on rules
-        if max_chalk <= 1 and min_leverage >= 2:
+        # Determine GPP strategy weights based on field size
+        if field_size == 'milly_maker':
             strategy_weights = {
-                StrategyType.LEVERAGE: 0.4,
-                StrategyType.CONTRARIAN: 0.3,
-                StrategyType.STARS_SCRUBS: 0.2,
-                StrategyType.BALANCED: 0.1,
+                StrategyType.SUPER_CONTRARIAN: 0.4,
+                StrategyType.LEVERAGE: 0.35,
+                StrategyType.CONTRARIAN: 0.2,
+                StrategyType.STARS_SCRUBS: 0.05,
                 StrategyType.CORRELATION: 0.0,
                 StrategyType.GAME_STACK: 0.0
             }
+        elif field_size == 'large_field':
+            strategy_weights = {
+                StrategyType.LEVERAGE: 0.35,
+                StrategyType.CONTRARIAN: 0.25,
+                StrategyType.SUPER_CONTRARIAN: 0.15,
+                StrategyType.GAME_STACK: 0.15,
+                StrategyType.STARS_SCRUBS: 0.1,
+                StrategyType.CORRELATION: 0.0
+            }
         else:
             strategy_weights = {
-                StrategyType.BALANCED: 0.3,
                 StrategyType.LEVERAGE: 0.25,
-                StrategyType.CONTRARIAN: 0.2,
-                StrategyType.CORRELATION: 0.15,
-                StrategyType.STARS_SCRUBS: 0.1,
-                StrategyType.GAME_STACK: 0.0
+                StrategyType.CONTRARIAN: 0.15,
+                StrategyType.GAME_STACK: 0.25,
+                StrategyType.CORRELATION: 0.2,
+                StrategyType.STARS_SCRUBS: 0.15,
+                StrategyType.SUPER_CONTRARIAN: 0.0
             }
         
+        # GPP-specific rules
+        gpp_rules = {
+            'max_chalk': max_chalk,
+            'min_leverage': min_leverage,
+            'force_leverage_captain': rules.get('required_leverage_captain', True),
+            'ownership_targets': rules.get('target_total_ownership', 
+                                         OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size])
+        }
+        
         return AIRecommendation(
-            strategist_name="Game Theory AI",
-            confidence=data.get('confidence_score', 0.75),
-            captain_targets=data.get('leverage_captains', []),
+            strategist_name="GPP Game Theory AI",
+            confidence=data.get('confidence_score', 0.80),
+            captain_targets=data.get('gpp_captain_targets', []),
             stacks=[{'player1': s.get('player1'), 'player2': s.get('player2')} 
-                   for s in data.get('contrarian_stacks', []) if isinstance(s, dict)],
-            fades=data.get('must_fades', []),
-            boosts=data.get('must_plays', []) + data.get('hidden_gems', []),
+                   for s in data.get('leverage_stacks', []) if isinstance(s, dict)],
+            fades=data.get('must_fade_chalk', []),
+            boosts=data.get('super_leverage_plays', []) + data.get('tournament_winners', []),
             strategy_weights=strategy_weights,
-            key_insights=data.get('game_theory_insights', ["Using default game theory strategy"])
+            key_insights=data.get('gpp_insights', ["Using default GPP strategy"]),
+            gpp_specific_rules=gpp_rules
         )
 
-class CorrelationStrategist:
-    """AI Strategist 2: Advanced correlation and stacking analysis"""
+# ============================================================================
+# GPP CORRELATION STRATEGIST
+# ============================================================================
+
+class GPPCorrelationStrategist:
+    """AI Strategist 2: GPP correlation and game stack specialist"""
     
     def __init__(self, api_manager: ClaudeAPIManager = None):
         self.api_manager = api_manager
     
-    def generate_prompt(self, df: pd.DataFrame, game_info: Dict) -> str:
-        """Generate comprehensive correlation analysis prompt"""
+    def generate_prompt(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field') -> str:
+        """Generate GPP correlation analysis prompt"""
         
-        teams = df['Team'].unique()[:2]  # Focus on main game
+        teams = df['Team'].unique()[:2]
         team_breakdown = {}
         
         for team in teams:
             team_df = df[df['Team'] == team]
             
-            # Get key players by position
-            qbs = team_df[team_df['Position'] == 'QB'][['Player', 'Salary', 'Projected_Points', 'Ownership']].to_dict('records')
+            # Get players with ownership context for GPP
+            qbs = team_df[team_df['Position'] == 'QB'][
+                ['Player', 'Salary', 'Projected_Points', 'Ownership']].to_dict('records')
             pass_catchers = team_df[team_df['Position'].isin(['WR', 'TE'])][
-                ['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']].to_dict('records')
-            rbs = team_df[team_df['Position'] == 'RB'][['Player', 'Salary', 'Projected_Points', 'Ownership']].to_dict('records')
+                ['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']
+            ].sort_values('Ownership').to_dict('records')  # Sort by ownership for GPP
+            rbs = team_df[team_df['Position'] == 'RB'][
+                ['Player', 'Salary', 'Projected_Points', 'Ownership']].to_dict('records')
             
             team_breakdown[team] = {
                 'QB': qbs,
-                'Pass_Catchers': pass_catchers[:5],  # Top 5
-                'RB': rbs[:3]  # Top 3
+                'Pass_Catchers': pass_catchers[:6],  # Include more for GPP variety
+                'RB': rbs[:3]
             }
         
+        # Determine correlation strategy based on total
+        if game_info.get('total', 48) > 54:
+            correlation_focus = "SHOOTOUT: Prioritize game stacks with 4+ players from game"
+        elif game_info.get('total', 48) > 50:
+            correlation_focus = "MODERATE: Mix of game stacks and single team stacks"
+        else:
+            correlation_focus = "LOW TOTAL: Focus on single team stacks, leverage RBs"
+        
         return f"""
-        As an expert DFS Correlation strategist, identify optimal stacking patterns:
+        As an expert GPP Correlation strategist, identify tournament-winning stacks for {field_size} GPPs:
         
         GAME CONTEXT:
         Teams: {game_info.get('teams', 'Unknown')}
         Total: {game_info.get('total', 0)} | Spread: {game_info.get('spread', 0)}
+        Correlation Strategy: {correlation_focus}
         
-        TEAM ROSTERS:
+        TEAM ROSTERS WITH OWNERSHIP:
         {json.dumps(team_breakdown, indent=2)}
         
-        Analyze for:
-        1. Primary stacks (QB + pass catcher combinations)
-        2. Game stacks (correlated players from both teams)
-        3. Leverage stacks (low combined ownership with correlation)
-        4. Negative correlations to avoid
-        5. Game script dependent correlations
-        6. Secondary stacks (RB+DEF, TE+TE, etc.)
+        GPP CORRELATION PRIORITIES:
+        1. Leverage stacks (combined ownership < 30%)
+        2. Game stacks for ceiling in projected shootouts
+        3. Contrarian bring-backs (opposing team correlation)
+        4. Low-owned QB stacks (QB < 20% ownership)
+        5. Secondary stacks that differentiate lineups
+        6. Negative correlations to avoid (RB-RB, etc.)
         
-        Consider:
-        - Target share and red zone role
-        - Game script scenarios (blowout vs shootout)
-        - Historical correlation data
-        - Injury/weather impacts on correlation
+        Field Size Considerations:
+        - Small field: Can use one higher-owned stack
+        - Large field: Need multiple low-owned correlations
+        - Milly Maker: Only super-leverage stacks
         
         Return ONLY valid JSON:
         {{
-            "primary_stacks": [
-                {{"qb": "name", "receiver": "name", "correlation": 0.6, "stack_ownership": 25, "reasoning": "why"}}
+            "primary_leverage_stacks": [
+                {{"qb": "name", "receiver": "name", "correlation": 0.6, "combined_ownership": 20, "gpp_score": 85}}
             ],
             "game_stacks": [
-                {{"team1_player": "name1", "team2_player": "name2", "scenario": "shootout", "correlation": 0.4}}
+                {{"players": ["p1", "p2", "p3", "p4"], "scenario": "shootout", "total_ownership": 60, "ceiling_boost": "high"}}
             ],
-            "leverage_stacks": [
-                {{"player1": "name1", "player2": "name2", "combined_own": 15, "upside": "high"}}
+            "super_leverage_stacks": [
+                {{"player1": "sub5own", "player2": "sub10own", "combined_ownership": 12, "tournament_equity": "elite"}}
             ],
-            "avoid_together": [
-                {{"player1": "name1", "player2": "name2", "reason": "negative correlation"}}
+            "contrarian_bringbacks": [
+                {{"primary": "team1_qb", "bringback": "team2_wr2", "leverage": "high"}}
             ],
-            "game_script_correlations": {{
-                "blowout_home": {{"boost": ["player1", "player2"], "fade": ["player3"]}},
-                "shootout": {{"boost": ["player4", "player5"], "fade": ["player6"]}},
-                "low_scoring": {{"boost": ["def1", "rb1"], "fade": ["wr1", "wr2"]}}
+            "avoid_correlations": [
+                {{"player1": "rb1", "player2": "rb2", "reason": "negative correlation"}}
+            ],
+            "gpp_game_script": {{
+                "most_likely": "scenario",
+                "leverage_scenario": "contrarian_scenario",
+                "boost_players": ["player1", "player2"],
+                "fade_players": ["chalk1", "chalk2"]
             }},
-            "secondary_stacks": [
-                {{"type": "RB+DEF", "player1": "rb1", "player2": "def1", "scenario": "leading script"}}
-            ],
+            "field_specific_stacks": {{
+                "small_field": ["balanced_stack"],
+                "large_field": ["leverage_stack"],
+                "milly_maker": ["super_leverage_stack"]
+            }},
             "correlation_insights": [
-                "Key correlation insight 1",
-                "Key correlation insight 2"
+                "GPP correlation insight 1",
+                "GPP correlation insight 2"
             ],
-            "recommended_game_script": "shootout",
+            "stack_differentiation": "how to make stacks unique",
             "confidence": 0.85
         }}
         """
     
-    def parse_response(self, response: str, df: pd.DataFrame) -> AIRecommendation:
-        """Parse and validate correlation response"""
+    def parse_response(self, response: str, df: pd.DataFrame, field_size: str) -> AIRecommendation:
+        """Parse and validate GPP correlation response"""
         try:
             data = json.loads(response) if response else {}
         except:
             data = {}
         
-        # Build comprehensive stacks list
+        # Build comprehensive GPP stacks list
         all_stacks = []
         
-        # Primary stacks
-        for stack in data.get('primary_stacks', []):
+        # Primary leverage stacks
+        for stack in data.get('primary_leverage_stacks', []):
             if isinstance(stack, dict):
                 all_stacks.append({
                     'player1': stack.get('qb'),
                     'player2': stack.get('receiver'),
-                    'type': 'primary',
-                    'correlation': stack.get('correlation', 0.5)
+                    'type': 'leverage_primary',
+                    'correlation': stack.get('correlation', 0.5),
+                    'gpp_score': stack.get('gpp_score', 50)
                 })
         
         # Game stacks
         for stack in data.get('game_stacks', []):
             if isinstance(stack, dict):
-                all_stacks.append({
-                    'player1': stack.get('team1_player'),
-                    'player2': stack.get('team2_player'),
-                    'type': 'game',
-                    'correlation': stack.get('correlation', 0.3)
-                })
+                players = stack.get('players', [])
+                if len(players) >= 2:
+                    all_stacks.append({
+                        'player1': players[0],
+                        'player2': players[1],
+                        'type': 'game_stack',
+                        'correlation': 0.35,
+                        'additional_players': players[2:] if len(players) > 2 else []
+                    })
         
-        # Leverage stacks
-        for stack in data.get('leverage_stacks', []):
+        # Super leverage stacks
+        for stack in data.get('super_leverage_stacks', []):
             if isinstance(stack, dict):
                 all_stacks.append({
                     'player1': stack.get('player1'),
                     'player2': stack.get('player2'),
-                    'type': 'leverage',
-                    'correlation': 0.3
+                    'type': 'super_leverage',
+                    'correlation': 0.3,
+                    'tournament_equity': stack.get('tournament_equity', 'high')
                 })
         
-        # Determine strategy weights based on game script
-        game_script = data.get('recommended_game_script', 'balanced')
+        # Determine strategy weights based on game script and field size
+        game_script = data.get('gpp_game_script', {}).get('most_likely', 'balanced')
         
-        if game_script == 'shootout':
+        if field_size == 'milly_maker':
             strategy_weights = {
-                StrategyType.GAME_STACK: 0.4,
-                StrategyType.CORRELATION: 0.35,
-                StrategyType.BALANCED: 0.15,
-                StrategyType.LEVERAGE: 0.1,
+                StrategyType.SUPER_CONTRARIAN: 0.35,
+                StrategyType.LEVERAGE: 0.35,
+                StrategyType.GAME_STACK: 0.2 if game_script == 'shootout' else 0.1,
+                StrategyType.STARS_SCRUBS: 0.1,
                 StrategyType.CONTRARIAN: 0.0,
-                StrategyType.STARS_SCRUBS: 0.0
+                StrategyType.CORRELATION: 0.0
             }
-        elif game_script in ['blowout', 'low_scoring']:
+        elif game_script == 'shootout':
             strategy_weights = {
-                StrategyType.CONTRARIAN: 0.3,
-                StrategyType.LEVERAGE: 0.3,
-                StrategyType.BALANCED: 0.2,
-                StrategyType.STARS_SCRUBS: 0.2,
-                StrategyType.CORRELATION: 0.0,
-                StrategyType.GAME_STACK: 0.0
+                StrategyType.GAME_STACK: 0.35,
+                StrategyType.CORRELATION: 0.25,
+                StrategyType.LEVERAGE: 0.2,
+                StrategyType.CONTRARIAN: 0.15,
+                StrategyType.STARS_SCRUBS: 0.05,
+                StrategyType.SUPER_CONTRARIAN: 0.0
             }
         else:
             strategy_weights = {
-                StrategyType.CORRELATION: 0.3,
-                StrategyType.BALANCED: 0.25,
-                StrategyType.GAME_STACK: 0.2,
-                StrategyType.LEVERAGE: 0.15,
+                StrategyType.LEVERAGE: 0.3,
+                StrategyType.CONTRARIAN: 0.25,
+                StrategyType.CORRELATION: 0.2,
+                StrategyType.GAME_STACK: 0.15,
                 StrategyType.STARS_SCRUBS: 0.1,
-                StrategyType.CONTRARIAN: 0.0
+                StrategyType.SUPER_CONTRARIAN: 0.0
             }
         
-        # Extract captain targets from QB positions in stacks
+        # Extract captain targets from low-owned QBs
         captain_targets = []
-        for stack in data.get('primary_stacks', []):
+        for stack in data.get('primary_leverage_stacks', []):
             if isinstance(stack, dict) and stack.get('qb'):
-                captain_targets.append(stack['qb'])
+                qb = stack['qb']
+                if qb in df['Player'].values:
+                    qb_own = df[df['Player'] == qb]['Ownership'].values[0]
+                    if qb_own < 20:  # Only low-owned QBs for GPP
+                        captain_targets.append(qb)
+        
+        # GPP-specific rules
+        gpp_rules = {
+            'leverage_scenario': data.get('gpp_game_script', {}).get('leverage_scenario'),
+            'field_stacks': data.get('field_specific_stacks', {}).get(field_size, []),
+            'avoid_together': data.get('avoid_correlations', [])
+        }
         
         return AIRecommendation(
-            strategist_name="Correlation AI",
-            confidence=data.get('confidence', 0.75),
+            strategist_name="GPP Correlation AI",
+            confidence=data.get('confidence', 0.80),
             captain_targets=captain_targets,
             stacks=all_stacks,
-            fades=[],
-            boosts=[],
+            fades=data.get('gpp_game_script', {}).get('fade_players', []),
+            boosts=data.get('gpp_game_script', {}).get('boost_players', []),
             strategy_weights=strategy_weights,
-            key_insights=data.get('correlation_insights', ["Using default correlation strategy"])
+            key_insights=data.get('correlation_insights', ["Using GPP correlation strategy"]),
+            gpp_specific_rules=gpp_rules
         )
 
-class DualAIOptimizer:
-    """Main optimizer with dual AI strategy integration"""
+# NFL GPP DUAL-AI OPTIMIZER - PART 4: MAIN OPTIMIZER & LINEUP GENERATION
+
+# ============================================================================
+# GPP DUAL AI OPTIMIZER
+# ============================================================================
+
+class GPPDualAIOptimizer:
+    """Main GPP optimizer with dual AI strategy integration"""
     
-    def __init__(self, df: pd.DataFrame, game_info: Dict, api_manager: ClaudeAPIManager = None):
+    def __init__(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field', 
+                 api_manager: ClaudeAPIManager = None):
         self.df = df
         self.game_info = game_info
+        self.field_size = field_size
         self.api_manager = api_manager
-        self.game_theory_ai = GameTheoryStrategist(api_manager)
-        self.correlation_ai = CorrelationStrategist(api_manager)
+        self.game_theory_ai = GPPGameTheoryStrategist(api_manager)
+        self.correlation_ai = GPPCorrelationStrategist(api_manager)
         self.bucket_manager = OwnershipBucketManager()
-        self.pivot_generator = CaptainPivotGenerator()
-        self.correlation_engine = CorrelationEngine()
-        self.tournament_sim = TournamentSimulator()
+        self.pivot_generator = GPPCaptainPivotGenerator()
+        self.correlation_engine = GPPCorrelationEngine()
+        self.tournament_sim = GPPTournamentSimulator()
     
     def get_ai_strategies(self, use_api: bool = True) -> Tuple[AIRecommendation, AIRecommendation]:
-        """Get strategies from both AIs"""
+        """Get strategies from both GPP AIs"""
         
         if use_api and self.api_manager and self.api_manager.client:
             # API mode - automatic
-            with st.spinner("🤖 Game Theory AI analyzing..."):
-                gt_prompt = self.game_theory_ai.generate_prompt(self.df, self.game_info)
+            with st.spinner("🎯 GPP Game Theory AI analyzing..."):
+                gt_prompt = self.game_theory_ai.generate_prompt(self.df, self.game_info, self.field_size)
                 gt_response = self.api_manager.get_ai_response(gt_prompt)
             
-            with st.spinner("🔗 Correlation AI analyzing..."):
-                corr_prompt = self.correlation_ai.generate_prompt(self.df, self.game_info)
+            with st.spinner("🔗 GPP Correlation AI analyzing..."):
+                corr_prompt = self.correlation_ai.generate_prompt(self.df, self.game_info, self.field_size)
                 corr_response = self.api_manager.get_ai_response(corr_prompt)
         else:
             # Manual mode
@@ -846,74 +1290,91 @@ class DualAIOptimizer:
             tab1, tab2 = st.tabs(["🎯 Game Theory AI", "🔗 Correlation AI"])
             
             with tab1:
-                with st.expander("View Game Theory Prompt"):
+                with st.expander("View GPP Game Theory Prompt"):
                     st.text_area("Copy this prompt:", 
-                               value=self.game_theory_ai.generate_prompt(self.df, self.game_info),
+                               value=self.game_theory_ai.generate_prompt(self.df, self.game_info, self.field_size),
                                height=300, key="gt_prompt_display")
                 gt_response = st.text_area("Paste Game Theory Response (JSON):", 
                                           height=200, key="gt_manual_input",
                                           value='{}')
             
             with tab2:
-                with st.expander("View Correlation Prompt"):
+                with st.expander("View GPP Correlation Prompt"):
                     st.text_area("Copy this prompt:", 
-                               value=self.correlation_ai.generate_prompt(self.df, self.game_info),
+                               value=self.correlation_ai.generate_prompt(self.df, self.game_info, self.field_size),
                                height=300, key="corr_prompt_display")
                 corr_response = st.text_area("Paste Correlation Response (JSON):", 
                                             height=200, key="corr_manual_input",
                                             value='{}')
         
-        rec1 = self.game_theory_ai.parse_response(gt_response, self.df)
-        rec2 = self.correlation_ai.parse_response(corr_response, self.df)
+        rec1 = self.game_theory_ai.parse_response(gt_response, self.df, self.field_size)
+        rec2 = self.correlation_ai.parse_response(corr_response, self.df, self.field_size)
         
         return rec1, rec2
     
-    def combine_recommendations(self, rec1: AIRecommendation, rec2: AIRecommendation) -> Dict:
-        """Combine recommendations with weighted consensus"""
+    def combine_gpp_recommendations(self, rec1: AIRecommendation, rec2: AIRecommendation) -> Dict:
+        """Combine recommendations with GPP-specific weighting"""
         
         total_confidence = rec1.confidence + rec2.confidence
         w1 = rec1.confidence / total_confidence if total_confidence > 0 else 0.5
         w2 = rec2.confidence / total_confidence if total_confidence > 0 else 0.5
         
-        # Combine captain targets with scoring
+        # Combine captain targets with GPP scoring
         all_captains = set(rec1.captain_targets + rec2.captain_targets)
         captain_scores = {}
+        ownership_dict = self.df.set_index('Player')['Ownership'].to_dict()
+        
         for captain in all_captains:
             score = 0
+            ownership = ownership_dict.get(captain, 5)
+            
+            # Base score from AI recommendations
             if captain in rec1.captain_targets:
                 score += w1
             if captain in rec2.captain_targets:
                 score += w2
+            
+            # GPP leverage bonus (lower ownership = higher score)
+            if ownership < 5:
+                score *= 2.0
+            elif ownership < 10:
+                score *= 1.5
+            elif ownership < 15:
+                score *= 1.2
+            elif ownership > 30:
+                score *= 0.5
+            elif ownership > 20:
+                score *= 0.7
+            
             captain_scores[captain] = score
         
-        # Combine strategy weights
-        combined_weights = {}
-        for strategy in StrategyType:
-            combined_weights[strategy] = (
-                rec1.strategy_weights.get(strategy, 0) * w1 +
-                rec2.strategy_weights.get(strategy, 0) * w2
-            )
+        # Get GPP strategy weights for field size
+        strategy_weights = OptimizerConfig.GPP_STRATEGY_WEIGHTS[self.field_size]
         
-        # Normalize weights
-        total_weight = sum(combined_weights.values())
-        if total_weight > 0:
-            combined_weights = {k: v/total_weight for k, v in combined_weights.items()}
+        # Merge GPP-specific rules
+        gpp_rules = {}
+        if hasattr(rec1, 'gpp_specific_rules'):
+            gpp_rules.update(rec1.gpp_specific_rules)
+        if hasattr(rec2, 'gpp_specific_rules'):
+            gpp_rules.update(rec2.gpp_specific_rules)
         
         return {
             'captain_scores': captain_scores,
-            'strategy_weights': combined_weights,
+            'strategy_weights': strategy_weights,
             'consensus_fades': list(set(rec1.fades) & set(rec2.fades)) if rec1.fades and rec2.fades else [],
             'all_boosts': list(set(rec1.boosts) | set(rec2.boosts)) if rec1.boosts or rec2.boosts else [],
             'combined_stacks': rec1.stacks + rec2.stacks,
             'confidence': (rec1.confidence + rec2.confidence) / 2,
-            'insights': rec1.key_insights + rec2.key_insights
+            'insights': rec1.key_insights + rec2.key_insights,
+            'gpp_rules': gpp_rules,
+            'field_size': self.field_size
         }
     
-    def generate_optimized_lineups(self, num_lineups: int, rec1: AIRecommendation, 
-                                  rec2: AIRecommendation, enforce_buckets: bool = False) -> pd.DataFrame:
-        """Generate lineups with advanced optimization"""
+    def generate_gpp_lineups(self, num_lineups: int, rec1: AIRecommendation, 
+                            rec2: AIRecommendation, force_unique_captains: bool = True) -> pd.DataFrame:
+        """Generate GPP-optimized lineups"""
         
-        combined = self.combine_recommendations(rec1, rec2)
+        combined = self.combine_gpp_recommendations(rec1, rec2)
         
         # Get data
         players = self.df['Player'].tolist()
@@ -923,15 +1384,15 @@ class DualAIOptimizer:
         points = self.df.set_index('Player')['Projected_Points'].to_dict()
         ownership = self.df.set_index('Player')['Ownership'].to_dict()
         
-        # Apply AI adjustments
+        # Apply GPP AI adjustments more aggressively
         adjusted_points = points.copy()
         for player in combined['consensus_fades']:
-            if player in adjusted_points:
-                adjusted_points[player] *= 0.85
+            if player in adjusted_points and ownership.get(player, 5) > 30:
+                adjusted_points[player] *= 0.70  # Heavy fade for GPP chalk
         
         for player in combined['all_boosts']:
-            if player in adjusted_points:
-                adjusted_points[player] *= 1.12
+            if player in adjusted_points and ownership.get(player, 5) < 10:
+                adjusted_points[player] *= 1.25  # Strong boost for leverage
         
         # Get ownership buckets
         player_buckets = {}
@@ -940,53 +1401,78 @@ class DualAIOptimizer:
                 ownership.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
             )
         
-        # Distribute lineups across strategies
-        lineups_per_strategy = {}
-        for strategy, weight in combined['strategy_weights'].items():
-            lineups_per_strategy[strategy] = max(1, int(num_lineups * weight))
+        # Get ownership targets for field size
+        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[self.field_size]
         
-        # Adjust to match target
+        # Distribute lineups across GPP strategies
+        strategy_weights = combined['strategy_weights']
+        lineups_per_strategy = {}
+        for strategy in StrategyType:
+            if strategy.value in [s.value for s in strategy_weights.keys()]:
+                weight = strategy_weights.get(strategy, 0)
+                lineups_per_strategy[strategy] = max(0, int(num_lineups * weight))
+        
+        # Ensure we hit target number
         total_assigned = sum(lineups_per_strategy.values())
         if total_assigned < num_lineups:
-            lineups_per_strategy[StrategyType.BALANCED] = lineups_per_strategy.get(StrategyType.BALANCED, 0) + (num_lineups - total_assigned)
+            lineups_per_strategy[StrategyType.LEVERAGE] = lineups_per_strategy.get(
+                StrategyType.LEVERAGE, 0) + (num_lineups - total_assigned)
         
         all_lineups = []
+        used_captains = set()
         lineup_num = 0
         
         for strategy, count in lineups_per_strategy.items():
             for i in range(count):
                 lineup_num += 1
                 
-                model = pulp.LpProblem(f"Lineup_{lineup_num}_{strategy.value}", pulp.LpMaximize)
+                model = pulp.LpProblem(f"GPP_Lineup_{lineup_num}_{strategy.value}", pulp.LpMaximize)
                 flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
                 captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
                 
-                # Strategy-specific objective
+                # GPP-SPECIFIC OBJECTIVE FUNCTIONS
                 if strategy == StrategyType.LEVERAGE:
-                    # Emphasize low ownership captains
+                    # Maximum leverage for GPP
                     model += pulp.lpSum([
-                        adjusted_points[p] * flex[p] * (1 + max(0, 20 - ownership.get(p, 10))/50) +
-                        1.5 * adjusted_points[p] * captain[p] * (1 + max(0, 15 - ownership.get(p, 10))/30)
+                        adjusted_points[p] * flex[p] * (1 + max(0, 20 - ownership.get(p, 10))/20) +
+                        1.5 * adjusted_points[p] * captain[p] * (1 + max(0, 15 - ownership.get(p, 10))/15)
                         for p in players
                     ])
                 
                 elif strategy == StrategyType.CONTRARIAN:
-                    # Fade chalk heavily
+                    # Contrarian GPP approach
                     model += pulp.lpSum([
-                        adjusted_points[p] * flex[p] * (1 - ownership.get(p, 5)/150) +
-                        1.5 * adjusted_points[p] * captain[p] * (1 - ownership.get(p, 5)/100)
+                        adjusted_points[p] * flex[p] * (1 - ownership.get(p, 5)/80) +
+                        1.5 * adjusted_points[p] * captain[p] * (1 - ownership.get(p, 5)/60)
+                        for p in players
+                    ])
+                
+                elif strategy == StrategyType.SUPER_CONTRARIAN:
+                    # Ultra-contrarian for large GPP
+                    model += pulp.lpSum([
+                        adjusted_points[p] * flex[p] * (1 - ownership.get(p, 5)/50) +
+                        1.5 * adjusted_points[p] * captain[p] * (1 - ownership.get(p, 5)/40)
+                        for p in players
+                    ])
+                
+                elif strategy == StrategyType.GAME_STACK:
+                    # Game stack with correlation bonus
+                    model += pulp.lpSum([
+                        adjusted_points[p] * flex[p] * (1 + (self.game_info.get('total', 48) > 52) * 0.1) +
+                        1.5 * adjusted_points[p] * captain[p]
                         for p in players
                     ])
                 
                 elif strategy == StrategyType.STARS_SCRUBS:
-                    # Standard objective but will add salary constraints
+                    # High variance construction
                     model += pulp.lpSum([
-                        adjusted_points[p] * flex[p] + 1.5 * adjusted_points[p] * captain[p]
+                        adjusted_points[p] * flex[p] * (1 + (salaries[p] < 3500 or salaries[p] > 9000) * 0.25) +
+                        1.5 * adjusted_points[p] * captain[p]
                         for p in players
                     ])
                 
-                else:
-                    # Standard objective
+                else:  # CORRELATION
+                    # Standard GPP objective
                     model += pulp.lpSum([
                         adjusted_points[p] * flex[p] + 1.5 * adjusted_points[p] * captain[p]
                         for p in players
@@ -999,6 +1485,7 @@ class DualAIOptimizer:
                 for p in players:
                     model += flex[p] + captain[p] <= 1
                 
+                # Salary constraint
                 model += pulp.lpSum([
                     salaries[p] * flex[p] + 1.5 * salaries[p] * captain[p]
                     for p in players
@@ -1010,38 +1497,79 @@ class DualAIOptimizer:
                     if team_players:
                         model += pulp.lpSum([flex[p] + captain[p] for p in team_players]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM
                 
-                # Strategy-specific constraints
-                if strategy == StrategyType.STARS_SCRUBS:
-                    # Force at least 2 min-priced players
-                    min_salary_players = [p for p in players if salaries[p] <= 3500]
-                    if len(min_salary_players) >= 2:
-                        model += pulp.lpSum([flex[p] for p in min_salary_players]) >= 2
+                # GPP-SPECIFIC CONSTRAINTS
                 
-                elif strategy == StrategyType.GAME_STACK and combined['combined_stacks']:
-                    # Try to include a recommended stack
+                # Force ownership within target range
+                ownership_expr = pulp.lpSum([
+                    ownership.get(p, 5) * (flex[p] + 0.5 * captain[p])
+                    for p in players
+                ])
+                
+                # Chalk limits based on field size
+                if self.field_size == 'milly_maker':
+                    # Ultra strict for Milly
+                    high_ownership_players = [p for p in players if ownership.get(p, 5) > 25]
+                    if high_ownership_players:
+                        model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) <= 0
+                    
+                    # Force super leverage
+                    super_low_owned = [p for p in players if ownership.get(p, 5) < 5]
+                    if super_low_owned and len(super_low_owned) >= 2:
+                        model += pulp.lpSum([flex[p] + captain[p] for p in super_low_owned]) >= 2
+                
+                elif self.field_size == 'large_field':
+                    # Strict for large field
+                    high_ownership_players = [p for p in players if ownership.get(p, 5) > 30]
+                    if high_ownership_players:
+                        model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) <= 1
+                    
+                    low_owned = [p for p in players if ownership.get(p, 5) < 10]
+                    if low_owned and len(low_owned) >= 2:
+                        model += pulp.lpSum([flex[p] + captain[p] for p in low_owned]) >= 2
+                
+                else:
+                    # More flexible for smaller fields
+                    high_ownership_players = [p for p in players if ownership.get(p, 5) > 35]
+                    if high_ownership_players:
+                        model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) <= 2
+                
+                # Force unique captains if enabled
+                if force_unique_captains and used_captains:
+                    for prev_captain in used_captains:
+                        if prev_captain in players:
+                            model += captain[prev_captain] == 0
+                
+                # Force leverage captain for certain strategies
+                if strategy in [StrategyType.LEVERAGE, StrategyType.SUPER_CONTRARIAN]:
+                    leverage_captains = [p for p in players if ownership.get(p, 5) < 15]
+                    if leverage_captains:
+                        model += pulp.lpSum([captain[p] for p in leverage_captains]) == 1
+                
+                # Game stack constraints
+                if strategy == StrategyType.GAME_STACK and combined['combined_stacks']:
+                    # Try to force a recommended stack
                     for stack in combined['combined_stacks'][:2]:
                         if isinstance(stack, dict):
                             p1, p2 = stack.get('player1'), stack.get('player2')
                             if p1 in players and p2 in players:
-                                # Soft constraint for stacking
-                                stack_bonus = pulp.LpVariable(f"stack_{p1}_{p2}", cat='Binary')
-                                model += stack_bonus <= flex[p1] + captain[p1]
-                                model += stack_bonus <= flex[p2] + captain[p2]
+                                # Both players must be in lineup
+                                model += flex[p1] + captain[p1] >= 1
+                                model += flex[p2] + captain[p2] >= 1
                                 break
                 
-                # Optional bucket constraints
-                if enforce_buckets and strategy in [StrategyType.LEVERAGE, StrategyType.CONTRARIAN]:
-                    strategy_name = 'leverage' if strategy == StrategyType.LEVERAGE else 'contrarian'
-                    bucket_rules = OptimizerConfig.BUCKET_RULES.get(strategy_name, {})
+                # Stars and scrubs specific
+                if strategy == StrategyType.STARS_SCRUBS:
+                    min_salary_players = [p for p in players if salaries[p] <= 3000]
+                    max_salary_players = [p for p in players if salaries[p] >= 9000]
                     
-                    for bucket_name, (min_count, max_count) in bucket_rules.items():
-                        bucket_players = [p for p in players if player_buckets[p] == bucket_name]
-                        if bucket_players and min_count > 0:
-                            model += pulp.lpSum([flex[p] + captain[p] for p in bucket_players]) >= min_count
+                    if min_salary_players and len(min_salary_players) >= 2:
+                        model += pulp.lpSum([flex[p] for p in min_salary_players]) >= 2
+                    if max_salary_players and len(max_salary_players) >= 2:
+                        model += pulp.lpSum([flex[p] + captain[p] for p in max_salary_players]) >= 2
                 
-                # Diversity constraint
+                # Diversity constraint - ensure lineup uniqueness
                 if lineup_num > 1 and all_lineups:
-                    for prev_lineup in all_lineups[-min(3, len(all_lineups)):]:
+                    for prev_lineup in all_lineups[-min(5, len(all_lineups)):]:  # Check last 5
                         prev_players = [prev_lineup['Captain']] + prev_lineup['FLEX']
                         model += pulp.lpSum([flex[p] + captain[p] for p in prev_players]) <= 5
                 
@@ -1055,6 +1583,7 @@ class DualAIOptimizer:
                     for p in players:
                         if captain[p].value() == 1:
                             captain_pick = p
+                            used_captains.add(p)
                         if flex[p].value() == 1:
                             flex_picks.append(p)
                     
@@ -1075,27 +1604,47 @@ class DualAIOptimizer:
                                     has_stack = True
                                     stack_details.append(f"{p1}-{p2}")
                         
+                        # Determine ownership tier
+                        if total_ownership < 60:
+                            ownership_tier = '💎 Elite'
+                        elif total_ownership < 80:
+                            ownership_tier = '🟢 Optimal'
+                        elif total_ownership < 100:
+                            ownership_tier = '🟡 Balanced'
+                        else:
+                            ownership_tier = '⚠️ Chalky'
+                        
                         all_lineups.append({
                             'Lineup': lineup_num,
                             'Strategy': strategy.value,
                             'Captain': captain_pick,
+                            'Captain_Own%': ownership.get(captain_pick, 5),
                             'FLEX': flex_picks,
                             'Projected': round(total_proj, 2),
                             'Salary': int(total_salary),
                             'Salary_Remaining': int(OptimizerConfig.SALARY_CAP - total_salary),
                             'Total_Ownership': round(total_ownership, 1),
-                            'Bucket_Summary': self.bucket_manager.get_bucket_summary(lineup_players, self.df),
-                            'Leverage_Score': self.bucket_manager.calculate_lineup_leverage(lineup_players, self.df),
+                            'Ownership_Tier': ownership_tier,
+                            'GPP_Summary': self.bucket_manager.get_gpp_summary(lineup_players, self.df, self.field_size),
+                            'Leverage_Score': self.bucket_manager.calculate_gpp_leverage(lineup_players, self.df),
                             'Has_Stack': has_stack,
                             'Stack_Details': ', '.join(stack_details) if stack_details else 'None',
+                            'Field_Size': self.field_size,
+                            'Unique_Captain': captain_pick not in [l['Captain'] for l in all_lineups[:lineup_num-1]],
                             'AI1_Captain': captain_pick in rec1.captain_targets,
                             'AI2_Captain': captain_pick in rec2.captain_targets
                         })
         
         return pd.DataFrame(all_lineups)
 
+# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
 def load_and_validate_data(uploaded_file) -> pd.DataFrame:
-    """Load and validate CSV with comprehensive checks"""
+    """Load and validate CSV with GPP-specific checks"""
     df = pd.read_csv(uploaded_file)
     
     # Check required columns
@@ -1131,13 +1680,13 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
     df = df[df['Projected_Points'] > 0]
     df = df.dropna(subset=['Salary', 'Projected_Points'])
     
-    # Add value column
+    # Add GPP value column (projection * leverage potential)
     df['Value'] = df['Projected_Points'] / (df['Salary'] / 1000)
     
     # Data summary
-    st.success(f"✅ Loaded {len(df)} valid players")
+    st.success(f"✅ Loaded {len(df)} valid players for GPP optimization")
     
-    with st.expander("📊 Data Quality Report"):
+    with st.expander("📊 GPP Player Pool Analysis"):
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -1158,15 +1707,182 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
     
     return df
 
-# MAIN STREAMLIT UI
-with st.sidebar:
-    st.header("🤖 AI Strategy Configuration")
+def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, field_size: str):
+    """Display GPP-specific lineup analysis and visualizations"""
     
-    st.markdown("### Connection Mode")
+    # Create GPP analysis visualizations
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    
+    # 1. Strategy Distribution for GPP
+    ax1 = axes[0, 0]
+    strategy_counts = lineups_df['Strategy'].value_counts()
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFA07A', '#98D8C8']
+    ax1.pie(strategy_counts.values, labels=strategy_counts.index, autopct='%1.0f%%',
+           colors=colors[:len(strategy_counts)], startangle=90)
+    ax1.set_title('GPP Strategy Distribution')
+    
+    # 2. Ownership vs Ceiling (GPP Focus)
+    ax2 = axes[0, 1]
+    ceiling_col = 'Ceiling_99th' if 'Ceiling_99th' in lineups_df else 'Projected'
+    scatter = ax2.scatter(lineups_df['Total_Ownership'], lineups_df[ceiling_col],
+                        c=lineups_df.get('GPP_Score', lineups_df['Projected']), 
+                        cmap='RdYlGn', s=100, alpha=0.7, edgecolors='black', linewidth=0.5)
+    
+    # Add optimal ownership zone
+    min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
+    ax2.axvspan(min_own, max_own, alpha=0.2, color='green', label=f'Optimal ({min_own}-{max_own}%)')
+    
+    ax2.set_xlabel('Total Ownership %')
+    ax2.set_ylabel('99th Percentile Points')
+    ax2.set_title(f'GPP Ownership vs Ceiling ({field_size})')
+    ax2.legend()
+    plt.colorbar(scatter, ax=ax2, label='GPP Score')
+    
+    # Annotate top 3 GPP lineups
+    for i, (idx, row) in enumerate(lineups_df.nlargest(3, 'GPP_Score').iterrows(), 1):
+        ax2.annotate(f'#{i}', (row['Total_Ownership'], row.get(ceiling_col, row['Projected'])),
+                   fontsize=12, fontweight='bold', color='red',
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.5))
+    
+    # 3. Captain Ownership Distribution
+    ax3 = axes[0, 2]
+    captain_owns = lineups_df['Captain_Own%'].values
+    ax3.hist(captain_owns, bins=20, alpha=0.7, color='#4ECDC4', edgecolor='black')
+    ax3.axvline(15, color='red', linestyle='--', label='15% Threshold')
+    ax3.set_xlabel('Captain Ownership %')
+    ax3.set_ylabel('Number of Lineups')
+    ax3.set_title('GPP Captain Ownership Distribution')
+    ax3.legend()
+    
+    # 4. Leverage Score Distribution
+    ax4 = axes[1, 0]
+    ax4.hist(lineups_df['Leverage_Score'], bins=15, alpha=0.7, color='#45B7D1', edgecolor='black')
+    ax4.axvline(lineups_df['Leverage_Score'].mean(), color='red', linestyle='--', 
+               label=f"Mean: {lineups_df['Leverage_Score'].mean():.1f}")
+    ax4.set_xlabel('GPP Leverage Score')
+    ax4.set_ylabel('Number of Lineups')
+    ax4.set_title('Leverage Distribution')
+    ax4.legend()
+    
+    # 5. Ship Equity vs Tournament EV
+    ax5 = axes[1, 1]
+    if 'Ship_Equity' in lineups_df and 'Tournament_EV' in lineups_df:
+        ax5.scatter(lineups_df['Ship_Equity'], lineups_df['Tournament_EV'],
+                   c=lineups_df['Total_Ownership'], cmap='RdYlGn_r',
+                   s=80, alpha=0.7)
+        ax5.set_xlabel('Ship Equity (Win Probability)')
+        ax5.set_ylabel('Tournament EV')
+        ax5.set_title('GPP Tournament Equity Analysis')
+    else:
+        # Fallback plot
+        ax5.scatter(lineups_df['Total_Ownership'], lineups_df.get('GPP_Score', lineups_df['Projected']),
+                   alpha=0.6)
+        ax5.set_xlabel('Total Ownership %')
+        ax5.set_ylabel('GPP Score')
+        ax5.set_title('GPP Score Distribution')
+    
+    # 6. Top Captains for GPP
+    ax6 = axes[1, 2]
+    captain_counts = lineups_df.groupby('Captain').agg({
+        'Lineup': 'count',
+        'Captain_Own%': 'first'
+    }).sort_values('Lineup', ascending=False).head(10)
+    
+    colors = ['#FF6B6B' if own > 20 else '#4ECDC4' if own > 10 else '#45B7D1' 
+             for own in captain_counts['Captain_Own%']]
+    
+    y_pos = np.arange(len(captain_counts))
+    bars = ax6.barh(y_pos, captain_counts['Lineup'], color=colors)
+    ax6.set_yticks(y_pos)
+    ax6.set_yticklabels([f"{name} ({own:.0f}%)" 
+                         for name, own in zip(captain_counts.index, captain_counts['Captain_Own%'])],
+                        fontsize=8)
+    ax6.set_xlabel('Times Used as Captain')
+    ax6.set_title('Top 10 GPP Captains')
+    
+    plt.tight_layout()
+    st.pyplot(fig)
+    
+    # Ownership Tier Distribution
+    st.markdown("### 🎯 GPP Ownership Tier Analysis")
+    
+    tier_data = []
+    for idx, row in lineups_df.head(20).iterrows():
+        bucket_counts = {'mega_chalk': 0, 'chalk': 0, 'pivot': 0, 'leverage': 0, 'super_leverage': 0}
+        lineup_players = [row['Captain']] + row['FLEX']
+        
+        for player in lineup_players:
+            player_own = df[df['Player'] == player]['Ownership'].values
+            if len(player_own) > 0:
+                bucket = OwnershipBucketManager.get_bucket(player_own[0])
+                bucket_counts[bucket] += 1
+        
+        tier_data.append(list(bucket_counts.values()))
+    
+    if tier_data:
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Use GPP-optimized colormap (green for leverage, red for chalk)
+        cmap = plt.cm.RdYlGn_r
+        im = ax.imshow(tier_data, cmap=cmap, aspect='auto', vmin=0, vmax=6)
+        
+        ax.set_xticks(range(5))
+        ax.set_xticklabels(['Mega\nChalk\n(35%+)', 'Chalk\n(20-35%)', 'Pivot\n(10-20%)', 
+                           'Leverage\n(5-10%)', 'Super\nLeverage\n(<5%)'])
+        ax.set_yticks(range(len(tier_data)))
+        ax.set_yticklabels([f'#{i+1}' for i in range(len(tier_data))])
+        ax.set_title(f'GPP Ownership Distribution - {field_size.upper()} Field')
+        ax.set_xlabel('Ownership Tier')
+        ax.set_ylabel('Lineup Rank')
+        
+        # Add text annotations with color coding
+        for i in range(len(tier_data)):
+            for j in range(5):
+                value = tier_data[i][j]
+                color = "white" if value > 3 else "black"
+                if j < 2 and value > 2:  # Too much chalk for GPP
+                    color = "red"
+                elif j >= 3 and value >= 2:  # Good leverage
+                    color = "green"
+                text = ax.text(j, i, value, ha="center", va="center",
+                             color=color, fontweight='bold' if j >= 3 else 'normal')
+        
+        plt.colorbar(im, ax=ax, label='Player Count')
+        st.pyplot(fig)
+
+# ============================================================================
+# MAIN STREAMLIT UI
+# ============================================================================
+
+with st.sidebar:
+    st.header("🏆 GPP Tournament Settings")
+    
+    st.markdown("### 🎯 Contest Type")
+    contest_type = st.selectbox(
+        "Select GPP Type",
+        list(OptimizerConfig.FIELD_SIZES.keys()),
+        index=2,  # Default to 150-Max
+        help="Different GPP types require different strategies"
+    )
+    field_size = OptimizerConfig.FIELD_SIZES[contest_type]
+    
+    # Display field size strategy
+    if field_size == 'milly_maker':
+        st.info("💎 **Milly Maker Strategy:**\nUltra-contrarian, <80% total ownership, zero chalk")
+    elif field_size == 'large_field':
+        st.info("🎯 **Large Field Strategy:**\n60-90% ownership, maximize leverage")
+    elif field_size == 'medium_field':
+        st.info("🔄 **Medium Field Strategy:**\n70-100% ownership, balanced approach")
+    else:
+        st.info("⚖️ **Small Field Strategy:**\n80-120% ownership, slight contrarian")
+    
+    st.markdown("---")
+    
+    st.markdown("### 🤖 AI Configuration")
     api_mode = st.radio(
-        "Select Mode",
+        "Connection Mode",
         ["Manual (Free)", "API (Automated)"],
-        help="API mode requires Claude API key"
+        help="API mode for automatic AI analysis"
     )
     
     api_manager = None
@@ -1192,31 +1908,70 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Advanced Settings
-    with st.expander("⚙️ Advanced Settings"):
+    # GPP-Specific Settings
+    with st.expander("⚙️ GPP Advanced Settings"):
         st.markdown("### Optimization Parameters")
-        enforce_buckets = st.checkbox("Enforce Ownership Buckets", value=False,
-                                     help="Strict ownership distribution rules")
         
-        use_correlation = st.checkbox("Use Correlation Model", value=True,
-                                     help="Enable player correlation simulations")
+        force_unique_captains = st.checkbox(
+            "Force Unique Captains", 
+            value=True,
+            help="Each lineup gets different captain (recommended for GPP)"
+        )
+        
+        min_leverage_players = st.slider(
+            "Min Sub-10% Players", 0, 4, 2,
+            help="Minimum low-owned players per lineup"
+        )
         
         st.markdown("### Simulation Settings")
-        num_sims = st.slider("Monte Carlo Simulations", 1000, 10000, 5000, 1000,
-                           help="More simulations = more accurate but slower")
+        num_sims = st.slider(
+            "Monte Carlo Simulations", 
+            1000, 10000, 5000, 1000,
+            help="More sims = better accuracy"
+        )
+        
+        st.markdown("### Captain Settings")
+        max_captain_ownership = st.slider(
+            "Max Captain Ownership %", 
+            5, 30, 15, 5,
+            help="Maximum ownership for captains"
+        )
         
         st.markdown("### Export Options")
-        include_pivots = st.checkbox("Generate Captain Pivots", value=True)
-        export_detailed = st.checkbox("Detailed Export", value=False,
-                                     help="Include all metrics in CSV")
+        include_pivots = st.checkbox(
+            "Generate Captain Pivots", 
+            value=True,
+            help="Create leverage captain swaps"
+        )
+        
+        export_top_n = st.number_input(
+            "Export Top N Lineups", 
+            5, 150, 20, 5,
+            help="Number of lineups to export"
+        )
 
 # Main Content Area
-st.markdown("## 📁 Data Upload & Configuration")
+st.markdown("## 🎮 GPP Tournament Optimizer")
+
+# Display current settings
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Contest Type", contest_type)
+with col2:
+    ownership_range = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
+    st.metric("Target Own%", f"{ownership_range[0]}-{ownership_range[1]}%")
+with col3:
+    st.metric("Field Size", field_size.replace('_', ' ').title())
+with col4:
+    st.metric("Mode", "🏆 GPP Only")
+
+st.markdown("---")
+st.markdown("## 📁 Data Upload & Game Configuration")
 
 uploaded_file = st.file_uploader(
     "Upload DraftKings CSV",
     type="csv",
-    help="Export player pool from DraftKings"
+    help="Export player pool from DraftKings Showdown contest"
 )
 
 if uploaded_file is not None:
@@ -1230,62 +1985,38 @@ if uploaded_file is not None:
     with col1:
         teams = st.text_input("Teams", "BUF vs MIA", help="Team matchup")
     with col2:
-        total = st.number_input("O/U Total", 30.0, 70.0, 48.5, 0.5)
+        total = st.number_input("O/U Total", 30.0, 70.0, 48.5, 0.5,
+                               help="Higher totals = more correlation plays")
     with col3:
-        spread = st.number_input("Spread", -20.0, 20.0, -3.0, 0.5)
+        spread = st.number_input("Spread", -20.0, 20.0, -3.0, 0.5,
+                                help="Large spreads = leverage on dogs")
     with col4:
-        game_time = st.selectbox("Game Time", ["1:00 PM", "4:25 PM", "8:20 PM", "MNF"])
+        weather = st.selectbox("Weather", ["Clear", "Wind", "Rain", "Snow"],
+                             help="Weather impacts volatility")
     
     game_info = {
         'teams': teams,
         'total': total,
         'spread': spread,
-        'game_time': game_time
+        'weather': weather,
+        'field_size': field_size
     }
     
-    # Player Adjustments
-    st.markdown("### 📝 Player Adjustments")
+    # GPP-Specific Player Adjustments
+    st.markdown("### 🎯 GPP Player Configuration")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### 🏥 Injury Report")
-        injury_text = st.text_area(
-            "Format: Player: Status",
-            height=120,
-            placeholder="Josh Allen: QUESTIONABLE\nTyreek Hill: OUT",
-            help="OUT = 0%, DOUBTFUL = 30%, QUESTIONABLE = 75%"
-        )
-        
-        injuries = {}
-        injury_multipliers = {
-            'OUT': 0.0,
-            'DOUBTFUL': 0.3,
-            'QUESTIONABLE': 0.75,
-            'PROBABLE': 0.95
-        }
-        
-        for line in injury_text.split('\n'):
-            if ':' in line:
-                parts = line.split(':')
-                if len(parts) == 2:
-                    player = parts[0].strip()
-                    status = parts[1].strip().upper()
-                    if player in df['Player'].values and status in injury_multipliers:
-                        injuries[player] = status
-                        mult = injury_multipliers[status]
-                        df.loc[df['Player'] == player, 'Projected_Points'] *= mult
-                        df.loc[df['Player'] == player, 'Injury_Status'] = status
-    
-    with col2:
-        st.markdown("#### 📊 Ownership Projections")
+        st.markdown("#### 📊 Ownership Projections (CRITICAL FOR GPP)")
         ownership_text = st.text_area(
             "Format: Player: %",
-            height=120,
-            placeholder="Josh Allen: 45\nStefon Diggs: 35\nTyreek Hill: 40",
-            help="Enter projected ownership percentages"
+            height=150,
+            placeholder="Josh Allen: 45\nStefon Diggs: 35\nTyreek Hill: 40\nJaylen Waddle: 25",
+            help="Accurate ownership projections are essential for GPP success"
         )
         
+        # Parse ownership with GPP validation
         ownership_dict = {}
         for line in ownership_text.split('\n'):
             if ':' in line:
@@ -1299,13 +2030,48 @@ if uploaded_file is not None:
                     except:
                         pass
         
+        # Apply ownership with GPP default
         df['Ownership'] = df['Player'].map(ownership_dict).fillna(OptimizerConfig.DEFAULT_OWNERSHIP)
+        
+        # Show ownership distribution
+        if ownership_dict:
+            high_owned = len(df[df['Ownership'] > 30])
+            low_owned = len(df[df['Ownership'] < 10])
+            st.info(f"Chalk (30%+): {high_owned} | Leverage (<10%): {low_owned}")
     
-    # Add ownership bucket column
+    with col2:
+        st.markdown("#### 🎲 GPP Ceiling Boosts")
+        boost_text = st.text_area(
+            "High Ceiling Players (Format: Player: Multiplier)",
+            height=150,
+            placeholder="Tyreek Hill: 1.2\nJosh Allen: 1.15\nRaheem Mostert: 1.25",
+            help="Boost projections for boom/bust players"
+        )
+        
+        # Apply ceiling boosts
+        for line in boost_text.split('\n'):
+            if ':' in line:
+                parts = line.split(':')
+                if len(parts) == 2:
+                    try:
+                        player = parts[0].strip()
+                        multiplier = float(parts[1].strip())
+                        if player in df['Player'].values and 0.5 <= multiplier <= 2.0:
+                            df.loc[df['Player'] == player, 'Projected_Points'] *= multiplier
+                            df.loc[df['Player'] == player, 'Ceiling_Boost'] = multiplier
+                    except:
+                        pass
+    
+    # Add GPP-specific columns
     df['Bucket'] = df['Ownership'].apply(OwnershipBucketManager.get_bucket)
+    df['GPP_Value'] = (df['Projected_Points'] / (df['Salary'] / 1000)) * (20 / (df['Ownership'] + 5))
+    df['Leverage_Score'] = df.apply(
+        lambda x: 3 if x['Ownership'] < 5 else 2 if x['Ownership'] < 10 else 1 if x['Ownership'] < 15 else -1 if x['Ownership'] > 30 else 0, 
+        axis=1
+    )
     
-    # Display enhanced player pool
-    st.markdown("### 👥 Player Pool Analysis")
+    # Display GPP player pool
+    st.markdown("### 💎 GPP Player Pool Analysis")
     
     # Bucket distribution visualization
     bucket_counts = df['Bucket'].value_counts()
@@ -1313,449 +2079,96 @@ if uploaded_file is not None:
     col1, col2 = st.columns([1, 3])
     
     with col1:
-        st.markdown("**Ownership Distribution:**")
+        st.markdown("**GPP Ownership Tiers:**")
+        tier_emojis = {
+            'mega_chalk': '🔴',
+            'chalk': '🟠', 
+            'pivot': '🟡',
+            'leverage': '🟢',
+            'super_leverage': '💎'
+        }
+        
         for bucket in ['mega_chalk', 'chalk', 'pivot', 'leverage', 'super_leverage']:
             count = bucket_counts.get(bucket, 0)
-            emoji = {'mega_chalk': '🔴', 'chalk': '🟠', 'pivot': '🟢', 
-                    'leverage': '🔵', 'super_leverage': '🟣'}.get(bucket, '')
-            st.write(f"{emoji} {bucket}: {count}")
+            emoji = tier_emojis.get(bucket, '')
+            percentage = (count / len(df) * 100) if len(df) > 0 else 0
+            st.write(f"{emoji} {bucket}: {count} ({percentage:.0f}%)")
+        
+        # GPP recommendations
+        if bucket_counts.get('super_leverage', 0) < 5:
+            st.warning("⚠️ Limited super leverage plays available")
+        if bucket_counts.get('mega_chalk', 0) > 10:
+            st.info("📊 Heavy chalk slate - focus on leverage")
     
     with col2:
-        # Show player pool
-        display_cols = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points', 'Value', 'Ownership', 'Bucket']
+        # Show player pool with GPP metrics
+        display_cols = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points', 
+                       'Ownership', 'Bucket', 'GPP_Value', 'Leverage_Score']
         
-        # Add injury status if any injuries
-        if injuries:
-            display_cols.append('Injury_Status')
+        # Color code by ownership tier
+        def highlight_gpp_rows(row):
+            if row['Bucket'] == 'super_leverage':
+                return ['background-color: #90EE90'] * len(row)  # Light green
+            elif row['Bucket'] == 'leverage':
+                return ['background-color: #98FB98'] * len(row)  # Pale green
+            elif row['Bucket'] == 'mega_chalk':
+                return ['background-color: #FFB6C1'] * len(row)  # Light red
+            return [''] * len(row)
+        
+        styled_df = df[display_cols].sort_values('GPP_Value', ascending=False).head(20).style.apply(
+            highlight_gpp_rows, axis=1
+        )
         
         st.dataframe(
-            df[display_cols].sort_values('Projected_Points', ascending=False),
-            height=300,
-            use_container_width=True,
-            column_config={
-                "Salary": st.column_config.NumberColumn(format="$%d"),
-                "Projected_Points": st.column_config.NumberColumn(format="%.1f"),
-                "Value": st.column_config.NumberColumn(format="%.2f"),
-                "Ownership": st.column_config.NumberColumn(format="%.1f%%")
-            }
+            styled_df,
+            height=400,
+            use_container_width=True
         )
     
     # Optimization Section
     st.markdown("---")
-    st.markdown("## 🚀 Lineup Generation")
+    st.markdown("## 🚀 GPP Lineup Generation")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        num_lineups = st.number_input("Number of Lineups", 5, 50, 20, 5)
+        num_lineups = st.number_input(
+            "Number of Lineups", 
+            5, 150, 20, 5,
+            help="More lineups = better coverage"
+        )
     
     with col2:
-        optimization_focus = st.selectbox(
-            "Optimization Focus",
-            ["Balanced", "Tournament GPP", "Cash Game", "Single Entry"],
-            help="Adjusts strategy distribution"
+        correlation_emphasis = st.slider(
+            "Correlation Focus", 
+            0, 100, 50,
+            help="Higher = more stacks"
         )
     
     with col3:
-        if st.button("🎯 Generate Optimized Lineups", type="primary", use_container_width=True):
+        if st.button("🎯 Generate GPP Lineups", type="primary", use_container_width=True):
             
-            # Initialize optimizer
-            optimizer = DualAIOptimizer(df, game_info, api_manager)
-            
-            # Get AI strategies
-            with st.spinner("Getting AI strategic analysis..."):
-                rec1, rec2 = optimizer.get_ai_strategies(use_api=use_api)
-            
-            # Display AI insights
-            with st.expander("🧠 AI Strategic Insights", expanded=True):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### 🎯 Game Theory AI")
-                    st.metric("Confidence", f"{rec1.confidence:.0%}")
-                    
-                    if rec1.captain_targets:
-                        st.markdown("**Leverage Captains:**")
-                        for captain in rec1.captain_targets[:3]:
-                            own = df[df['Player'] == captain]['Ownership'].values[0] if captain in df['Player'].values else 5
-                            st.write(f"• {captain} ({own:.0f}%)")
-                    
-                    if rec1.fades:
-                        st.markdown("**Fade Targets:**")
-                        for fade in rec1.fades[:3]:
-                            st.write(f"• {fade}")
-                    
-                    if rec1.key_insights:
-                        st.markdown("**Key Insights:**")
-                        for insight in rec1.key_insights[:3]:
-                            st.info(insight)
-                
-                with col2:
-                    st.markdown("### 🔗 Correlation AI")
-                    st.metric("Confidence", f"{rec2.confidence:.0%}")
-                    
-                    if rec2.stacks:
-                        st.markdown("**Recommended Stacks:**")
-                        for stack in rec2.stacks[:3]:
-                            if isinstance(stack, dict):
-                                p1 = stack.get('player1', '')
-                                p2 = stack.get('player2', '')
-                                if p1 and p2:
-                                    st.write(f"• {p1} + {p2}")
-                    
-                    if rec2.key_insights:
-                        st.markdown("**Key Insights:**")
-                        for insight in rec2.key_insights[:3]:
-                            st.info(insight)
-            
-            # Generate lineups
-            with st.spinner(f"Generating {num_lineups} optimized lineups..."):
-                lineups_df = optimizer.generate_optimized_lineups(
-                    num_lineups, rec1, rec2, enforce_buckets=enforce_buckets
-                )
-            
-            if lineups_df.empty:
-                st.error("❌ No valid lineups could be generated. Try adjusting constraints.")
-            else:
-                st.success(f"✅ Generated {len(lineups_df)} lineups successfully!")
-                
-                # Calculate correlations for simulations
-                correlations = optimizer.correlation_engine.calculate_dynamic_correlations(df, game_info)
-                
-                # Run simulations
-                if use_correlation:
-                    with st.spinner("Running tournament simulations..."):
-                        for idx, row in lineups_df.iterrows():
-                            sim_results = optimizer.tournament_sim.simulate_with_correlation(
-                                row.to_dict(), df, correlations, n_sims=num_sims
-                            )
-                            for key, value in sim_results.items():
-                                lineups_df.loc[idx, key] = value
-                else:
-                    # Simple projections without correlation
-                    for idx, row in lineups_df.iterrows():
-                        lineups_df.loc[idx, 'Mean'] = row['Projected']
-                        lineups_df.loc[idx, 'Ceiling_90th'] = row['Projected'] * 1.3
-                        lineups_df.loc[idx, 'Floor_10th'] = row['Projected'] * 0.7
-                
-                # Calculate composite scores
-                lineups_df['GPP_Score'] = (
-                    0.35 * lineups_df.get('Ceiling_90th', lineups_df['Projected']) +
-                    0.25 * lineups_df.get('Ceiling_95th', lineups_df['Projected'] * 1.4) +
-                    0.20 * (150 - lineups_df['Total_Ownership']) +
-                    0.10 * lineups_df['Leverage_Score'] +
-                    0.10 * lineups_df['Has_Stack'].astype(int) * 50
-                )
-                
-                lineups_df['Cash_Score'] = (
-                    0.50 * lineups_df.get('Median', lineups_df['Projected']) +
-                    0.30 * lineups_df.get('Floor_10th', lineups_df['Projected'] * 0.7) +
-                    0.20 * lineups_df['Projected']
-                )
-                
-                # Sort based on focus
-                if optimization_focus in ["Tournament GPP", "Single Entry"]:
-                    lineups_df = lineups_df.sort_values('GPP_Score', ascending=False)
-                else:
-                    lineups_df = lineups_df.sort_values('Cash_Score', ascending=False)
-                
-                # Store in session state for access outside button
-                st.session_state['lineups_df'] = lineups_df
-                st.session_state['df'] = df
-                st.session_state['correlations'] = correlations
-                
-                # Generate captain pivots if enabled
-                if include_pivots:
-                    with st.spinner("Generating captain pivots..."):
-                        pivots_df = optimizer.pivot_generator.generate_pivots(
-                            lineups_df.iloc[0].to_dict(), df, max_pivots=3
-                        )
-                        st.session_state['pivots_df'] = pivots_df
-    
-    # Display results if lineups exist
-    if 'lineups_df' in st.session_state:
-        lineups_df = st.session_state['lineups_df']
-        df = st.session_state['df']
-        
-        st.markdown("---")
-        st.markdown("## 📊 Optimization Results")
-        
-        # Summary metrics
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        with col1:
-            st.metric("Lineups Generated", len(lineups_df))
-        with col2:
-            st.metric("Avg Ceiling (90th)", f"{lineups_df.get('Ceiling_90th', lineups_df['Projected']).mean():.1f}")
-        with col3:
-            st.metric("Avg Ownership", f"{lineups_df['Total_Ownership'].mean():.1f}%")
-        with col4:
-            st.metric("Avg Leverage", f"{lineups_df['Leverage_Score'].mean():.1f}")
-        with col5:
-            st.metric("Lineups w/ Stacks", lineups_df['Has_Stack'].sum())
-        
-        # Results tabs
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "📋 Lineups", "🔄 Captain Pivots", "📈 Analysis", "🎯 Top Plays", "💾 Export"
-        ])
-        
-        with tab1:
-            st.markdown("### Generated Lineups")
-            
-            # Display options
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                display_format = st.radio(
-                    "Display Format",
-                    ["Summary", "Detailed", "Compact"],
-                    horizontal=True
-                )
-            with col2:
-                show_top_n = st.number_input("Show Top", 5, len(lineups_df), 10, 5)
-            
-            if display_format == "Summary":
-                display_cols = ['Lineup', 'Strategy', 'Captain', 'Projected', 'Ceiling_90th', 
-                              'Total_Ownership', 'Leverage_Score', 'GPP_Score']
-                
-                st.dataframe(
-                    lineups_df[display_cols].head(show_top_n),
-                    use_container_width=True,
-                    column_config={
-                        "Projected": st.column_config.NumberColumn(format="%.1f"),
-                        "Ceiling_90th": st.column_config.NumberColumn(format="%.1f"),
-                        "Total_Ownership": st.column_config.NumberColumn(format="%.1f%%"),
-                        "GPP_Score": st.column_config.NumberColumn(format="%.1f")
-                    }
-                )
-            
-            elif display_format == "Detailed":
-                for i, (idx, lineup) in enumerate(lineups_df.head(show_top_n).iterrows(), 1):
-                    with st.expander(f"Lineup #{i} - {lineup['Strategy']} - GPP Score: {lineup.get('GPP_Score', 0):.1f}"):
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            st.markdown("**Roster:**")
-                            st.write(f"🎯 **Captain:** {lineup['Captain']}")
-                            st.write("**FLEX:**")
-                            for player in lineup['FLEX']:
-                                pos = df[df['Player'] == player]['Position'].values[0] if player in df['Player'].values else '??'
-                                own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
-                                st.write(f"• {player} ({pos}) - {own:.0f}%")
-                        
-                        with col2:
-                            st.markdown("**Projections:**")
-                            st.metric("Mean", f"{lineup.get('Mean', lineup['Projected']):.1f}")
-                            st.metric("90th %ile", f"{lineup.get('Ceiling_90th', lineup['Projected']*1.3):.1f}")
-                            st.metric("95th %ile", f"{lineup.get('Ceiling_95th', lineup['Projected']*1.4):.1f}")
-                            if 'Boom_Rate' in lineup:
-                                st.metric("Boom Rate", f"{lineup['Boom_Rate']:.1f}%")
-                        
-                        with col3:
-                            st.markdown("**Metrics:**")
-                            st.write(f"💰 Salary: ${lineup['Salary']:,} (${lineup['Salary_Remaining']} left)")
-                            st.write(f"📊 {lineup['Bucket_Summary']}")
-                            st.write(f"🎯 Leverage Score: {lineup['Leverage_Score']:.1f}")
-                            if lineup['Has_Stack']:
-                                st.success(f"✅ Stack: {lineup['Stack_Details']}")
-            
-            else:  # Compact
-                # Simple lineup display
-                for i, (idx, lineup) in enumerate(lineups_df.head(show_top_n).iterrows(), 1):
-                    st.write(f"**#{i}:** CPT: {lineup['Captain']} | FLEX: {', '.join(lineup['FLEX'][:3])}... | Own: {lineup['Total_Ownership']:.0f}%")
-        
-        with tab2:
-            st.markdown("### Captain Pivot Variations")
-            
-            if 'pivots_df' in st.session_state and not st.session_state['pivots_df'].empty:
-                pivots_df = st.session_state['pivots_df']
-                
-                st.info(f"Generated {len(pivots_df)} captain pivot variations")
-                
-                for idx, pivot in pivots_df.iterrows():
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.write(f"**Original:** {pivot['Original_Captain']} → **New:** {pivot['Captain']}")
-                    with col2:
-                        st.write(f"Ownership Change: {pivot['Ownership_Delta']:+.1f}%")
-                    with col3:
-                        st.write(f"Type: {pivot['Pivot_Type']}")
-            else:
-                st.info("Enable captain pivots in settings to generate variations")
-        
-        with tab3:
-            st.markdown("### Lineup Analysis & Visualization")
-            
-            # Create analysis visualizations
-            fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-            
-            # 1. Strategy Distribution
-            ax1 = axes[0, 0]
-            strategy_counts = lineups_df['Strategy'].value_counts()
-            colors = plt.cm.Set3(range(len(strategy_counts)))
-            ax1.pie(strategy_counts.values, labels=strategy_counts.index, autopct='%1.0f%%',
-                   colors=colors, startangle=90)
-            ax1.set_title('Strategy Distribution')
-            
-            # 2. Ownership vs Ceiling
-            ax2 = axes[0, 1]
-            ceiling_col = 'Ceiling_90th' if 'Ceiling_90th' in lineups_df else 'Projected'
-            scatter = ax2.scatter(lineups_df['Total_Ownership'], lineups_df[ceiling_col],
-                                c=lineups_df.get('GPP_Score', lineups_df['Projected']), 
-                                cmap='viridis', s=100, alpha=0.6)
-            ax2.set_xlabel('Total Ownership %')
-            ax2.set_ylabel('90th Percentile Points')
-            ax2.set_title('Ownership vs Upside')
-            plt.colorbar(scatter, ax=ax2, label='GPP Score')
-            
-            # Annotate top 3
-            for i, (idx, row) in enumerate(lineups_df.head(3).iterrows(), 1):
-                ax2.annotate(f'#{i}', (row['Total_Ownership'], row.get(ceiling_col, row['Projected'])),
-                           fontsize=12, fontweight='bold', color='red')
-            
-            # 3. Salary Distribution
-            ax3 = axes[0, 2]
-            ax3.hist(lineups_df['Salary'], bins=15, alpha=0.7, color='green', edgecolor='black')
-            ax3.axvline(lineups_df['Salary'].mean(), color='red', linestyle='--', 
-                       label=f'Avg: ${lineups_df["Salary"].mean():,.0f}')
-            ax3.set_xlabel('Salary Used')
-            ax3.set_ylabel('Number of Lineups')
-            ax3.set_title('Salary Distribution')
-            ax3.legend()
-            
-            # 4. Leverage Score Distribution
-            ax4 = axes[1, 0]
-            ax4.hist(lineups_df['Leverage_Score'], bins=15, alpha=0.7, color='blue', edgecolor='black')
-            ax4.set_xlabel('Leverage Score')
-            ax4.set_ylabel('Number of Lineups')
-            ax4.set_title('Leverage Distribution')
-            
-            # 5. Projection vs Ownership by Strategy
-            ax5 = axes[1, 1]
-            for strategy in lineups_df['Strategy'].unique():
-                strategy_data = lineups_df[lineups_df['Strategy'] == strategy]
-                ax5.scatter(strategy_data['Total_Ownership'], strategy_data['Projected'],
-                          label=strategy, alpha=0.6, s=50)
-            ax5.set_xlabel('Total Ownership %')
-            ax5.set_ylabel('Projected Points')
-            ax5.set_title('Strategy Comparison')
-            ax5.legend(fontsize=8)
-            
-            # 6. Captain Analysis
-            ax6 = axes[1, 2]
-            captain_counts = lineups_df['Captain'].value_counts().head(10)
-            y_pos = np.arange(len(captain_counts))
-            ax6.barh(y_pos, captain_counts.values)
-            ax6.set_yticks(y_pos)
-            ax6.set_yticklabels(captain_counts.index, fontsize=8)
-            ax6.set_xlabel('Times Used as Captain')
-            ax6.set_title('Top 10 Captains')
-            
-            plt.tight_layout()
+            # Distribution chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.hist(lineups_df['Ship_Rate'], bins=20, alpha=0.7, color='purple', edgecolor='black')
+            ax.set_xlabel('Ship Rate (%)')
+            ax.set_ylabel('Number of Lineups')
+            ax.set_title(f'Tournament Win Probability Distribution - {field_size}')
             st.pyplot(fig)
-            
-            # Ownership bucket heatmap
-            st.markdown("### Ownership Bucket Distribution")
-            
-            bucket_data = []
-            for idx, row in lineups_df.head(20).iterrows():
-                bucket_counts = {'mega_chalk': 0, 'chalk': 0, 'pivot': 0, 'leverage': 0, 'super_leverage': 0}
-                lineup_players = [row['Captain']] + row['FLEX']
-                
-                for player in lineup_players:
-                    player_own = df[df['Player'] == player]['Ownership'].values
-                    if len(player_own) > 0:
-                        bucket = OwnershipBucketManager.get_bucket(player_own[0])
-                        bucket_counts[bucket] += 1
-                
-                bucket_data.append(list(bucket_counts.values()))
-            
-            if bucket_data:
-                fig, ax = plt.subplots(figsize=(10, 8))
-                im = ax.imshow(bucket_data, cmap='RdYlGn_r', aspect='auto')
-                
-                ax.set_xticks(range(5))
-                ax.set_xticklabels(['Mega\nChalk', 'Chalk', 'Pivot', 'Leverage', 'Super\nLeverage'])
-                ax.set_yticks(range(len(bucket_data)))
-                ax.set_yticklabels([f'#{i+1}' for i in range(len(bucket_data))])
-                ax.set_title('Ownership Bucket Distribution (Top 20 Lineups)')
-                ax.set_xlabel('Bucket Type')
-                ax.set_ylabel('Lineup Rank')
-                
-                # Add text annotations
-                for i in range(len(bucket_data)):
-                    for j in range(5):
-                        text = ax.text(j, i, bucket_data[i][j],
-                                     ha="center", va="center",
-                                     color="white" if bucket_data[i][j] > 3 else "black")
-                
-                plt.colorbar(im, ax=ax, label='Player Count')
-                st.pyplot(fig)
         
-        with tab4:
-            st.markdown("### Top Plays Analysis")
+        with tab6:
+            st.markdown("### 💾 Export GPP Lineups")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("#### 🎯 Most Used Captains")
-                captain_usage = lineups_df['Captain'].value_counts().head(10)
-                for player, count in captain_usage.items():
-                    own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
-                    pct = count / len(lineups_df) * 100
-                    st.write(f"• {player} ({own:.0f}% own) - {count} lineups ({pct:.0f}%)")
-            
-            with col2:
-                st.markdown("#### 🔗 Most Common Stacks")
-                stack_counts = defaultdict(int)
-                
-                for idx, row in lineups_df.iterrows():
-                    if row['Has_Stack'] and row['Stack_Details'] != 'None':
-                        stacks = row['Stack_Details'].split(', ')
-                        for stack in stacks:
-                            stack_counts[stack] += 1
-                
-                if stack_counts:
-                    sorted_stacks = sorted(stack_counts.items(), key=lambda x: x[1], reverse=True)
-                    for stack, count in sorted_stacks[:10]:
-                        pct = count / len(lineups_df) * 100
-                        st.write(f"• {stack} - {count} lineups ({pct:.0f}%)")
-                else:
-                    st.info("No stacks found in lineups")
-            
-            st.markdown("#### 💎 Hidden Gems (Low Owned, High Usage)")
-            
-            # Find players with low ownership but high usage in lineups
-            player_usage = defaultdict(int)
-            for idx, row in lineups_df.iterrows():
-                for player in [row['Captain']] + row['FLEX']:
-                    player_usage[player] += 1
-            
-            gems = []
-            for player, usage in player_usage.items():
-                if player in df['Player'].values:
-                    own = df[df['Player'] == player]['Ownership'].values[0]
-                    if own < 10 and usage >= 3:  # Low owned but used 3+ times
-                        gems.append((player, own, usage))
-            
-            if gems:
-                gems.sort(key=lambda x: x[2], reverse=True)
-                for player, own, usage in gems[:10]:
-                    pct = usage / len(lineups_df) * 100
-                    st.write(f"• {player} ({own:.0f}% own) - {usage} lineups ({pct:.0f}%)")
-            else:
-                st.info("No hidden gems found")
-        
-        with tab5:
-            st.markdown("### 💾 Export Lineups")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("#### DraftKings Format")
+                st.markdown("#### DraftKings Upload Format")
                 
                 # Create DraftKings export
                 dk_lineups = []
-                for idx, row in lineups_df.iterrows():
+                export_df = lineups_df.head(export_top_n)
+                
+                for idx, row in export_df.iterrows():
                     flex_players = row['FLEX']
                     dk_lineups.append({
                         'CPT': row['Captain'],
@@ -1769,82 +2182,402 @@ if uploaded_file is not None:
                 dk_df = pd.DataFrame(dk_lineups)
                 
                 # Preview
-                st.write("Preview (first 5):")
+                st.write(f"Preview (first 5 of {len(dk_df)}):")
                 st.dataframe(dk_df.head(), use_container_width=True)
                 
                 # Download button
                 csv = dk_df.to_csv(index=False)
                 st.download_button(
-                    label="📥 Download DraftKings CSV",
+                    label=f"📥 Download DK CSV ({len(dk_df)} lineups)",
                     data=csv,
-                    file_name=f"dk_lineups_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    file_name=f"dk_gpp_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
                 )
             
             with col2:
-                st.markdown("#### Full Analysis Export")
+                st.markdown("#### GPP Analysis Export")
                 
-                if export_detailed:
-                    # Prepare detailed export
-                    export_df = lineups_df.copy()
-                    export_df['FLEX'] = export_df['FLEX'].apply(lambda x: ', '.join(x))
-                    
-                    # Select columns for export
-                    export_cols = ['Lineup', 'Strategy', 'Captain', 'FLEX', 'Projected', 
-                                 'Salary', 'Total_Ownership', 'Leverage_Score']
-                    
-                    if 'Ceiling_90th' in export_df:
-                        export_cols.extend(['Mean', 'Ceiling_90th', 'Ceiling_95th', 'Floor_10th'])
-                    
-                    export_cols.extend(['Bucket_Summary', 'Has_Stack', 'Stack_Details', 
-                                      'GPP_Score', 'Cash_Score'])
-                    
-                    # Filter to existing columns
-                    export_cols = [col for col in export_cols if col in export_df.columns]
-                    
-                    final_export = export_df[export_cols]
-                else:
-                    # Simple export
-                    export_df = lineups_df.copy()
-                    export_df['FLEX'] = export_df['FLEX'].apply(lambda x: ', '.join(x))
-                    final_export = export_df[['Lineup', 'Captain', 'FLEX', 'Projected', 
-                                            'Salary', 'Total_Ownership']]
+                # Prepare GPP export
+                export_analysis = export_df.copy()
+                export_analysis['FLEX'] = export_analysis['FLEX'].apply(lambda x: ', '.join(x))
+                
+                # Select GPP-specific columns
+                gpp_export_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'FLEX', 
+                                  'Projected', 'Salary', 'Total_Ownership', 'Leverage_Score',
+                                  'Ceiling_95th', 'Ceiling_99th', 'Ceiling_99_9th',
+                                  'Ship_Rate', 'Elite_Rate', 'Boom_Rate',
+                                  'GPP_Score', 'Tournament_EV', 'Has_Stack']
+                
+                # Filter to existing columns
+                gpp_export_cols = [col for col in gpp_export_cols if col in export_analysis.columns]
+                
+                final_export = export_analysis[gpp_export_cols]
                 
                 # Preview
-                st.write("Preview (first 5):")
+                st.write(f"Preview (first 5 of {len(final_export)}):")
                 st.dataframe(final_export.head(), use_container_width=True)
                 
                 # Download button
                 csv_full = final_export.to_csv(index=False)
                 st.download_button(
-                    label="📊 Download Full Analysis",
+                    label=f"📊 Download GPP Analysis ({len(final_export)} lineups)",
                     data=csv_full,
-                    file_name=f"lineup_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    file_name=f"gpp_analysis_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv"
+                )
+            
+            # Captain pivot export
+            if include_pivots and 'pivots_df' in st.session_state and st.session_state['pivots_df']:
+                st.markdown("#### 🔄 Captain Pivots Export")
+                
+                pivots_list = st.session_state['pivots_df']
+                pivot_export = pd.DataFrame(pivots_list)
+                
+                csv_pivots = pivot_export.to_csv(index=False)
+                st.download_button(
+                    label=f"🔄 Download Captain Pivots ({len(pivot_export)} pivots)",
+                    data=csv_pivots,
+                    file_name=f"captain_pivots_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
                 )
 
-# Footer
+# Footer with GPP-specific tips
 st.markdown("---")
 st.markdown("""
-### 📚 NFL Showdown Optimizer - Professional Edition
+### 🏆 NFL GPP Tournament Optimizer - Professional Edition
 
-**Features:**
-- 🤖 Dual AI Strategy System (Game Theory + Correlation)
-- 📊 Advanced ownership bucketing and leverage scoring
-- 🎯 Captain pivoting for lineup uniqueness
-- 📈 Monte Carlo simulations with player correlations
-- 🏆 Tournament-optimized lineup generation
-- 💾 DraftKings-ready export formats
+**GPP-Specific Features:**
+- 💎 **Super Leverage Detection**: Identifies <5% owned tournament winners
+- 🎯 **Field-Size Optimization**: Tailored strategies for different GPP types
+- 🔄 **Captain Pivot Engine**: Creates unique lineups with leverage captains
+- 📊 **Ship Equity Calculator**: Tournament win probability analysis
+- 🤖 **Dual AI System**: Game theory + correlation for maximum edge
 
-**Quick Tips:**
-- Use API mode for faster optimization
-- Enable correlation model for accurate simulations
-- Check leverage scores for GPP tournaments
-- Monitor ownership buckets for proper diversification
+**GPP Strategy Tips:**
+- **Milly Maker**: Target <80% total ownership with zero chalk tolerance
+- **Large Field**: 60-90% ownership with 2+ leverage plays minimum
+- **Small Field**: Can use slightly higher ownership (80-120%) 
+- **Captain Selection**: Prioritize <15% owned captains for differentiation
+- **Stacking**: Low-owned game stacks in projected shootouts (50+ total)
 
-**Version:** 4.0 Professional | **Model:** Claude 3 Haiku
+**Ownership Tier Guide:**
+- 💎 Super Leverage (<5%): Maximum tournament equity
+- 🟢 Leverage (5-10%): Strong GPP plays
+- 🟡 Pivot (10-20%): Balanced risk/reward
+- 🟠 Chalk (20-35%): Use sparingly
+- 🔴 Mega Chalk (35%+): Avoid in large field GPPs
 
-*Good luck with your lineups!* 🚀
+**Version:** 5.0 GPP Edition | **Focus:** Tournament Winning Upside
+
+*Maximize your tournament equity!* 🚀
 """)
 
-st.caption(f"Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Field: {field_size if 'field_size' in locals() else 'Not Selected'}") Initialize GPP optimizer
+            optimizer = GPPDualAIOptimizer(df, game_info, field_size, api_manager)
+            
+            # Get AI strategies
+            with st.spinner("Getting GPP AI strategies..."):
+                rec1, rec2 = optimizer.get_ai_strategies(use_api=use_api)
+            
+            # Display AI insights
+            with st.expander("🧠 GPP AI Strategic Analysis", expanded=True):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("### 🎯 Game Theory AI")
+                    st.metric("Confidence", f"{rec1.confidence:.0%}")
+                    
+                    if rec1.captain_targets:
+                        st.markdown("**Leverage Captains:**")
+                        for captain in rec1.captain_targets[:5]:
+                            own = df[df['Player'] == captain]['Ownership'].values[0] if captain in df['Player'].values else 5
+                            emoji = "💎" if own < 5 else "🟢" if own < 10 else "🟡" if own < 15 else "⚠️"
+                            st.write(f"{emoji} {captain} ({own:.0f}%)")
+                    
+                    if rec1.fades:
+                        st.markdown("**Fade Targets (Chalk):**")
+                        for fade in rec1.fades[:3]:
+                            st.write(f"🔴 {fade}")
+                    
+                    if rec1.key_insights:
+                        st.markdown("**GPP Insights:**")
+                        for insight in rec1.key_insights[:3]:
+                            st.info(insight)
+                
+                with col2:
+                    st.markdown("### 🔗 Correlation AI")
+                    st.metric("Confidence", f"{rec2.confidence:.0%}")
+                    
+                    if rec2.stacks:
+                        st.markdown("**GPP Stacks:**")
+                        for stack in rec2.stacks[:5]:
+                            if isinstance(stack, dict):
+                                p1 = stack.get('player1', '')
+                                p2 = stack.get('player2', '')
+                                stack_type = stack.get('type', '')
+                                if p1 and p2:
+                                    emoji = "💎" if 'leverage' in stack_type else "🔗"
+                                    st.write(f"{emoji} {p1} + {p2}")
+                    
+                    if rec2.key_insights:
+                        st.markdown("**Correlation Insights:**")
+                        for insight in rec2.key_insights[:3]:
+                            st.info(insight)
+            
+            # Generate GPP lineups
+            with st.spinner(f"Generating {num_lineups} GPP lineups for {field_size}..."):
+                lineups_df = optimizer.generate_gpp_lineups(
+                    num_lineups, rec1, rec2, force_unique_captains=force_unique_captains
+                )
+            
+            if lineups_df.empty:
+                st.error("❌ No valid lineups generated. Try adjusting constraints.")
+            else:
+                st.success(f"✅ Generated {len(lineups_df)} GPP lineups!")
+                
+                # Calculate correlations
+                correlations = optimizer.correlation_engine.calculate_gpp_correlations(df, game_info)
+                
+                # Run GPP simulations
+                with st.spinner("Running GPP tournament simulations..."):
+                    for idx, row in lineups_df.iterrows():
+                        sim_results = optimizer.tournament_sim.simulate_gpp_tournament(
+                            row.to_dict(), df, correlations, n_sims=num_sims, field_size=field_size
+                        )
+                        for key, value in sim_results.items():
+                            lineups_df.loc[idx, key] = value
+                
+                # Calculate GPP scores
+                lineups_df = calculate_gpp_scores(lineups_df, field_size)
+                
+                # Sort by GPP score
+                lineups_df = lineups_df.sort_values('GPP_Score', ascending=False)
+                
+                # Store in session state
+                st.session_state['lineups_df'] = lineups_df
+                st.session_state['df'] = df
+                st.session_state['correlations'] = correlations
+                st.session_state['field_size'] = field_size
+                
+                # Generate captain pivots if enabled
+                if include_pivots:
+                    with st.spinner("Generating GPP captain pivots..."):
+                        all_pivots = []
+                        for i in range(min(3, len(lineups_df))):
+                            pivots = optimizer.pivot_generator.find_optimal_gpp_pivots(
+                                lineups_df.iloc[i].to_dict(), df, field_size
+                            )
+                            all_pivots.extend(pivots)
+                        st.session_state['pivots_df'] = all_pivots
+    
+    # Display results if lineups exist
+    if 'lineups_df' in st.session_state:
+        lineups_df = st.session_state['lineups_df']
+        df = st.session_state['df']
+        field_size = st.session_state.get('field_size', 'large_field')
+        
+        st.markdown("---")
+        st.markdown("## 📊 GPP Optimization Results")
+        
+        # GPP Summary metrics
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        
+        with col1:
+            st.metric("Lineups", len(lineups_df))
+        with col2:
+            st.metric("Avg 99th%", f"{lineups_df.get('Ceiling_99th', lineups_df['Projected']).mean():.1f}")
+        with col3:
+            st.metric("Avg Own%", f"{lineups_df['Total_Ownership'].mean():.1f}%")
+        with col4:
+            st.metric("Avg Leverage", f"{lineups_df['Leverage_Score'].mean():.1f}")
+        with col5:
+            unique_captains = lineups_df['Captain'].nunique()
+            st.metric("Unique CPT", f"{unique_captains}/{len(lineups_df)}")
+        with col6:
+            elite_lineups = len(lineups_df[lineups_df['Total_Ownership'] < 70])
+            st.metric("Elite (<70%)", elite_lineups)
+        
+        # Results tabs
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "🏆 GPP Lineups", "🔄 Captain Pivots", "📈 GPP Analysis", 
+            "💎 Leverage Plays", "📊 Simulations", "💾 Export"
+        ])
+        
+        with tab1:
+            st.markdown("### 🏆 Top GPP Lineups")
+            
+            # Display options
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                display_format = st.radio(
+                    "Display Format",
+                    ["GPP Summary", "Detailed", "Compact"],
+                    horizontal=True
+                )
+            with col2:
+                show_top_n = st.number_input("Show Top", 5, len(lineups_df), 10, 5)
+            with col3:
+                min_leverage = st.number_input("Min Leverage", 0, 20, 5)
+                filtered_df = lineups_df[lineups_df['Leverage_Score'] >= min_leverage]
+            
+            if display_format == "GPP Summary":
+                display_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'Projected', 
+                              'Ceiling_99th', 'Total_Ownership', 'Leverage_Score', 
+                              'GPP_Score', 'Ship_Equity']
+                
+                # Remove columns that might not exist
+                display_cols = [col for col in display_cols if col in filtered_df.columns]
+                
+                st.dataframe(
+                    filtered_df[display_cols].head(show_top_n),
+                    use_container_width=True,
+                    column_config={
+                        "Captain_Own%": st.column_config.NumberColumn(format="%.1f%%"),
+                        "Projected": st.column_config.NumberColumn(format="%.1f"),
+                        "Ceiling_99th": st.column_config.NumberColumn(format="%.1f"),
+                        "Total_Ownership": st.column_config.NumberColumn(format="%.1f%%"),
+                        "GPP_Score": st.column_config.NumberColumn(format="%.1f"),
+                        "Ship_Equity": st.column_config.NumberColumn(format="%.2f")
+                    }
+                )
+            
+            elif display_format == "Detailed":
+                for i, (idx, lineup) in enumerate(filtered_df.head(show_top_n).iterrows(), 1):
+                    tier_emoji = "💎" if lineup['Total_Ownership'] < 60 else "🟢" if lineup['Total_Ownership'] < 80 else "🟡"
+                    
+                    with st.expander(f"{tier_emoji} Lineup #{i} - {lineup['Strategy']} - GPP Score: {lineup.get('GPP_Score', 0):.1f}"):
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.markdown("**Roster:**")
+                            st.write(f"🎯 **Captain:** {lineup['Captain']} ({lineup['Captain_Own%']:.1f}%)")
+                            st.write("**FLEX:**")
+                            for player in lineup['FLEX']:
+                                pos = df[df['Player'] == player]['Position'].values[0] if player in df['Player'].values else '??'
+                                own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
+                                emoji = "💎" if own < 5 else "🟢" if own < 10 else ""
+                                st.write(f"{emoji} {player} ({pos}) - {own:.0f}%")
+                        
+                        with col2:
+                            st.markdown("**GPP Projections:**")
+                            st.metric("99th %ile", f"{lineup.get('Ceiling_99th', lineup['Projected']*1.8):.1f}")
+                            st.metric("99.9th %ile", f"{lineup.get('Ceiling_99_9th', lineup['Projected']*2):.1f}")
+                            st.metric("Ship Rate", f"{lineup.get('Ship_Rate', 0.1):.3f}%")
+                            st.metric("Boom Rate", f"{lineup.get('Boom_Rate', 5):.1f}%")
+                        
+                        with col3:
+                            st.markdown("**GPP Metrics:**")
+                            st.write(f"💰 Salary: ${lineup['Salary']:,}")
+                            st.write(f"📊 Total Own: {lineup['Total_Ownership']:.1f}%")
+                            st.write(f"🎯 Leverage: {lineup['Leverage_Score']:.1f}")
+                            st.write(f"🏆 GPP Score: {lineup.get('GPP_Score', 0):.1f}")
+                        
+                        with col4:
+                            st.markdown("**Stack Info:**")
+                            if lineup['Has_Stack']:
+                                st.success(f"✅ {lineup['Stack_Details']}")
+                            else:
+                                st.info("No primary stack")
+                            st.write(f"Field: {lineup['Field_Size']}")
+                            st.write(f"Tier: {lineup.get('Ownership_Tier', 'Unknown')}")
+        
+        with tab2:
+            st.markdown("### 🔄 GPP Captain Pivots")
+            
+            if 'pivots_df' in st.session_state and st.session_state['pivots_df']:
+                pivots_df = st.session_state['pivots_df']
+                
+                st.info(f"Generated {len(pivots_df)} GPP captain pivot variations")
+                
+                # Display pivots
+                for i, pivot in enumerate(pivots_df[:10], 1):
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.write(f"**#{i}:** {pivot['Original_Captain']} → {pivot['Captain']}")
+                    with col2:
+                        st.write(f"Captain Own: {pivot['Captain_Own%']:.1f}%")
+                    with col3:
+                        st.write(f"Leverage: +{pivot['Leverage_Gain']:.1f}")
+                    with col4:
+                        st.write(f"{pivot['Pivot_Type']}")
+            else:
+                st.info("Enable captain pivots in settings to generate variations")
+        
+        with tab3:
+            st.markdown("### 📈 GPP Tournament Analysis")
+            display_gpp_lineup_analysis(lineups_df, df, field_size)
+        
+        with tab4:
+            st.markdown("### 💎 GPP Leverage Analysis")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### 🎯 Low-Owned Captains (<15%)")
+                low_captains = lineups_df[lineups_df['Captain_Own%'] < 15]['Captain'].value_counts()
+                for player, count in low_captains.items():
+                    own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
+                    emoji = "💎" if own < 5 else "🟢" if own < 10 else "🟡"
+                    pct = count / len(lineups_df) * 100
+                    st.write(f"{emoji} {player} ({own:.0f}%) - {count} lineups ({pct:.0f}%)")
+            
+            with col2:
+                st.markdown("#### 🔗 Leverage Stacks")
+                leverage_stacks = []
+                
+                for idx, row in lineups_df.iterrows():
+                    if row['Has_Stack'] and row['Total_Ownership'] < 80:
+                        stacks = row['Stack_Details'].split(', ')
+                        for stack in stacks:
+                            if stack != 'None':
+                                leverage_stacks.append(stack)
+                
+                if leverage_stacks:
+                    from collections import Counter
+                    stack_counts = Counter(leverage_stacks)
+                    for stack, count in stack_counts.most_common(10):
+                        pct = count / len(lineups_df) * 100
+                        st.write(f"🔗 {stack} - {count} lineups ({pct:.0f}%)")
+            
+            st.markdown("#### 💎 Super Leverage Plays (<5% ownership)")
+            
+            player_usage = defaultdict(int)
+            for idx, row in lineups_df.iterrows():
+                for player in [row['Captain']] + row['FLEX']:
+                    player_usage[player] += 1
+            
+            super_leverage = []
+            for player, usage in player_usage.items():
+                if player in df['Player'].values:
+                    own = df[df['Player'] == player]['Ownership'].values[0]
+                    if own < 5 and usage >= 3:
+                        super_leverage.append((player, own, usage))
+            
+            if super_leverage:
+                super_leverage.sort(key=lambda x: x[2], reverse=True)
+                for player, own, usage in super_leverage[:10]:
+                    pct = usage / len(lineups_df) * 100
+                    st.write(f"💎 {player} ({own:.0f}%) - {usage} lineups ({pct:.0f}%)")
+        
+        with tab5:
+            st.markdown("### 📊 GPP Simulation Results")
+            
+            # Simulation metrics comparison
+            sim_cols = ['Lineup', 'Captain', 'Total_Ownership', 'Mean', 
+                       'Ceiling_95th', 'Ceiling_99th', 'Ceiling_99_9th',
+                       'Ship_Rate', 'Elite_Rate', 'Boom_Rate']
+            
+            sim_cols = [col for col in sim_cols if col in lineups_df.columns]
+            
+            st.dataframe(
+                lineups_df[sim_cols].head(20),
+                use_container_width=True,
+                column_config={
+                    "Total_Ownership": st.column_config.NumberColumn(format="%.1f%%"),
+                    "Ship_Rate": st.column_config.NumberColumn(format="%.3f%%"),
+                    "Elite_Rate": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Boom_Rate": st.column_config.NumberColumn(format="%.1f%%")
+                }
+            )
+            
+            #
