@@ -1571,17 +1571,18 @@ if uploaded_file is not None:
                 
                 st.info(f"Generated {len(pivots_df)} captain pivot variations")
                 
-                # Display individual pivot explanations
-if hasattr(st.session_state, 'pivots_df') and st.session_state.pivots_df is not None:
-    if not st.session_state.pivots_df.empty:
-        st.subheader("Pivot Explanations")
-        for idx, pivot in st.session_state.pivots_df.iterrows():
-            # rest of the code that's inside this for loop stays the same
-            else:
-                st.info("Enable captain pivots in settings to generate variations")
-        
-        with tab3:
-            st.markdown("### Lineup Analysis & Visualization")
+    # Display individual pivot explanations
+    if hasattr(st.session_state, 'pivots_df') and st.session_state.pivots_df is not None:
+        if not st.session_state.pivots_df.empty:
+            st.subheader("Pivot Explanations")
+            for idx, pivot in st.session_state.pivots_df.iterrows():
+                # rest of the code that's inside this for loop stays the same
+                pass  # Remove this line and keep your actual loop content
+    else:
+        st.info("Enable captain pivots in settings to generate variations")
+    
+    with tab3:
+        st.markdown("### Lineup Analysis & Visualization")
             
             # Create analysis visualizations
             fig, axes = plt.subplots(2, 3, figsize=(15, 10))
