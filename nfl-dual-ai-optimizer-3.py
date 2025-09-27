@@ -22,8 +22,8 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
     st.warning("Anthropic package not installed. Install with: pip install anthropic")
 
-st.set_page_config(page_title="NFL Dual-AI Optimizer Pro", page_icon="ðŸˆ", layout="wide")
-st.title('ðŸˆ NFL Showdown Optimizer - Professional Edition')
+st.set_page_config(page_title="NFL Dual-AI Optimizer Pro", page_icon="🏈", layout="wide")
+st.title('🏈 NFL Showdown Optimizer - Professional Edition')
 
 # Enhanced Configuration
 class OptimizerConfig:
@@ -127,7 +127,7 @@ class ClaudeAPIManager:
         if ANTHROPIC_AVAILABLE and api_key:
             try:
                 self.client = anthropic.Anthropic(api_key=api_key)
-                st.success("âœ… Claude API connected successfully")
+                st.success("✅ Claude API connected successfully")
             except Exception as e:
                 st.error(f"Failed to initialize Claude API: {e}")
                 self.client = None
@@ -237,11 +237,11 @@ class OwnershipBucketManager:
         
         # Create emoji indicators
         bucket_emojis = {
-            'mega_chalk': 'ðŸ”´',
-            'chalk': 'ðŸŸ ',
-            'pivot': 'ðŸŸ¢',
-            'leverage': 'ðŸ”µ',
-            'super_leverage': 'ðŸŸ£'
+            'mega_chalk': '🔴',
+            'chalk': '🟠',
+            'pivot': '🟢',
+            'leverage': '🔵',
+            'super_leverage': '🟣'
         }
         
         summary = f"Total: {total_ownership:.1f}% | "
@@ -832,18 +832,18 @@ class DualAIOptimizer:
         
         if use_api and self.api_manager and self.api_manager.client:
             # API mode - automatic
-            with st.spinner("ðŸ¤– Game Theory AI analyzing..."):
+            with st.spinner("🤖 Game Theory AI analyzing..."):
                 gt_prompt = self.game_theory_ai.generate_prompt(self.df, self.game_info)
                 gt_response = self.api_manager.get_ai_response(gt_prompt)
             
-            with st.spinner("ðŸ”— Correlation AI analyzing..."):
+            with st.spinner("🔗 Correlation AI analyzing..."):
                 corr_prompt = self.correlation_ai.generate_prompt(self.df, self.game_info)
                 corr_response = self.api_manager.get_ai_response(corr_prompt)
         else:
             # Manual mode
-            st.subheader("ðŸ“ Manual AI Strategy Input")
+            st.subheader("📝 Manual AI Strategy Input")
             
-            tab1, tab2 = st.tabs(["ðŸŽ¯ Game Theory AI", "ðŸ”— Correlation AI"])
+            tab1, tab2 = st.tabs(["🎯 Game Theory AI", "🔗 Correlation AI"])
             
             with tab1:
                 with st.expander("View Game Theory Prompt"):
@@ -1135,9 +1135,9 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
     df['Value'] = df['Projected_Points'] / (df['Salary'] / 1000)
     
     # Data summary
-    st.success(f"âœ… Loaded {len(df)} valid players")
+    st.success(f"✅ Loaded {len(df)} valid players")
     
-    with st.expander("ðŸ“Š Data Quality Report"):
+    with st.expander("📊 Data Quality Report"):
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -1160,7 +1160,7 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
 
 # MAIN STREAMLIT UI
 with st.sidebar:
-    st.header("ðŸ¤– AI Strategy Configuration")
+    st.header("🤖 AI Strategy Configuration")
     
     st.markdown("### Connection Mode")
     api_mode = st.radio(
@@ -1181,19 +1181,19 @@ with st.sidebar:
         )
         
         if api_key:
-            if st.button("ðŸ”Œ Connect API"):
+            if st.button("🔌 Connect API"):
                 api_manager = ClaudeAPIManager(api_key)
                 use_api = bool(api_manager.client)
         
         if use_api:
-            st.success("âœ… API Connected")
+            st.success("✅ API Connected")
     else:
-        st.info("ðŸ“‹ Manual mode: Copy prompts to Claude")
+        st.info("📋 Manual mode: Copy prompts to Claude")
     
     st.markdown("---")
     
     # Advanced Settings
-    with st.expander("âš™ï¸ Advanced Settings"):
+    with st.expander("⚙️ Advanced Settings"):
         st.markdown("### Optimization Parameters")
         enforce_buckets = st.checkbox("Enforce Ownership Buckets", value=False,
                                      help="Strict ownership distribution rules")
@@ -1211,7 +1211,7 @@ with st.sidebar:
                                      help="Include all metrics in CSV")
 
 # Main Content Area
-st.markdown("## ðŸ“ Data Upload & Configuration")
+st.markdown("## 📁 Data Upload & Configuration")
 
 uploaded_file = st.file_uploader(
     "Upload DraftKings CSV",
@@ -1224,7 +1224,7 @@ if uploaded_file is not None:
     df = load_and_validate_data(uploaded_file)
     
     # Game Configuration
-    st.markdown("### âš™ï¸ Game Setup")
+    st.markdown("### ⚙️ Game Setup")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -1244,12 +1244,12 @@ if uploaded_file is not None:
     }
     
     # Player Adjustments
-    st.markdown("### ðŸ“ Player Adjustments")
+    st.markdown("### 📝 Player Adjustments")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### ðŸ¥ Injury Report")
+        st.markdown("#### 🏥 Injury Report")
         injury_text = st.text_area(
             "Format: Player: Status",
             height=120,
@@ -1278,7 +1278,7 @@ if uploaded_file is not None:
                         df.loc[df['Player'] == player, 'Injury_Status'] = status
     
     with col2:
-        st.markdown("#### ðŸ“Š Ownership Projections")
+        st.markdown("#### 📊 Ownership Projections")
         ownership_text = st.text_area(
             "Format: Player: %",
             height=120,
@@ -1305,7 +1305,7 @@ if uploaded_file is not None:
     df['Bucket'] = df['Ownership'].apply(OwnershipBucketManager.get_bucket)
     
     # Display enhanced player pool
-    st.markdown("### ðŸ‘¥ Player Pool Analysis")
+    st.markdown("### 👥 Player Pool Analysis")
     
     # Bucket distribution visualization
     bucket_counts = df['Bucket'].value_counts()
@@ -1316,8 +1316,8 @@ if uploaded_file is not None:
         st.markdown("**Ownership Distribution:**")
         for bucket in ['mega_chalk', 'chalk', 'pivot', 'leverage', 'super_leverage']:
             count = bucket_counts.get(bucket, 0)
-            emoji = {'mega_chalk': 'ðŸ”´', 'chalk': 'ðŸŸ ', 'pivot': 'ðŸŸ¢', 
-                    'leverage': 'ðŸ”µ', 'super_leverage': 'ðŸŸ£'}.get(bucket, '')
+            emoji = {'mega_chalk': '🔴', 'chalk': '🟠', 'pivot': '🟢', 
+                    'leverage': '🔵', 'super_leverage': '🟣'}.get(bucket, '')
             st.write(f"{emoji} {bucket}: {count}")
     
     with col2:
@@ -1342,7 +1342,7 @@ if uploaded_file is not None:
     
     # Optimization Section
     st.markdown("---")
-    st.markdown("## ðŸš€ Lineup Generation")
+    st.markdown("## 🚀 Lineup Generation")
     
     col1, col2, col3 = st.columns(3)
     
@@ -1357,7 +1357,7 @@ if uploaded_file is not None:
         )
     
     with col3:
-        if st.button("ðŸŽ¯ Generate Optimized Lineups", type="primary", use_container_width=True):
+        if st.button("🎯 Generate Optimized Lineups", type="primary", use_container_width=True):
             
             # Initialize optimizer
             optimizer = DualAIOptimizer(df, game_info, api_manager)
@@ -1367,23 +1367,23 @@ if uploaded_file is not None:
                 rec1, rec2 = optimizer.get_ai_strategies(use_api=use_api)
             
             # Display AI insights
-            with st.expander("ðŸ§  AI Strategic Insights", expanded=True):
+            with st.expander("🧠 AI Strategic Insights", expanded=True):
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.markdown("### ðŸŽ¯ Game Theory AI")
+                    st.markdown("### 🎯 Game Theory AI")
                     st.metric("Confidence", f"{rec1.confidence:.0%}")
                     
                     if rec1.captain_targets:
                         st.markdown("**Leverage Captains:**")
                         for captain in rec1.captain_targets[:3]:
                             own = df[df['Player'] == captain]['Ownership'].values[0] if captain in df['Player'].values else 5
-                            st.write(f"â€¢ {captain} ({own:.0f}%)")
+                            st.write(f"• {captain} ({own:.0f}%)")
                     
                     if rec1.fades:
                         st.markdown("**Fade Targets:**")
                         for fade in rec1.fades[:3]:
-                            st.write(f"â€¢ {fade}")
+                            st.write(f"• {fade}")
                     
                     if rec1.key_insights:
                         st.markdown("**Key Insights:**")
@@ -1391,7 +1391,7 @@ if uploaded_file is not None:
                             st.info(insight)
                 
                 with col2:
-                    st.markdown("### ðŸ”— Correlation AI")
+                    st.markdown("### 🔗 Correlation AI")
                     st.metric("Confidence", f"{rec2.confidence:.0%}")
                     
                     if rec2.stacks:
@@ -1401,7 +1401,7 @@ if uploaded_file is not None:
                                 p1 = stack.get('player1', '')
                                 p2 = stack.get('player2', '')
                                 if p1 and p2:
-                                    st.write(f"â€¢ {p1} + {p2}")
+                                    st.write(f"• {p1} + {p2}")
                     
                     if rec2.key_insights:
                         st.markdown("**Key Insights:**")
@@ -1415,9 +1415,9 @@ if uploaded_file is not None:
                 )
             
             if lineups_df.empty:
-                st.error("âŒ No valid lineups could be generated. Try adjusting constraints.")
+                st.error("❌ No valid lineups could be generated. Try adjusting constraints.")
             else:
-                st.success(f"âœ… Generated {len(lineups_df)} lineups successfully!")
+                st.success(f"✅ Generated {len(lineups_df)} lineups successfully!")
                 
                 # Calculate correlations for simulations
                 correlations = optimizer.correlation_engine.calculate_dynamic_correlations(df, game_info)
@@ -1478,7 +1478,7 @@ if uploaded_file is not None:
         df = st.session_state['df']
         
         st.markdown("---")
-        st.markdown("## ðŸ“Š Optimization Results")
+        st.markdown("## 📊 Optimization Results")
         
         # Summary metrics
         col1, col2, col3, col4, col5 = st.columns(5)
@@ -1496,7 +1496,7 @@ if uploaded_file is not None:
         
         # Results tabs
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "ðŸ“‹ Lineups", "ðŸ”„ Captain Pivots", "ðŸ“ˆ Analysis", "ðŸŽ¯ Top Plays", "ðŸ’¾ Export"
+            "📋 Lineups", "🔄 Captain Pivots", "📈 Analysis", "🎯 Top Plays", "💾 Export"
         ])
         
         with tab1:
@@ -1535,12 +1535,12 @@ if uploaded_file is not None:
                         
                         with col1:
                             st.markdown("**Roster:**")
-                            st.write(f"ðŸŽ¯ **Captain:** {lineup['Captain']}")
+                            st.write(f"🎯 **Captain:** {lineup['Captain']}")
                             st.write("**FLEX:**")
                             for player in lineup['FLEX']:
                                 pos = df[df['Player'] == player]['Position'].values[0] if player in df['Player'].values else '??'
                                 own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
-                                st.write(f"â€¢ {player} ({pos}) - {own:.0f}%")
+                                st.write(f"• {player} ({pos}) - {own:.0f}%")
                         
                         with col2:
                             st.markdown("**Projections:**")
@@ -1552,11 +1552,11 @@ if uploaded_file is not None:
                         
                         with col3:
                             st.markdown("**Metrics:**")
-                            st.write(f"ðŸ’° Salary: ${lineup['Salary']:,} (${lineup['Salary_Remaining']} left)")
-                            st.write(f"ðŸ“Š {lineup['Bucket_Summary']}")
-                            st.write(f"ðŸŽ¯ Leverage Score: {lineup['Leverage_Score']:.1f}")
+                            st.write(f"💰 Salary: ${lineup['Salary']:,} (${lineup['Salary_Remaining']} left)")
+                            st.write(f"📊 {lineup['Bucket_Summary']}")
+                            st.write(f"🎯 Leverage Score: {lineup['Leverage_Score']:.1f}")
                             if lineup['Has_Stack']:
-                                st.success(f"âœ… Stack: {lineup['Stack_Details']}")
+                                st.success(f"✅ Stack: {lineup['Stack_Details']}")
             
             else:  # Compact
                 # Simple lineup display
@@ -1574,7 +1574,7 @@ if uploaded_file is not None:
                 for idx, pivot in pivots_df.iterrows():
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.write(f"**Original:** {pivot['Original_Captain']} â†’ **New:** {pivot['Captain']}")
+                        st.write(f"**Original:** {pivot['Original_Captain']} → **New:** {pivot['Captain']}")
                     with col2:
                         st.write(f"Ownership Change: {pivot['Ownership_Delta']:+.1f}%")
                     with col3:
@@ -1697,15 +1697,15 @@ if uploaded_file is not None:
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("#### ðŸŽ¯ Most Used Captains")
+                st.markdown("#### 🎯 Most Used Captains")
                 captain_usage = lineups_df['Captain'].value_counts().head(10)
                 for player, count in captain_usage.items():
                     own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
                     pct = count / len(lineups_df) * 100
-                    st.write(f"â€¢ {player} ({own:.0f}% own) - {count} lineups ({pct:.0f}%)")
+                    st.write(f"• {player} ({own:.0f}% own) - {count} lineups ({pct:.0f}%)")
             
             with col2:
-                st.markdown("#### ðŸ”— Most Common Stacks")
+                st.markdown("#### 🔗 Most Common Stacks")
                 stack_counts = defaultdict(int)
                 
                 for idx, row in lineups_df.iterrows():
@@ -1718,11 +1718,11 @@ if uploaded_file is not None:
                     sorted_stacks = sorted(stack_counts.items(), key=lambda x: x[1], reverse=True)
                     for stack, count in sorted_stacks[:10]:
                         pct = count / len(lineups_df) * 100
-                        st.write(f"â€¢ {stack} - {count} lineups ({pct:.0f}%)")
+                        st.write(f"• {stack} - {count} lineups ({pct:.0f}%)")
                 else:
                     st.info("No stacks found in lineups")
             
-            st.markdown("#### ðŸ’Ž Hidden Gems (Low Owned, High Usage)")
+            st.markdown("#### 💎 Hidden Gems (Low Owned, High Usage)")
             
             # Find players with low ownership but high usage in lineups
             player_usage = defaultdict(int)
@@ -1741,12 +1741,12 @@ if uploaded_file is not None:
                 gems.sort(key=lambda x: x[2], reverse=True)
                 for player, own, usage in gems[:10]:
                     pct = usage / len(lineups_df) * 100
-                    st.write(f"â€¢ {player} ({own:.0f}% own) - {usage} lineups ({pct:.0f}%)")
+                    st.write(f"• {player} ({own:.0f}% own) - {usage} lineups ({pct:.0f}%)")
             else:
                 st.info("No hidden gems found")
         
         with tab5:
-            st.markdown("### ðŸ’¾ Export Lineups")
+            st.markdown("### 💾 Export Lineups")
             
             col1, col2 = st.columns(2)
             
@@ -1775,7 +1775,7 @@ if uploaded_file is not None:
                 # Download button
                 csv = dk_df.to_csv(index=False)
                 st.download_button(
-                    label="ðŸ“¥ Download DraftKings CSV",
+                    label="📥 Download DraftKings CSV",
                     data=csv,
                     file_name=f"dk_lineups_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
@@ -1817,7 +1817,7 @@ if uploaded_file is not None:
                 # Download button
                 csv_full = final_export.to_csv(index=False)
                 st.download_button(
-                    label="ðŸ“Š Download Full Analysis",
+                    label="📊 Download Full Analysis",
                     data=csv_full,
                     file_name=f"lineup_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
@@ -1826,15 +1826,15 @@ if uploaded_file is not None:
 # Footer
 st.markdown("---")
 st.markdown("""
-### ðŸ“š NFL Showdown Optimizer - Professional Edition
+### 📚 NFL Showdown Optimizer - Professional Edition
 
 **Features:**
-- ðŸ¤– Dual AI Strategy System (Game Theory + Correlation)
-- ðŸ“Š Advanced ownership bucketing and leverage scoring
-- ðŸŽ¯ Captain pivoting for lineup uniqueness
-- ðŸ“ˆ Monte Carlo simulations with player correlations
-- ðŸ† Tournament-optimized lineup generation
-- ðŸ’¾ DraftKings-ready export formats
+- 🤖 Dual AI Strategy System (Game Theory + Correlation)
+- 📊 Advanced ownership bucketing and leverage scoring
+- 🎯 Captain pivoting for lineup uniqueness
+- 📈 Monte Carlo simulations with player correlations
+- 🏆 Tournament-optimized lineup generation
+- 💾 DraftKings-ready export formats
 
 **Quick Tips:**
 - Use API mode for faster optimization
@@ -1844,7 +1844,7 @@ st.markdown("""
 
 **Version:** 4.0 Professional | **Model:** Claude 3 Haiku
 
-*Good luck with your lineups!* ðŸš€
+*Good luck with your lineups!* 🚀
 """)
 
 st.caption(f"Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
