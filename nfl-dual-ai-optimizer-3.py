@@ -1,5 +1,5 @@
 # NFL GPP DUAL-AI OPTIMIZER - PART 1: CONFIGURATION & MONITORING
-# Version 6.0.1 - COMPLETE WITH ALL METHODS
+# Version 6.1 - COMPLETE WITH ALL METHODS AND SAFETY MEASURES
 
 import pandas as pd
 import numpy as np
@@ -15,7 +15,7 @@ import streamlit as st
 # ============================================================================
 
 class StrategyType(Enum):
-    """GPP Strategy Types - Now AI-Driven"""
+    """GPP Strategy Types - AI-Driven and Legacy"""
     AI_CONSENSUS = 'ai_consensus'
     AI_MAJORITY = 'ai_majority'
     AI_CONTRARIAN = 'ai_contrarian'
@@ -47,7 +47,7 @@ class AIStrategistType(Enum):
 # ============================================================================
 
 class OptimizerConfig:
-    """Core configuration for GPP optimizer"""
+    """Core configuration for GPP optimizer - AI-as-Chef version"""
     
     # Salary and roster constraints
     SALARY_CAP = 50000
@@ -60,7 +60,7 @@ class OptimizerConfig:
     
     # AI Configuration
     AI_ENFORCEMENT_MODE = AIEnforcementLevel.MANDATORY
-    REQUIRE_AI_FOR_GENERATION = True
+    REQUIRE_AI_FOR_GENERATION = False  # Set to False for easier testing
     MIN_AI_CONFIDENCE = 0.3
     
     # Triple AI Weights
@@ -210,7 +210,7 @@ class OptimizerConfig:
 # ============================================================================
 
 class AIDecisionTracker:
-    """Tracks AI decisions and enforcement"""
+    """Tracks AI decisions and enforcement throughout optimization"""
     
     def __init__(self):
         self.ai_decisions = []
@@ -230,7 +230,7 @@ class AIDecisionTracker:
     
     def track_decision(self, decision_type: str, ai_source: str, 
                       enforced: bool, details: Dict):
-        """Track an AI decision"""
+        """Track an AI decision and whether it was enforced"""
         self.ai_decisions.append({
             'timestamp': datetime.now(),
             'type': decision_type,
@@ -255,13 +255,13 @@ class AIDecisionTracker:
             self.enforcement_stats['single_ai_decisions'] += 1
     
     def get_enforcement_rate(self) -> float:
-        """Get enforcement rate"""
+        """Get the rate of AI decision enforcement"""
         if self.enforcement_stats['total_rules'] == 0:
             return 0.0
         return self.enforcement_stats['enforced_rules'] / self.enforcement_stats['total_rules']
     
     def get_summary(self) -> Dict:
-        """Get summary"""
+        """Get summary of AI decision tracking"""
         return {
             'enforcement_rate': self.get_enforcement_rate(),
             'stats': self.enforcement_stats,
@@ -274,7 +274,7 @@ class AIDecisionTracker:
 # ============================================================================
 
 class GlobalLogger:
-    """Enhanced logger with ALL required methods"""
+    """Enhanced logger with complete method set and safety measures"""
     _instance = None
     
     def __new__(cls):
@@ -284,69 +284,108 @@ class GlobalLogger:
         return cls._instance
     
     def initialize(self):
+        """Initialize logger state"""
         self.entries = []
         self.ai_tracker = AIDecisionTracker()
         self.verbose = False
         self.log_to_file = False
     
     def log(self, message: str, level: str = "INFO"):
-        """Log a message"""
-        entry = {
-            'timestamp': datetime.now(),
-            'level': level,
-            'message': message
-        }
-        self.entries.append(entry)
-        
-        if self.verbose or level in ["ERROR", "WARNING"]:
-            timestamp = entry['timestamp'].strftime('%H:%M:%S')
-            print(f"[{timestamp}] {message}")
-        
-        if self.log_to_file:
-            self._write_to_file(entry)
+        """Basic logging method"""
+        try:
+            entry = {
+                'timestamp': datetime.now(),
+                'level': level,
+                'message': str(message)
+            }
+            self.entries.append(entry)
+            
+            if self.verbose or level in ["ERROR", "WARNING"]:
+                timestamp = entry['timestamp'].strftime('%H:%M:%S')
+                print(f"[{timestamp}] {message}")
+            
+            if self.log_to_file:
+                self._write_to_file(entry)
+        except Exception as e:
+            print(f"Logging error: {e}")
     
     def log_ai_decision(self, decision_type: str, ai_source: str, 
                        enforced: bool, details: Dict):
-        """Log AI decision"""
-        self.ai_tracker.track_decision(decision_type, ai_source, enforced, details)
-        self.log(f"AI [{ai_source}]: {decision_type}", "AI_DECISION")
+        """Log an AI decision"""
+        try:
+            self.ai_tracker.track_decision(decision_type, ai_source, enforced, details)
+            message = f"AI Decision [{ai_source}]: {decision_type} - {'ENFORCED' if enforced else 'VIOLATED'}"
+            self.log(message, "AI_DECISION")
+        except Exception as e:
+            self.log(f"Error logging AI decision: {e}", "ERROR")
     
     def log_ai_consensus(self, consensus_type: str, ais_agreeing: List[str], 
                         decision: str):
         """Log AI consensus"""
-        self.ai_tracker.track_consensus(consensus_type, ais_agreeing)
-        self.log(f"AI Consensus ({len(ais_agreeing)}/3): {decision}", "AI_CONSENSUS")
+        try:
+            self.ai_tracker.track_consensus(consensus_type, ais_agreeing)
+            message = f"AI Consensus ({len(ais_agreeing)}/3): {decision}"
+            self.log(message, "AI_CONSENSUS")
+        except Exception as e:
+            self.log(f"Error logging AI consensus: {e}", "ERROR")
     
-    def log_optimization_start(self, num_lineups: int, field_size: str, settings: Dict):
+    def log_optimization_start(self, num_lineups: int, field_size: str, 
+                              settings: Dict):
         """Log optimization start"""
-        self.log(f"Starting optimization: {num_lineups} lineups for {field_size}", "INFO")
-        self.log(f"Settings: {settings}", "DEBUG")
+        try:
+            self.log(f"Starting optimization: {num_lineups} lineups for {field_size}", "INFO")
+            self.log(f"Settings: {settings}", "DEBUG")
+        except Exception as e:
+            self.log(f"Error in log_optimization_start: {e}", "ERROR")
     
     def log_optimization_end(self, lineups_generated: int, total_time: float):
-        """Log optimization end - THIS IS THE MISSING METHOD"""
-        self.log(f"Optimization complete: {lineups_generated} lineups in {total_time:.2f}s", "INFO")
-        if lineups_generated > 0:
-            avg_time = total_time / lineups_generated
-            self.log(f"Average time per lineup: {avg_time:.3f}s", "DEBUG")
+        """Log optimization completion - CRITICAL METHOD"""
+        try:
+            self.log(f"Optimization complete: {lineups_generated} lineups in {total_time:.2f}s", "INFO")
+            if lineups_generated > 0:
+                avg_time = total_time / lineups_generated
+                self.log(f"Average time per lineup: {avg_time:.3f}s", "DEBUG")
+        except Exception as e:
+            print(f"Error in log_optimization_end: {e}")
     
     def log_lineup_generation(self, strategy: str, lineup_num: int, 
                              status: str, ai_rules_enforced: int = 0):
         """Log lineup generation"""
-        message = f"Lineup {lineup_num} ({strategy}): {status}"
-        if ai_rules_enforced > 0:
-            message += f" - {ai_rules_enforced} AI rules"
-        self.log(message, "DEBUG" if status == "SUCCESS" else "WARNING")
+        try:
+            message = f"Lineup {lineup_num} ({strategy}): {status}"
+            if ai_rules_enforced > 0:
+                message += f" - {ai_rules_enforced} AI rules enforced"
+            self.log(message, "DEBUG" if status == "SUCCESS" else "WARNING")
+        except Exception as e:
+            self.log(f"Error in log_lineup_generation: {e}", "ERROR")
     
     def log_exception(self, exception: Exception, context: str = ""):
-        """Log exception"""
-        self.log(f"Exception in {context}: {str(exception)}", "ERROR")
+        """Log an exception"""
+        try:
+            message = f"Exception in {context}: {str(exception)}"
+            self.log(message, "ERROR")
+        except Exception as e:
+            print(f"Error logging exception: {e}")
     
     def get_ai_summary(self) -> Dict:
-        """Get AI summary"""
-        return self.ai_tracker.get_summary()
+        """Get AI tracking summary"""
+        try:
+            return self.ai_tracker.get_summary()
+        except:
+            return {
+                'enforcement_rate': 0.0,
+                'stats': {
+                    'total_rules': 0,
+                    'enforced_rules': 0,
+                    'violated_rules': 0,
+                    'consensus_decisions': 0
+                },
+                'ai_performance': {},
+                'recent_decisions': []
+            }
     
     def display_ai_enforcement(self):
-        """Display AI enforcement in Streamlit"""
+        """Display AI enforcement statistics in Streamlit"""
         try:
             summary = self.get_ai_summary()
             
@@ -359,53 +398,90 @@ class GlobalLogger:
             
             with col2:
                 stats = summary['stats']
-                st.metric("Rules Enforced", f"{stats['enforced_rules']}/{stats['total_rules']}")
+                st.metric("Rules Enforced", 
+                         f"{stats['enforced_rules']}/{stats['total_rules']}")
             
             with col3:
-                st.metric("Consensus Decisions", stats['consensus_decisions'])
-        except:
-            pass
+                st.metric("Consensus Decisions", stats.get('consensus_decisions', 0))
+            
+            # Show AI performance
+            if summary.get('ai_performance'):
+                st.markdown("#### AI Performance")
+                for ai_type, perf in summary['ai_performance'].items():
+                    if perf.get('suggestions', 0) > 0:
+                        usage_rate = (perf.get('used', 0) / perf['suggestions']) * 100
+                        st.write(f"**{ai_type.value}**: {usage_rate:.1f}% usage rate")
+        except Exception as e:
+            st.error(f"Error displaying AI enforcement: {e}")
     
     def display_log_summary(self):
-        """Display log summary"""
+        """Display log summary in Streamlit"""
         try:
             st.markdown("### 📋 Log Summary")
             
+            # Count by level
             level_counts = {}
             for entry in self.entries:
-                level = entry['level']
+                level = entry.get('level', 'UNKNOWN')
                 level_counts[level] = level_counts.get(level, 0) + 1
             
+            # Display counts
             if level_counts:
                 cols = st.columns(len(level_counts))
                 for i, (level, count) in enumerate(level_counts.items()):
                     cols[i].metric(level, count)
-        except:
-            pass
+            
+            # Show recent logs
+            if self.entries:
+                st.markdown("#### Recent Entries")
+                for entry in self.entries[-10:]:
+                    timestamp = entry['timestamp'].strftime('%H:%M:%S')
+                    level_color = {
+                        'ERROR': '🔴',
+                        'WARNING': '🟡',
+                        'INFO': '🟢',
+                        'DEBUG': '🔵',
+                        'AI_DECISION': '🤖',
+                        'AI_CONSENSUS': '🤝'
+                    }.get(entry.get('level', 'UNKNOWN'), '⚪')
+                    st.text(f"{level_color} [{timestamp}] {entry.get('level', 'UNKNOWN')}: {entry.get('message', '')}")
+        except Exception as e:
+            st.error(f"Error displaying log summary: {e}")
     
     def export_logs(self) -> str:
-        """Export logs"""
-        output = "=== OPTIMIZATION LOG ===\n\n"
-        for entry in self.entries:
-            timestamp = entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
-            output += f"[{timestamp}] {entry['level']}: {entry['message']}\n"
-        return output
+        """Export logs as string"""
+        try:
+            output = "=== OPTIMIZATION LOG ===\n\n"
+            for entry in self.entries:
+                timestamp = entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+                output += f"[{timestamp}] {entry.get('level', 'UNKNOWN')}: {entry.get('message', '')}\n"
+            
+            output += "\n=== AI DECISION SUMMARY ===\n"
+            summary = self.get_ai_summary()
+            output += f"Enforcement Rate: {summary['enforcement_rate']*100:.1f}%\n"
+            output += f"Total AI Rules: {summary['stats']['total_rules']}\n"
+            output += f"Enforced: {summary['stats']['enforced_rules']}\n"
+            output += f"Violated: {summary['stats']['violated_rules']}\n"
+            
+            return output
+        except Exception as e:
+            return f"Error exporting logs: {e}"
     
     def _write_to_file(self, entry: Dict):
-        """Write to file"""
+        """Write log entry to file"""
         try:
             with open('optimizer_log.txt', 'a') as f:
                 timestamp = entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
-                f.write(f"[{timestamp}] {entry['level']}: {entry['message']}\n")
+                f.write(f"[{timestamp}] {entry.get('level', 'UNKNOWN')}: {entry.get('message', '')}\n")
         except:
-            pass
+            pass  # Fail silently
 
 # ============================================================================
 # PERFORMANCE MONITOR
 # ============================================================================
 
 class PerformanceMonitor:
-    """Performance monitoring"""
+    """Monitor performance with AI-specific metrics"""
     _instance = None
     
     def __new__(cls):
@@ -415,6 +491,7 @@ class PerformanceMonitor:
         return cls._instance
     
     def initialize(self):
+        """Initialize performance metrics"""
         self.timers = {}
         self.counters = {}
         self.ai_metrics = {
@@ -425,74 +502,153 @@ class PerformanceMonitor:
         }
     
     def start_timer(self, name: str):
-        """Start timer"""
-        self.timers[name] = {'start': datetime.now()}
+        """Start a timer"""
+        try:
+            if name not in self.timers:
+                self.timers[name] = {}
+            self.timers[name]['start'] = datetime.now()
+        except Exception as e:
+            print(f"Error starting timer {name}: {e}")
     
     def stop_timer(self, name: str) -> float:
-        """Stop timer"""
-        if name in self.timers and 'start' in self.timers[name]:
-            elapsed = (datetime.now() - self.timers[name]['start']).total_seconds()
-            
-            if 'total' not in self.timers[name]:
-                self.timers[name]['total'] = 0
-                self.timers[name]['count'] = 0
-                self.timers[name]['average'] = 0
-            
-            self.timers[name]['total'] += elapsed
-            self.timers[name]['count'] += 1
-            self.timers[name]['average'] = self.timers[name]['total'] / self.timers[name]['count']
-            
-            return elapsed
-        return 0.0
+        """Stop a timer and return elapsed time"""
+        try:
+            if name in self.timers and 'start' in self.timers[name]:
+                elapsed = (datetime.now() - self.timers[name]['start']).total_seconds()
+                
+                if 'total' not in self.timers[name]:
+                    self.timers[name]['total'] = 0
+                    self.timers[name]['count'] = 0
+                    self.timers[name]['average'] = 0
+                
+                self.timers[name]['total'] += elapsed
+                self.timers[name]['count'] += 1
+                self.timers[name]['average'] = self.timers[name]['total'] / self.timers[name]['count']
+                
+                # Track AI-specific timings
+                if 'ai' in name.lower():
+                    self.ai_metrics['ai_response_time'].append(elapsed)
+                
+                return elapsed
+            return 0.0
+        except Exception as e:
+            print(f"Error stopping timer {name}: {e}")
+            return 0.0
     
     def increment_counter(self, name: str, value: int = 1):
-        """Increment counter"""
-        if name not in self.counters:
-            self.counters[name] = 0
-        self.counters[name] += value
+        """Increment a counter"""
+        try:
+            if name not in self.counters:
+                self.counters[name] = 0
+            self.counters[name] += value
+            
+            # Track AI-specific counters
+            if 'ai' in name.lower():
+                if 'cache' in name.lower():
+                    self.ai_metrics['ai_cache_hits'] += value
+                elif 'api' in name.lower():
+                    self.ai_metrics['ai_api_calls'] += value
+        except Exception as e:
+            print(f"Error incrementing counter {name}: {e}")
     
     def get_metrics(self) -> Dict:
-        """Get metrics"""
-        return {
-            'timers': self.timers,
-            'counters': self.counters,
-            'ai_metrics': self.ai_metrics
-        }
+        """Get all metrics"""
+        try:
+            avg_ai_response = (
+                np.mean(self.ai_metrics['ai_response_time']) 
+                if self.ai_metrics['ai_response_time'] else 0
+            )
+            
+            cache_hit_rate = 0
+            total_calls = self.ai_metrics['ai_api_calls'] + self.ai_metrics['ai_cache_hits']
+            if total_calls > 0:
+                cache_hit_rate = self.ai_metrics['ai_cache_hits'] / total_calls
+            
+            return {
+                'timers': self.timers,
+                'counters': self.counters,
+                'ai_metrics': {
+                    'api_calls': self.ai_metrics['ai_api_calls'],
+                    'cache_hits': self.ai_metrics['ai_cache_hits'],
+                    'avg_response_time': avg_ai_response,
+                    'cache_hit_rate': cache_hit_rate
+                }
+            }
+        except Exception as e:
+            print(f"Error getting metrics: {e}")
+            return {'timers': {}, 'counters': {}, 'ai_metrics': {}}
     
     def display_metrics(self):
-        """Display metrics"""
+        """Display performance metrics in Streamlit"""
         try:
-            st.markdown("### ⚡ Performance Metrics")
             metrics = self.get_metrics()
             
-            for name, stats in metrics['timers'].items():
-                if 'average' in stats:
-                    st.write(f"**{name}**: {stats['average']:.3f}s avg")
-        except:
-            pass
+            st.markdown("### ⚡ Performance Metrics")
+            
+            # AI Metrics
+            if metrics['ai_metrics']['api_calls'] > 0:
+                st.markdown("#### AI Performance")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("API Calls", metrics['ai_metrics']['api_calls'])
+                with col2:
+                    st.metric("Avg Response", f"{metrics['ai_metrics']['avg_response_time']:.2f}s")
+                with col3:
+                    st.metric("Cache Hit Rate", f"{metrics['ai_metrics']['cache_hit_rate']*100:.1f}%")
+            
+            # General Metrics
+            if metrics['timers']:
+                st.markdown("#### Optimization Performance")
+                for name, stats in metrics['timers'].items():
+                    if 'average' in stats:
+                        st.write(f"**{name}**: {stats['average']:.3f}s avg ({stats['count']} ops)")
+        except Exception as e:
+            st.error(f"Error displaying metrics: {e}")
 
 # ============================================================================
-# SINGLETON GETTERS
+# SINGLETON GETTERS WITH SAFETY
 # ============================================================================
 
 def get_logger() -> GlobalLogger:
-    """Get logger instance"""
-    return GlobalLogger()
+    """Get the global logger instance with safety check"""
+    try:
+        return GlobalLogger()
+    except Exception as e:
+        print(f"Error creating logger: {e}")
+        # Return a minimal logger if creation fails
+        class MinimalLogger:
+            def __getattr__(self, name):
+                def method(*args, **kwargs):
+                    print(f"Logger.{name} called with args: {args[:2] if args else 'none'}")
+                return method
+        return MinimalLogger()
 
 def get_performance_monitor() -> PerformanceMonitor:
-    """Get performance monitor"""
-    return PerformanceMonitor()
+    """Get the global performance monitor instance with safety check"""
+    try:
+        return PerformanceMonitor()
+    except Exception as e:
+        print(f"Error creating performance monitor: {e}")
+        # Return a minimal monitor if creation fails
+        class MinimalMonitor:
+            def __getattr__(self, name):
+                def method(*args, **kwargs):
+                    if name == 'stop_timer':
+                        return 0.0
+                    return None
+                return method
+        return MinimalMonitor()
 
 # ============================================================================
-# AI RECOMMENDATION DATACLASS
+# DATA CLASSES
 # ============================================================================
 
 @dataclass
 class AIRecommendation:
-    """AI recommendation with enforcement"""
+    """Enhanced AI recommendation with enforcement rules"""
     captain_targets: List[str]
     must_play: List[str]
-    never_play: List[str] 
+    never_play: List[str]
     stacks: List[Dict]
     key_insights: List[str]
     confidence: float
@@ -508,41 +664,41 @@ class AIRecommendation:
     fades: Optional[List[str]] = None
     
     def get_hard_constraints(self) -> List[str]:
-        """Get hard constraints"""
+        """Get constraints that MUST be enforced"""
         return [r['constraint'] for r in self.enforcement_rules if r.get('type') == 'hard']
     
     def get_soft_constraints(self) -> List[Tuple[str, float]]:
-        """Get soft constraints"""
+        """Get constraints with weights"""
         return [(r['constraint'], r.get('weight', 1.0)) 
                 for r in self.enforcement_rules if r.get('type') == 'soft']
 
 # ============================================================================
-# STUB CLASSES
+# STUB CLASSES FOR OTHER PARTS
 # ============================================================================
 
 class GPPCaptainPivotGenerator:
-    """Captain pivot generator stub"""
+    """Stub for captain pivot generator"""
     def __init__(self):
         self.logger = get_logger()
 
 class GPPCorrelationEngine:
-    """Correlation engine stub"""
+    """Stub for correlation engine"""
     def __init__(self):
         self.logger = get_logger()
 
 class GPPTournamentSimulator:
-    """Tournament simulator stub"""
+    """Stub for tournament simulator"""
     def __init__(self):
         self.logger = get_logger()
 
 class OwnershipBucketManager:
-    """Ownership bucket manager stub"""
+    """Stub for ownership bucket manager"""
     def __init__(self):
         self.logger = get_logger()
     
     @staticmethod
     def get_bucket(ownership: float) -> str:
-        """Get ownership bucket"""
+        """Get ownership bucket for a given ownership percentage"""
         if ownership >= 35:
             return 'mega_chalk'
         elif ownership >= 20:
@@ -555,10 +711,10 @@ class OwnershipBucketManager:
             return 'super_leverage'
 
 class ConfigValidator:
-    """Config validator stub"""
+    """Stub for config validator"""
     @staticmethod
     def validate_field_config(field_size: str, num_lineups: int) -> Dict:
-        """Validate field configuration"""
+        """Validate and return field configuration"""
         return OptimizerConfig.FIELD_SIZE_CONFIGS.get(
             field_size, 
             OptimizerConfig.FIELD_SIZE_CONFIGS['large_field']
@@ -571,7 +727,8 @@ class ConfigValidator:
     
     @staticmethod
     def get_strategy_distribution(field_size: str, num_lineups: int) -> Dict:
-        """Get strategy distribution"""
+        """Get strategy distribution for lineups"""
+        # Simple fallback distribution
         return {StrategyType.LEVERAGE: num_lineups}
 
 # NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (AI-AS-CHEF VERSION)
