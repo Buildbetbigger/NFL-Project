@@ -1818,14 +1818,216 @@ class GPPDualAIOptimizer:
         
         return pd.DataFrame(all_lineups)
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS (COMPLETE & CORRECTED)
+# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS (CORRECTED)
+
+# ============================================================================
+# DATA VALIDATION AND INTEGRITY CHECKS
+# ============================================================================
+
+def validate_lineup_data(df: pd.DataFrame) -> Tuple[bool, List[str], Dict[str, Any]]:
+    """
+    Comprehensive data validation for lineup generation
+    Returns: (is_valid, issues_list, data_stats)
+    """
+    issues = []
+    warnings = []
+    data_stats = {}
+    
+    # Basic size check
+    data_stats['total_players'] = len(df)
+    if len(df) < 12:
+        issues.append(f"Critical: Only {len(df)} players found - need at least 12 for valid lineups")
+    elif len(df) < 20:
+        warnings.append(f"Warning: Only {len(df)} players - limited lineup diversity possible")
+    
+    # Check for required columns
+    required_columns = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        issues.append(f"Critical: Missing required columns: {missing_columns}")
+        return False, issues, data_stats
+    
+    # Check for missing values
+    for col in required_columns:
+        null_count = df[col].isna().sum()
+        if null_count > 0:
+            issues.append(f"Critical: {null_count} missing values in {col}")
+    
+    # Validate data types and ranges
+    if not df['Salary'].isna().all():
+        salary_issues = df[df['Salary'] < OptimizerConfig.MIN_SALARY]
+        if len(salary_issues) > 0:
+            issues.append(f"Critical: {len(salary_issues)} players with salary below minimum (${OptimizerConfig.MIN_SALARY})")
+        
+        data_stats['avg_salary'] = df['Salary'].mean()
+        data_stats['min_salary'] = df['Salary'].min()
+        data_stats['max_salary'] = df['Salary'].max()
+    
+    # Validate projections
+    if not df['Projected_Points'].isna().all():
+        negative_projections = df[df['Projected_Points'] < 0]
+        if len(negative_projections) > 0:
+            issues.append(f"Critical: {len(negative_projections)} players with negative projections")
+        
+        zero_projections = df[df['Projected_Points'] == 0]
+        if len(zero_projections) > 0:
+            warnings.append(f"Warning: {len(zero_projections)} players with zero projections")
+        
+        data_stats['avg_projection'] = df['Projected_Points'].mean()
+        data_stats['max_projection'] = df['Projected_Points'].max()
+    
+    # Team validation
+    teams = df['Team'].unique()
+    data_stats['num_teams'] = len(teams)
+    
+    if len(teams) != 2:
+        issues.append(f"Critical: Found {len(teams)} teams - Showdown requires exactly 2 teams")
+    else:
+        team_counts = df['Team'].value_counts()
+        for team, count in team_counts.items():
+            if count < 5:
+                issues.append(f"Critical: Team {team} has only {count} players - need at least 5 per team")
+            data_stats[f'{team}_players'] = count
+    
+    # Position distribution check
+    position_counts = df['Position'].value_counts()
+    data_stats['positions'] = position_counts.to_dict()
+    
+    essential_positions = ['QB', 'RB', 'WR']
+    for pos in essential_positions:
+        if pos not in position_counts or position_counts[pos] == 0:
+            issues.append(f"Critical: No {pos} players in pool")
+        elif position_counts[pos] < 2:
+            warnings.append(f"Warning: Only {position_counts[pos]} {pos} player(s)")
+    
+    # Ownership validation (if present)
+    if 'Ownership' in df.columns:
+        ownership_sum = df['Ownership'].sum()
+        if ownership_sum > 0:  # Only check if ownership is provided
+            # Check if ownership sums to reasonable amount (should be ~600% for 6 players)
+            if ownership_sum < 400 or ownership_sum > 800:
+                warnings.append(f"Warning: Total ownership sums to {ownership_sum:.1f}% (expected ~600%)")
+            
+            # Check for unrealistic ownership values
+            unrealistic_high = df[df['Ownership'] > 60]
+            if len(unrealistic_high) > 0:
+                warnings.append(f"Warning: {len(unrealistic_high)} players with >60% ownership")
+            
+            data_stats['avg_ownership'] = df['Ownership'].mean()
+            data_stats['total_ownership'] = ownership_sum
+    
+    # Salary cap feasibility check
+    min_possible_salary = df.nsmallest(6, 'Salary')['Salary'].sum()
+    if min_possible_salary > OptimizerConfig.SALARY_CAP:
+        issues.append(f"Critical: Impossible to create valid lineup - minimum salary {min_possible_salary} exceeds cap")
+    
+    # Check for duplicate players
+    duplicate_players = df[df.duplicated(subset=['Player'], keep=False)]
+    if len(duplicate_players) > 0:
+        unique_dups = duplicate_players['Player'].unique()
+        issues.append(f"Critical: {len(unique_dups)} duplicate player(s): {', '.join(unique_dups[:5])}")
+    
+    # Compile results
+    is_valid = len(issues) == 0
+    all_messages = issues + warnings
+    
+    return is_valid, all_messages, data_stats
+
+def auto_fix_common_issues(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Automatically fix common data issues where possible
+    """
+    df_fixed = df.copy()
+    fixes_applied = []
+    
+    # Remove duplicates (keep highest projection)
+    if df_fixed.duplicated(subset=['Player']).any():
+        df_fixed = df_fixed.sort_values('Projected_Points', ascending=False).drop_duplicates(subset=['Player'])
+        fixes_applied.append("Removed duplicate players (kept highest projection)")
+    
+    # Fill missing ownership with default
+    if 'Ownership' in df_fixed.columns:
+        missing_own = df_fixed['Ownership'].isna().sum()
+        if missing_own > 0:
+            df_fixed['Ownership'].fillna(OptimizerConfig.DEFAULT_OWNERSHIP, inplace=True)
+            fixes_applied.append(f"Filled {missing_own} missing ownership values with {OptimizerConfig.DEFAULT_OWNERSHIP}%")
+    
+    # Remove players with invalid salaries
+    before_count = len(df_fixed)
+    df_fixed = df_fixed[df_fixed['Salary'] >= OptimizerConfig.MIN_SALARY]
+    removed = before_count - len(df_fixed)
+    if removed > 0:
+        fixes_applied.append(f"Removed {removed} players with invalid salaries")
+    
+    # Remove players with missing critical data
+    before_count = len(df_fixed)
+    df_fixed = df_fixed.dropna(subset=['Player', 'Position', 'Team', 'Salary', 'Projected_Points'])
+    removed = before_count - len(df_fixed)
+    if removed > 0:
+        fixes_applied.append(f"Removed {removed} players with missing critical data")
+    
+    # Display fixes applied
+    if fixes_applied:
+        st.info("Data fixes applied automatically:")
+        for fix in fixes_applied:
+            st.write(f"  ✓ {fix}")
+    
+    return df_fixed
+
+def display_data_validation_results(is_valid: bool, messages: List[str], stats: Dict[str, Any]):
+    """
+    Display validation results in a user-friendly format
+    """
+    if is_valid:
+        st.success("✅ Data validation passed - ready to optimize!")
+    else:
+        st.error("❌ Data validation failed - issues must be resolved")
+    
+    # Show issues and warnings
+    if messages:
+        critical_issues = [msg for msg in messages if msg.startswith("Critical:")]
+        warnings = [msg for msg in messages if msg.startswith("Warning:")]
+        
+        if critical_issues:
+            with st.expander("🚨 Critical Issues (Must Fix)", expanded=True):
+                for issue in critical_issues:
+                    st.error(issue.replace("Critical: ", ""))
+        
+        if warnings:
+            with st.expander("⚠️ Warnings (Should Review)", expanded=not critical_issues):
+                for warning in warnings:
+                    st.warning(warning.replace("Warning: ", ""))
+    
+    # Display data statistics
+    with st.expander("📊 Data Statistics", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Players", stats.get('total_players', 0))
+            st.metric("Teams", stats.get('num_teams', 0))
+            if 'avg_salary' in stats:
+                st.metric("Avg Salary", f"${stats['avg_salary']:,.0f}")
+        
+        with col2:
+            if 'avg_projection' in stats:
+                st.metric("Avg Projection", f"{stats['avg_projection']:.1f}")
+            if 'max_projection' in stats:
+                st.metric("Max Projection", f"{stats['max_projection']:.1f}")
+            if 'avg_ownership' in stats:
+                st.metric("Avg Ownership", f"{stats['avg_ownership']:.1f}%")
+        
+        with col3:
+            if 'positions' in stats:
+                st.write("**Position Counts:**")
+                for pos, count in stats['positions'].items():
+                    st.write(f"{pos}: {count}")
 
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
 def load_and_validate_data(uploaded_file) -> pd.DataFrame:
-    """Load and validate CSV with GPP-specific checks"""
+    """Load and validate CSV with comprehensive GPP-specific checks"""
     df = pd.read_csv(uploaded_file)
     
     # Check required columns
@@ -1834,6 +2036,7 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
     
     if missing_cols:
         st.error(f"Missing required columns: {missing_cols}")
+        st.info("Required columns: first_name, last_name, position, team, salary, ppg_projection")
         st.stop()
     
     # Create player names
@@ -1856,140 +2059,146 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
     df['Salary'] = pd.to_numeric(df['Salary'], errors='coerce')
     df['Projected_Points'] = pd.to_numeric(df['Projected_Points'], errors='coerce')
     
-    # Filter valid data
-    df = df[df['Salary'] >= OptimizerConfig.MIN_SALARY]
-    df = df[df['Projected_Points'] > 0]
-    df = df.dropna(subset=['Salary', 'Projected_Points'])
+    # Add GPP value column
+    df['Value'] = np.where(
+        df['Salary'] > 0,
+        df['Projected_Points'] / (df['Salary'] / 1000),
+        0
+    )
     
-    # Add GPP value column (projection * leverage potential)
-    df['Value'] = df['Projected_Points'] / (df['Salary'] / 1000)
+    # Run comprehensive validation
+    is_valid, messages, stats = validate_lineup_data(df)
     
-    # Data summary
-    st.success(f"✅ Loaded {len(df)} valid players for GPP optimization")
+    # Try auto-fixing if there are issues
+    if not is_valid:
+        st.warning("Attempting to auto-fix common issues...")
+        df = auto_fix_common_issues(df)
+        
+        # Re-validate after fixes
+        is_valid, messages, stats = validate_lineup_data(df)
     
-    with st.expander("📊 GPP Player Pool Analysis"):
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Total Players", len(df))
-            st.metric("Avg Salary", f"${df['Salary'].mean():,.0f}")
-            st.metric("Avg Projection", f"{df['Projected_Points'].mean():.1f}")
-        
-        with col2:
-            st.metric("Teams", len(df['Team'].unique()))
-            st.metric("Min Salary", f"${df['Salary'].min():,.0f}")
-            st.metric("Max Salary", f"${df['Salary'].max():,.0f}")
-        
-        with col3:
-            positions = df['Position'].value_counts()
-            st.write("**Position Distribution:**")
-            for pos, count in positions.items():
-                st.write(f"{pos}: {count}")
+    # Display validation results
+    display_data_validation_results(is_valid, messages, stats)
+    
+    # Stop if still invalid after auto-fix
+    if not is_valid:
+        st.error("Cannot proceed with optimization. Please fix the critical issues above.")
+        st.stop()
     
     return df
 
 def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, field_size: str):
     """Display GPP-specific lineup analysis and visualizations"""
     
+    if lineups_df.empty:
+        st.warning("No lineups to analyze")
+        return
+    
     # Create GPP analysis visualizations
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     
     # 1. Strategy Distribution for GPP
     ax1 = axes[0, 0]
-    strategy_counts = lineups_df['Strategy'].value_counts()
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFA07A', '#98D8C8']
-    ax1.pie(strategy_counts.values, labels=strategy_counts.index, autopct='%1.0f%%',
-           colors=colors[:len(strategy_counts)], startangle=90)
-    ax1.set_title('GPP Strategy Distribution')
+    if 'Strategy' in lineups_df.columns:
+        strategy_counts = lineups_df['Strategy'].value_counts()
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFA07A', '#98D8C8']
+        ax1.pie(strategy_counts.values, labels=strategy_counts.index, autopct='%1.0f%%',
+               colors=colors[:len(strategy_counts)], startangle=90)
+        ax1.set_title('GPP Strategy Distribution')
+    else:
+        ax1.text(0.5, 0.5, 'No Strategy Data', ha='center', va='center')
+        ax1.set_title('Strategy Distribution')
     
     # 2. Ownership vs Ceiling (GPP Focus)
     ax2 = axes[0, 1]
-    ceiling_col = 'Ceiling_99th' if 'Ceiling_99th' in lineups_df else 'Projected'
-    scatter = ax2.scatter(lineups_df['Total_Ownership'], lineups_df[ceiling_col],
-                        c=lineups_df.get('GPP_Score', lineups_df['Projected']), 
-                        cmap='RdYlGn', s=100, alpha=0.7, edgecolors='black', linewidth=0.5)
-    
-    # Add optimal ownership zone
-    min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
-    ax2.axvspan(min_own, max_own, alpha=0.2, color='green', label=f'Optimal ({min_own}-{max_own}%)')
-    
-    ax2.set_xlabel('Total Ownership %')
-    ax2.set_ylabel('99th Percentile Points')
-    ax2.set_title(f'GPP Ownership vs Ceiling ({field_size})')
-    ax2.legend()
-    plt.colorbar(scatter, ax=ax2, label='GPP Score')
-    
-    # Annotate top 3 GPP lineups
-    top_3 = lineups_df.nlargest(3, 'GPP_Score') if 'GPP_Score' in lineups_df else lineups_df.head(3)
-    for i, (idx, row) in enumerate(top_3.iterrows(), 1):
-        ax2.annotate(f'#{i}', (row['Total_Ownership'], row.get(ceiling_col, row['Projected'])),
-                   fontsize=12, fontweight='bold', color='red',
-                   bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.5))
+    ceiling_col = 'Ceiling_99th' if 'Ceiling_99th' in lineups_df.columns else 'Projected'
+    if 'Total_Ownership' in lineups_df.columns and ceiling_col in lineups_df.columns:
+        scatter = ax2.scatter(lineups_df['Total_Ownership'], lineups_df[ceiling_col],
+                            c=lineups_df.get('GPP_Score', lineups_df['Projected']), 
+                            cmap='RdYlGn', s=100, alpha=0.7, edgecolors='black', linewidth=0.5)
+        
+        # Add optimal ownership zone
+        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS.get(field_size, (60, 90))
+        ax2.axvspan(min_own, max_own, alpha=0.2, color='green', label=f'Optimal ({min_own}-{max_own}%)')
+        
+        ax2.set_xlabel('Total Ownership %')
+        ax2.set_ylabel('99th Percentile Points')
+        ax2.set_title(f'GPP Ownership vs Ceiling ({field_size})')
+        ax2.legend()
+        plt.colorbar(scatter, ax=ax2, label='GPP Score')
+    else:
+        ax2.text(0.5, 0.5, 'Insufficient Data', ha='center', va='center')
+        ax2.set_title('Ownership vs Ceiling')
     
     # 3. Captain Ownership Distribution
     ax3 = axes[0, 2]
-    if 'Captain_Own%' in lineups_df:
+    if 'Captain_Own%' in lineups_df.columns:
         captain_owns = lineups_df['Captain_Own%'].values
+        ax3.hist(captain_owns, bins=min(20, len(set(captain_owns))), alpha=0.7, color='#4ECDC4', edgecolor='black')
+        ax3.axvline(15, color='red', linestyle='--', label='15% Threshold')
+        ax3.set_xlabel('Captain Ownership %')
+        ax3.set_ylabel('Number of Lineups')
+        ax3.set_title('GPP Captain Ownership Distribution')
+        ax3.legend()
     else:
-        captain_owns = np.random.normal(15, 8, len(lineups_df))  # Fallback data
-    ax3.hist(captain_owns, bins=20, alpha=0.7, color='#4ECDC4', edgecolor='black')
-    ax3.axvline(15, color='red', linestyle='--', label='15% Threshold')
-    ax3.set_xlabel('Captain Ownership %')
-    ax3.set_ylabel('Number of Lineups')
-    ax3.set_title('GPP Captain Ownership Distribution')
-    ax3.legend()
+        ax3.text(0.5, 0.5, 'No Captain Ownership Data', ha='center', va='center')
+        ax3.set_title('Captain Ownership')
     
     # 4. Leverage Score Distribution
     ax4 = axes[1, 0]
-    ax4.hist(lineups_df['Leverage_Score'], bins=15, alpha=0.7, color='#45B7D1', edgecolor='black')
-    ax4.axvline(lineups_df['Leverage_Score'].mean(), color='red', linestyle='--', 
-               label=f"Mean: {lineups_df['Leverage_Score'].mean():.1f}")
-    ax4.set_xlabel('GPP Leverage Score')
-    ax4.set_ylabel('Number of Lineups')
-    ax4.set_title('Leverage Distribution')
-    ax4.legend()
+    if 'Leverage_Score' in lineups_df.columns:
+        ax4.hist(lineups_df['Leverage_Score'], bins=15, alpha=0.7, color='#45B7D1', edgecolor='black')
+        ax4.axvline(lineups_df['Leverage_Score'].mean(), color='red', linestyle='--', 
+                   label=f"Mean: {lineups_df['Leverage_Score'].mean():.1f}")
+        ax4.set_xlabel('GPP Leverage Score')
+        ax4.set_ylabel('Number of Lineups')
+        ax4.set_title('Leverage Distribution')
+        ax4.legend()
+    else:
+        ax4.text(0.5, 0.5, 'No Leverage Data', ha='center', va='center')
+        ax4.set_title('Leverage Distribution')
     
     # 5. Ship Equity vs Tournament EV
     ax5 = axes[1, 1]
-    if 'Ship_Equity' in lineups_df and 'Tournament_EV' in lineups_df:
+    if 'Ship_Equity' in lineups_df.columns and 'Tournament_EV' in lineups_df.columns:
         ax5.scatter(lineups_df['Ship_Equity'], lineups_df['Tournament_EV'],
-                   c=lineups_df['Total_Ownership'], cmap='RdYlGn_r',
+                   c=lineups_df.get('Total_Ownership', 50), cmap='RdYlGn_r',
                    s=80, alpha=0.7)
         ax5.set_xlabel('Ship Equity (Win Probability)')
         ax5.set_ylabel('Tournament EV')
         ax5.set_title('GPP Tournament Equity Analysis')
-    else:
-        # Fallback plot
-        ax5.scatter(lineups_df['Total_Ownership'], lineups_df.get('GPP_Score', lineups_df['Projected']),
-                   alpha=0.6)
+    elif 'Total_Ownership' in lineups_df.columns and 'GPP_Score' in lineups_df.columns:
+        ax5.scatter(lineups_df['Total_Ownership'], lineups_df['GPP_Score'], alpha=0.6)
         ax5.set_xlabel('Total Ownership %')
         ax5.set_ylabel('GPP Score')
         ax5.set_title('GPP Score Distribution')
+    else:
+        ax5.text(0.5, 0.5, 'No Equity Data', ha='center', va='center')
+        ax5.set_title('Tournament Equity')
     
     # 6. Top Captains for GPP
     ax6 = axes[1, 2]
-    captain_counts = lineups_df.groupby('Captain').agg({
-        'Lineup': 'count',
-        'Captain_Own%': 'first' if 'Captain_Own%' in lineups_df else lambda x: 15
-    }).sort_values('Lineup', ascending=False).head(10)
-    
-    if 'Captain_Own%' in captain_counts.columns:
-        colors = ['#FF6B6B' if own > 20 else '#4ECDC4' if own > 10 else '#45B7D1' 
-                 for own in captain_counts['Captain_Own%']]
-    else:
-        colors = ['#4ECDC4'] * len(captain_counts)
-    
-    y_pos = np.arange(len(captain_counts))
-    bars = ax6.barh(y_pos, captain_counts['Lineup'], color=colors)
-    ax6.set_yticks(y_pos)
-    if 'Captain_Own%' in captain_counts.columns:
-        ax6.set_yticklabels([f"{name} ({own:.0f}%)" 
-                             for name, own in zip(captain_counts.index, captain_counts['Captain_Own%'])],
-                            fontsize=8)
-    else:
+    if 'Captain' in lineups_df.columns:
+        captain_counts = lineups_df['Captain'].value_counts().head(10)
+        
+        if 'Captain_Own%' in lineups_df.columns:
+            # Get ownership for each captain
+            captain_ownership = lineups_df.groupby('Captain')['Captain_Own%'].first()
+            colors = ['#FF6B6B' if captain_ownership.get(cap, 15) > 20 else 
+                     '#4ECDC4' if captain_ownership.get(cap, 15) > 10 else '#45B7D1' 
+                     for cap in captain_counts.index]
+        else:
+            colors = ['#4ECDC4'] * len(captain_counts)
+        
+        y_pos = np.arange(len(captain_counts))
+        ax6.barh(y_pos, captain_counts.values, color=colors)
+        ax6.set_yticks(y_pos)
         ax6.set_yticklabels(captain_counts.index, fontsize=8)
-    ax6.set_xlabel('Times Used as Captain')
-    ax6.set_title('Top 10 GPP Captains')
+        ax6.set_xlabel('Times Used as Captain')
+        ax6.set_title('Top 10 GPP Captains')
+    else:
+        ax6.text(0.5, 0.5, 'No Captain Data', ha='center', va='center')
+        ax6.set_title('Top Captains')
     
     plt.tight_layout()
     st.pyplot(fig)
@@ -1997,49 +2206,52 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
     # Ownership Tier Distribution
     st.markdown("### 🎯 GPP Ownership Tier Analysis")
     
-    tier_data = []
-    for idx, row in lineups_df.head(20).iterrows():
-        bucket_counts = {'mega_chalk': 0, 'chalk': 0, 'pivot': 0, 'leverage': 0, 'super_leverage': 0}
-        lineup_players = [row['Captain']] + row['FLEX']
+    if 'Captain' in lineups_df.columns and 'FLEX' in lineups_df.columns:
+        tier_data = []
+        for idx, row in lineups_df.head(20).iterrows():
+            bucket_counts = {'mega_chalk': 0, 'chalk': 0, 'pivot': 0, 'leverage': 0, 'super_leverage': 0}
+            lineup_players = [row['Captain']] + (row['FLEX'] if isinstance(row['FLEX'], list) else [])
+            
+            for player in lineup_players:
+                if player in df['Player'].values:
+                    player_own = df[df['Player'] == player]['Ownership'].values[0]
+                    bucket = OwnershipBucketManager.get_bucket(player_own)
+                    bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
+            
+            tier_data.append(list(bucket_counts.values()))
         
-        for player in lineup_players:
-            player_own = df[df['Player'] == player]['Ownership'].values
-            if len(player_own) > 0:
-                bucket = OwnershipBucketManager.get_bucket(player_own[0])
-                bucket_counts[bucket] += 1
-        
-        tier_data.append(list(bucket_counts.values()))
-    
-    if tier_data:
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        # Use GPP-optimized colormap (green for leverage, red for chalk)
-        cmap = plt.cm.RdYlGn_r
-        im = ax.imshow(tier_data, cmap=cmap, aspect='auto', vmin=0, vmax=6)
-        
-        ax.set_xticks(range(5))
-        ax.set_xticklabels(['Mega\nChalk\n(35%+)', 'Chalk\n(20-35%)', 'Pivot\n(10-20%)', 
-                           'Leverage\n(5-10%)', 'Super\nLeverage\n(<5%)'])
-        ax.set_yticks(range(len(tier_data)))
-        ax.set_yticklabels([f'#{i+1}' for i in range(len(tier_data))])
-        ax.set_title(f'GPP Ownership Distribution - {field_size.upper()} Field')
-        ax.set_xlabel('Ownership Tier')
-        ax.set_ylabel('Lineup Rank')
-        
-        # Add text annotations with color coding
-        for i in range(len(tier_data)):
-            for j in range(5):
-                value = tier_data[i][j]
-                color = "white" if value > 3 else "black"
-                if j < 2 and value > 2:  # Too much chalk for GPP
-                    color = "red"
-                elif j >= 3 and value >= 2:  # Good leverage
-                    color = "green"
-                text = ax.text(j, i, value, ha="center", va="center",
-                             color=color, fontweight='bold' if j >= 3 else 'normal')
-        
-        plt.colorbar(im, ax=ax, label='Player Count')
-        st.pyplot(fig)
+        if tier_data:
+            fig, ax = plt.subplots(figsize=(10, 8))
+            
+            # Use GPP-optimized colormap (green for leverage, red for chalk)
+            cmap = plt.cm.RdYlGn_r
+            im = ax.imshow(tier_data, cmap=cmap, aspect='auto', vmin=0, vmax=6)
+            
+            ax.set_xticks(range(5))
+            ax.set_xticklabels(['Mega\nChalk\n(35%+)', 'Chalk\n(20-35%)', 'Pivot\n(10-20%)', 
+                               'Leverage\n(5-10%)', 'Super\nLeverage\n(<5%)'])
+            ax.set_yticks(range(len(tier_data)))
+            ax.set_yticklabels([f'#{i+1}' for i in range(len(tier_data))])
+            ax.set_title(f'GPP Ownership Distribution - {field_size.upper()} Field')
+            ax.set_xlabel('Ownership Tier')
+            ax.set_ylabel('Lineup Rank')
+            
+            # Add text annotations with color coding
+            for i in range(len(tier_data)):
+                for j in range(5):
+                    value = tier_data[i][j]
+                    color = "white" if value > 3 else "black"
+                    if j < 2 and value > 2:  # Too much chalk for GPP
+                        color = "red"
+                    elif j >= 3 and value >= 2:  # Good leverage
+                        color = "green"
+                    text = ax.text(j, i, value, ha="center", va="center",
+                                 color=color, fontweight='bold' if j >= 3 else 'normal')
+            
+            plt.colorbar(im, ax=ax, label='Player Count')
+            st.pyplot(fig)
+    else:
+        st.info("Ownership tier analysis requires lineup data with Captain and FLEX columns")
 
 # ============================================================================
 # MAIN STREAMLIT UI
@@ -2166,7 +2378,7 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    # Load and validate data
+    # Load and validate data with comprehensive checks
     df = load_and_validate_data(uploaded_file)
     
     # Game Configuration
@@ -2255,7 +2467,11 @@ if uploaded_file is not None:
     
     # Add GPP-specific columns
     df['Bucket'] = df['Ownership'].apply(OwnershipBucketManager.get_bucket)
-    df['GPP_Value'] = (df['Projected_Points'] / (df['Salary'] / 1000)) * (20 / (df['Ownership'] + 5))
+    df['GPP_Value'] = np.where(
+        df['Salary'] > 0,
+        (df['Projected_Points'] / (df['Salary'] / 1000)) * (20 / (df['Ownership'] + 5)),
+        0
+    )
     df['Leverage_Score'] = df.apply(
         lambda x: 3 if x['Ownership'] < 5 else 2 if x['Ownership'] < 10 else 1 if x['Ownership'] < 15 else -1 if x['Ownership'] > 30 else 0, 
         axis=1
@@ -2418,7 +2634,7 @@ if uploaded_file is not None:
                 lineups_df = calculate_gpp_scores(lineups_df, field_size)
                 
                 # Sort by GPP score
-                lineups_df = lineups_df.sort_values('GPP_Score', ascending=False)
+                lineups_df = lineups_df.sort_values('GPP_Score', ascending=False).reset_index(drop=True)
                 
                 # Store in session state
                 st.session_state['lineups_df'] = lineups_df
@@ -2452,7 +2668,8 @@ if uploaded_file is not None:
         with col1:
             st.metric("Lineups", len(lineups_df))
         with col2:
-            st.metric("Avg 99th%", f"{lineups_df.get('Ceiling_99th', lineups_df['Projected']).mean():.1f}")
+            ceiling_col = 'Ceiling_99th' if 'Ceiling_99th' in lineups_df else 'Projected'
+            st.metric("Avg 99th%", f"{lineups_df[ceiling_col].mean():.1f}")
         with col3:
             st.metric("Avg Own%", f"{lineups_df['Total_Ownership'].mean():.1f}%")
         with col4:
@@ -2524,11 +2741,13 @@ if uploaded_file is not None:
                             captain_own = lineup.get('Captain_Own%', 0)
                             st.write(f"🎯 **Captain:** {lineup['Captain']} ({captain_own:.1f}%)")
                             st.write("**FLEX:**")
-                            for player in lineup['FLEX']:
-                                pos = df[df['Player'] == player]['Position'].values[0] if player in df['Player'].values else '??'
-                                own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
-                                emoji = "💎" if own < 5 else "🟢" if own < 10 else ""
-                                st.write(f"{emoji} {player} ({pos}) - {own:.0f}%")
+                            flex_players = lineup['FLEX'] if isinstance(lineup['FLEX'], list) else []
+                            for player in flex_players:
+                                if player in df['Player'].values:
+                                    pos = df[df['Player'] == player]['Position'].values[0]
+                                    own = df[df['Player'] == player]['Ownership'].values[0]
+                                    emoji = "💎" if own < 5 else "🟢" if own < 10 else ""
+                                    st.write(f"{emoji} {player} ({pos}) - {own:.0f}%")
                         
                         with col2:
                             st.markdown("**GPP Projections:**")
@@ -2557,7 +2776,8 @@ if uploaded_file is not None:
                 for i, (idx, lineup) in enumerate(filtered_df.head(show_top_n).iterrows(), 1):
                     emoji = "💎" if lineup['Total_Ownership'] < 60 else "🟢" if lineup['Total_Ownership'] < 80 else "🟡"
                     captain_own = lineup.get('Captain_Own%', 0)
-                    flex_preview = ', '.join(lineup['FLEX'][:3]) + ('...' if len(lineup['FLEX']) > 3 else '')
+                    flex_players = lineup['FLEX'] if isinstance(lineup['FLEX'], list) else []
+                    flex_preview = ', '.join(flex_players[:3]) + ('...' if len(flex_players) > 3 else '')
                     st.write(f"{emoji} **#{i}:** CPT: {lineup['Captain']} ({captain_own:.0f}%) | FLEX: {flex_preview} | Own: {lineup['Total_Ownership']:.0f}% | GPP: {lineup.get('GPP_Score', 0):.0f}")
         
         with tab2:
@@ -2593,16 +2813,17 @@ if uploaded_file is not None:
             
             with col1:
                 st.markdown("#### 🎯 Low-Owned Captains (<15%)")
-                if 'Captain_Own%' in lineups_df:
+                if 'Captain_Own%' in lineups_df.columns:
                     low_captains = lineups_df[lineups_df['Captain_Own%'] < 15]['Captain'].value_counts()
                 else:
                     low_captains = pd.Series()
                     
                 for player, count in low_captains.items():
-                    own = df[df['Player'] == player]['Ownership'].values[0] if player in df['Player'].values else 5
-                    emoji = "💎" if own < 5 else "🟢" if own < 10 else "🟡"
-                    pct = count / len(lineups_df) * 100
-                    st.write(f"{emoji} {player} ({own:.0f}%) - {count} lineups ({pct:.0f}%)")
+                    if player in df['Player'].values:
+                        own = df[df['Player'] == player]['Ownership'].values[0]
+                        emoji = "💎" if own < 5 else "🟢" if own < 10 else "🟡"
+                        pct = count / len(lineups_df) * 100
+                        st.write(f"{emoji} {player} ({own:.0f}%) - {count} lineups ({pct:.0f}%)")
             
             with col2:
                 st.markdown("#### 🔗 Leverage Stacks")
@@ -2626,7 +2847,8 @@ if uploaded_file is not None:
             
             player_usage = defaultdict(int)
             for idx, row in lineups_df.iterrows():
-                for player in [row['Captain']] + row['FLEX']:
+                lineup_players = [row['Captain']] + (row['FLEX'] if isinstance(row['FLEX'], list) else [])
+                for player in lineup_players:
                     player_usage[player] += 1
             
             super_leverage = []
@@ -2652,16 +2874,17 @@ if uploaded_file is not None:
             
             sim_cols = [col for col in sim_cols if col in lineups_df.columns]
             
-            st.dataframe(
-                lineups_df[sim_cols].head(20),
-                use_container_width=True,
-                column_config={
-                    "Total_Ownership": st.column_config.NumberColumn(format="%.1f%%"),
-                    "Ship_Rate": st.column_config.NumberColumn(format="%.3f%%"),
-                    "Elite_Rate": st.column_config.NumberColumn(format="%.2f%%"),
-                    "Boom_Rate": st.column_config.NumberColumn(format="%.1f%%")
-                }
-            )
+            if sim_cols:
+                st.dataframe(
+                    lineups_df[sim_cols].head(20),
+                    use_container_width=True,
+                    column_config={
+                        "Total_Ownership": st.column_config.NumberColumn(format="%.1f%%"),
+                        "Ship_Rate": st.column_config.NumberColumn(format="%.3f%%"),
+                        "Elite_Rate": st.column_config.NumberColumn(format="%.2f%%"),
+                        "Boom_Rate": st.column_config.NumberColumn(format="%.1f%%")
+                    }
+                )
             
             # Distribution chart
             if 'Ship_Rate' in lineups_df.columns:
@@ -2685,7 +2908,7 @@ if uploaded_file is not None:
                 export_df = lineups_df.head(export_top_n)
                 
                 for idx, row in export_df.iterrows():
-                    flex_players = row['FLEX']
+                    flex_players = row['FLEX'] if isinstance(row['FLEX'], list) else []
                     dk_lineups.append({
                         'CPT': row['Captain'],
                         'FLEX 1': flex_players[0] if len(flex_players) > 0 else '',
@@ -2715,7 +2938,9 @@ if uploaded_file is not None:
                 
                 # Prepare GPP export
                 export_analysis = export_df.copy()
-                export_analysis['FLEX'] = export_analysis['FLEX'].apply(lambda x: ', '.join(x))
+                export_analysis['FLEX'] = export_analysis['FLEX'].apply(
+                    lambda x: ', '.join(x) if isinstance(x, list) else str(x)
+                )
                 
                 # Select GPP-specific columns
                 gpp_export_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'FLEX', 
