@@ -5555,7 +5555,7 @@ def main():
             # Display options
             col1, col2 = st.columns(2)
             with col1:
-                if len(lineups_df) <= 5:
+if len(lineups_df) <= 5:
     show_count = len(lineups_df)
     st.write(f"Showing all {show_count} lineups")
 else:
