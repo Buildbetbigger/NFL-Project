@@ -238,7 +238,7 @@ class OwnershipBucketManager:
         # Create emoji indicators
         bucket_emojis = {
             'mega_chalk': 'ðŸ”´',
-            'chalk': 'ðŸŸ ',
+            'chalk': 'ðŸŸ ',
             'pivot': 'ðŸŸ¢',
             'leverage': 'ðŸ”µ',
             'super_leverage': 'ðŸŸ£'
@@ -1316,7 +1316,7 @@ if uploaded_file is not None:
         st.markdown("**Ownership Distribution:**")
         for bucket in ['mega_chalk', 'chalk', 'pivot', 'leverage', 'super_leverage']:
             count = bucket_counts.get(bucket, 0)
-            emoji = {'mega_chalk': 'ðŸ”´', 'chalk': 'ðŸŸ ', 'pivot': 'ðŸŸ¢', 
+            emoji = {'mega_chalk': 'ðŸ”´', 'chalk': 'ðŸŸ ', 'pivot': 'ðŸŸ¢', 
                     'leverage': 'ðŸ”µ', 'super_leverage': 'ðŸŸ£'}.get(bucket, '')
             st.write(f"{emoji} {bucket}: {count}")
     
@@ -1367,7 +1367,7 @@ if uploaded_file is not None:
                 rec1, rec2 = optimizer.get_ai_strategies(use_api=use_api)
             
             # Display AI insights
-            with st.expander("ðŸ§  AI Strategic Insights", expanded=True):
+            with st.expander("ðŸ§  AI Strategic Insights", expanded=True):
                 col1, col2 = st.columns(2)
                 
                 with col1:
