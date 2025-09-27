@@ -1588,7 +1588,6 @@ if uploaded_file is not None:
     
     # Team Distribution
     ax1 = axes[0, 0]
-    # ... rest of the code
             
             # 1. Strategy Distribution
             ax1 = axes[0, 0]
