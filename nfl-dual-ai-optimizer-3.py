@@ -1637,7 +1637,7 @@ class GPPDualAIOptimizer:
         
         return pd.DataFrame(all_lineups)
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS
+# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS (COMPLETE)
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -2148,131 +2148,7 @@ if uploaded_file is not None:
     with col3:
         if st.button("🎯 Generate GPP Lineups", type="primary", use_container_width=True):
             
-            # Distribution chart
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.hist(lineups_df['Ship_Rate'], bins=20, alpha=0.7, color='purple', edgecolor='black')
-            ax.set_xlabel('Ship Rate (%)')
-            ax.set_ylabel('Number of Lineups')
-            ax.set_title(f'Tournament Win Probability Distribution - {field_size}')
-            st.pyplot(fig)
-        
-        with tab6:
-            st.markdown("### 💾 Export GPP Lineups")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("#### DraftKings Upload Format")
-                
-                # Create DraftKings export
-                dk_lineups = []
-                export_df = lineups_df.head(export_top_n)
-                
-                for idx, row in export_df.iterrows():
-                    flex_players = row['FLEX']
-                    dk_lineups.append({
-                        'CPT': row['Captain'],
-                        'FLEX 1': flex_players[0] if len(flex_players) > 0 else '',
-                        'FLEX 2': flex_players[1] if len(flex_players) > 1 else '',
-                        'FLEX 3': flex_players[2] if len(flex_players) > 2 else '',
-                        'FLEX 4': flex_players[3] if len(flex_players) > 3 else '',
-                        'FLEX 5': flex_players[4] if len(flex_players) > 4 else ''
-                    })
-                
-                dk_df = pd.DataFrame(dk_lineups)
-                
-                # Preview
-                st.write(f"Preview (first 5 of {len(dk_df)}):")
-                st.dataframe(dk_df.head(), use_container_width=True)
-                
-                # Download button
-                csv = dk_df.to_csv(index=False)
-                st.download_button(
-                    label=f"📥 Download DK CSV ({len(dk_df)} lineups)",
-                    data=csv,
-                    file_name=f"dk_gpp_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
-            
-            with col2:
-                st.markdown("#### GPP Analysis Export")
-                
-                # Prepare GPP export
-                export_analysis = export_df.copy()
-                export_analysis['FLEX'] = export_analysis['FLEX'].apply(lambda x: ', '.join(x))
-                
-                # Select GPP-specific columns
-                gpp_export_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'FLEX', 
-                                  'Projected', 'Salary', 'Total_Ownership', 'Leverage_Score',
-                                  'Ceiling_95th', 'Ceiling_99th', 'Ceiling_99_9th',
-                                  'Ship_Rate', 'Elite_Rate', 'Boom_Rate',
-                                  'GPP_Score', 'Tournament_EV', 'Has_Stack']
-                
-                # Filter to existing columns
-                gpp_export_cols = [col for col in gpp_export_cols if col in export_analysis.columns]
-                
-                final_export = export_analysis[gpp_export_cols]
-                
-                # Preview
-                st.write(f"Preview (first 5 of {len(final_export)}):")
-                st.dataframe(final_export.head(), use_container_width=True)
-                
-                # Download button
-                csv_full = final_export.to_csv(index=False)
-                st.download_button(
-                    label=f"📊 Download GPP Analysis ({len(final_export)} lineups)",
-                    data=csv_full,
-                    file_name=f"gpp_analysis_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
-            
-            # Captain pivot export
-            if include_pivots and 'pivots_df' in st.session_state and st.session_state['pivots_df']:
-                st.markdown("#### 🔄 Captain Pivots Export")
-                
-                pivots_list = st.session_state['pivots_df']
-                pivot_export = pd.DataFrame(pivots_list)
-                
-                csv_pivots = pivot_export.to_csv(index=False)
-                st.download_button(
-                    label=f"🔄 Download Captain Pivots ({len(pivot_export)} pivots)",
-                    data=csv_pivots,
-                    file_name=f"captain_pivots_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
-
-# Footer with GPP-specific tips
-st.markdown("---")
-st.markdown("""
-### 🏆 NFL GPP Tournament Optimizer - Professional Edition
-
-**GPP-Specific Features:**
-- 💎 **Super Leverage Detection**: Identifies <5% owned tournament winners
-- 🎯 **Field-Size Optimization**: Tailored strategies for different GPP types
-- 🔄 **Captain Pivot Engine**: Creates unique lineups with leverage captains
-- 📊 **Ship Equity Calculator**: Tournament win probability analysis
-- 🤖 **Dual AI System**: Game theory + correlation for maximum edge
-
-**GPP Strategy Tips:**
-- **Milly Maker**: Target <80% total ownership with zero chalk tolerance
-- **Large Field**: 60-90% ownership with 2+ leverage plays minimum
-- **Small Field**: Can use slightly higher ownership (80-120%) 
-- **Captain Selection**: Prioritize <15% owned captains for differentiation
-- **Stacking**: Low-owned game stacks in projected shootouts (50+ total)
-
-**Ownership Tier Guide:**
-- 💎 Super Leverage (<5%): Maximum tournament equity
-- 🟢 Leverage (5-10%): Strong GPP plays
-- 🟡 Pivot (10-20%): Balanced risk/reward
-- 🟠 Chalk (20-35%): Use sparingly
-- 🔴 Mega Chalk (35%+): Avoid in large field GPPs
-
-**Version:** 5.0 GPP Edition | **Focus:** Tournament Winning Upside
-
-*Maximize your tournament equity!* 🚀
-""")
-
-st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Field: {field_size if 'field_size' in locals() else 'Not Selected'}") Initialize GPP optimizer
+            # Initialize GPP optimizer
             optimizer = GPPDualAIOptimizer(df, game_info, field_size, api_manager)
             
             # Get AI strategies
@@ -2480,6 +2356,12 @@ st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%
                                 st.info("No primary stack")
                             st.write(f"Field: {lineup['Field_Size']}")
                             st.write(f"Tier: {lineup.get('Ownership_Tier', 'Unknown')}")
+            
+            else:  # Compact view
+                for i, (idx, lineup) in enumerate(filtered_df.head(show_top_n).iterrows(), 1):
+                    emoji = "💎" if lineup['Total_Ownership'] < 60 else "🟢" if lineup['Total_Ownership'] < 80 else "🟡"
+                    flex_preview = ', '.join(lineup['FLEX'][:3]) + ('...' if len(lineup['FLEX']) > 3 else '')
+                    st.write(f"{emoji} **#{i}:** CPT: {lineup['Captain']} ({lineup['Captain_Own%']:.0f}%) | FLEX: {flex_preview} | Own: {lineup['Total_Ownership']:.0f}% | GPP: {lineup.get('GPP_Score', 0):.0f}")
         
         with tab2:
             st.markdown("### 🔄 GPP Captain Pivots")
@@ -2580,4 +2462,134 @@ st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%
                 }
             )
             
-            #
+            # Distribution chart
+            if 'Ship_Rate' in lineups_df.columns:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.hist(lineups_df['Ship_Rate'], bins=20, alpha=0.7, color='purple', edgecolor='black')
+                ax.set_xlabel('Ship Rate (%)')
+                ax.set_ylabel('Number of Lineups')
+                ax.set_title(f'Tournament Win Probability Distribution - {field_size}')
+                st.pyplot(fig)
+        
+        with tab6:
+            st.markdown("### 💾 Export GPP Lineups")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### DraftKings Upload Format")
+                
+                # Create DraftKings export
+                dk_lineups = []
+                export_df = lineups_df.head(export_top_n)
+                
+                for idx, row in export_df.iterrows():
+                    flex_players = row['FLEX']
+                    dk_lineups.append({
+                        'CPT': row['Captain'],
+                        'FLEX 1': flex_players[0] if len(flex_players) > 0 else '',
+                        'FLEX 2': flex_players[1] if len(flex_players) > 1 else '',
+                        'FLEX 3': flex_players[2] if len(flex_players) > 2 else '',
+                        'FLEX 4': flex_players[3] if len(flex_players) > 3 else '',
+                        'FLEX 5': flex_players[4] if len(flex_players) > 4 else ''
+                    })
+                
+                dk_df = pd.DataFrame(dk_lineups)
+                
+                # Preview
+                st.write(f"Preview (first 5 of {len(dk_df)}):")
+                st.dataframe(dk_df.head(), use_container_width=True)
+                
+                # Download button
+                csv = dk_df.to_csv(index=False)
+                st.download_button(
+                    label=f"📥 Download DK CSV ({len(dk_df)} lineups)",
+                    data=csv,
+                    file_name=f"dk_gpp_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv"
+                )
+            
+            with col2:
+                st.markdown("#### GPP Analysis Export")
+                
+                # Prepare GPP export
+                export_analysis = export_df.copy()
+                export_analysis['FLEX'] = export_analysis['FLEX'].apply(lambda x: ', '.join(x))
+                
+                # Select GPP-specific columns
+                gpp_export_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'FLEX', 
+                                  'Projected', 'Salary', 'Total_Ownership', 'Leverage_Score',
+                                  'Ceiling_95th', 'Ceiling_99th', 'Ceiling_99_9th',
+                                  'Ship_Rate', 'Elite_Rate', 'Boom_Rate',
+                                  'GPP_Score', 'Tournament_EV', 'Has_Stack']
+                
+                # Filter to existing columns
+                gpp_export_cols = [col for col in gpp_export_cols if col in export_analysis.columns]
+                
+                final_export = export_analysis[gpp_export_cols]
+                
+                # Preview
+                st.write(f"Preview (first 5 of {len(final_export)}):")
+                st.dataframe(final_export.head(), use_container_width=True)
+                
+                # Download button
+                csv_full = final_export.to_csv(index=False)
+                st.download_button(
+                    label=f"📊 Download GPP Analysis ({len(final_export)} lineups)",
+                    data=csv_full,
+                    file_name=f"gpp_analysis_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv"
+                )
+            
+            # Captain pivot export
+            if include_pivots and 'pivots_df' in st.session_state and st.session_state['pivots_df']:
+                st.markdown("#### 🔄 Captain Pivots Export")
+                
+                pivots_list = st.session_state['pivots_df']
+                pivot_export = pd.DataFrame(pivots_list)
+                
+                csv_pivots = pivot_export.to_csv(index=False)
+                st.download_button(
+                    label=f"🔄 Download Captain Pivots ({len(pivot_export)} pivots)",
+                    data=csv_pivots,
+                    file_name=f"captain_pivots_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv"
+                )
+
+# Footer with GPP-specific tips
+st.markdown("---")
+st.markdown("""
+### 🏆 NFL GPP Tournament Optimizer - Professional Edition
+
+**GPP-Specific Features:**
+- 💎 **Super Leverage Detection**: Identifies <5% owned tournament winners
+- 🎯 **Field-Size Optimization**: Tailored strategies for different GPP types
+- 🔄 **Captain Pivot Engine**: Creates unique lineups with leverage captains
+- 📊 **Ship Equity Calculator**: Tournament win probability analysis
+- 🤖 **Dual AI System**: Game theory + correlation for maximum edge
+
+**GPP Strategy Tips:**
+- **Milly Maker**: Target <80% total ownership with zero chalk tolerance
+- **Large Field**: 60-90% ownership with 2+ leverage plays minimum
+- **Small Field**: Can use slightly higher ownership (80-120%) 
+- **Captain Selection**: Prioritize <15% owned captains for differentiation
+- **Stacking**: Low-owned game stacks in projected shootouts (50+ total)
+
+**Ownership Tier Guide:**
+- 💎 Super Leverage (<5%): Maximum tournament equity
+- 🟢 Leverage (5-10%): Strong GPP plays
+- 🟡 Pivot (10-20%): Balanced risk/reward
+- 🟠 Chalk (20-35%): Use sparingly
+- 🔴 Mega Chalk (35%+): Avoid in large field GPPs
+
+**Version:** 5.0 GPP Edition | **Focus:** Tournament Winning Upside
+
+*Maximize your tournament equity!* 🚀
+""")
+
+# Display current field size if available
+if 'field_size' in st.session_state:
+    current_field = st.session_state['field_size']
+    st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Field: {current_field}")
+else:
+    st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Field: Not Selected")
