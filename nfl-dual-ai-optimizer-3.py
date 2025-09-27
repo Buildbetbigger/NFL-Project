@@ -1566,21 +1566,21 @@ if uploaded_file is not None:
         with tab2:
             st.markdown("### Captain Pivot Variations")
             
-            if 'pivots_df' in st.session_state and not st.session_state['pivots_df'].empty:
-                pivots_df = st.session_state['pivots_df']
-                
-                st.info(f"Generated {len(pivots_df)} captain pivot variations")
-                
-                for idx, pivot in pivots_df.iterrows():
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.write(f"**Original:** {pivot['Original_Captain']} → **New:** {pivot['Captain']}")
-                    with col2:
-                        st.write(f"Ownership Change: {pivot['Ownership_Delta']:+.1f}%")
-                    with col3:
-                        st.write(f"Type: {pivot['Pivot_Type']}")
-            else:
-                st.info("Enable captain pivots in settings to generate variations")
+           if 'pivots_df' in st.session_state and st.session_state['pivots_df']:
+    pivots_df = st.session_state['pivots_df']
+    
+    st.info(f"Generated {len(pivots_df)} captain pivot variations")
+    
+    for pivot in pivots_df:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.write(f"**Original:** {pivot['Original_Captain']} → **New:** {pivot['Captain']}")
+        with col2:
+            st.write(f"Ownership Change: {pivot['Ownership_Delta']:+.1f}%")
+        with col3:
+            st.write(f"Type: {pivot['Pivot_Type']}")
+else:
+    st.info("Enable captain pivots in settings to generate variations")
         
         with tab3:
             st.markdown("### Lineup Analysis & Visualization")
