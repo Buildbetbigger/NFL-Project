@@ -1,5 +1,5 @@
-# NFL GPP DUAL-AI OPTIMIZER - PART 1: IMPORTS AND CONFIGURATION (CORRECTED)
-# Version 5.0 - GPP Tournament Focus with Configuration Management
+# NFL GPP DUAL-AI OPTIMIZER - PART 1: IMPORTS AND CONFIGURATION (COMPLETE CORRECTED)
+# Version 5.1 - GPP Tournament Focus with Full Error Handling
 
 import streamlit as st
 import pandas as pd
@@ -16,6 +16,8 @@ import itertools
 from collections import defaultdict
 import hashlib
 from datetime import datetime, timedelta
+import logging
+import traceback
 
 # For Google Colab compatibility
 try:
@@ -27,6 +29,250 @@ except ImportError:
 
 st.set_page_config(page_title="NFL GPP Optimizer Pro", page_icon="🏈", layout="wide")
 st.title('🏈 NFL GPP Tournament Optimizer - Professional Edition')
+
+# ============================================================================
+# LOGGING AND DEBUGGING SYSTEM
+# ============================================================================
+
+class OptimizationLogger:
+    """Comprehensive logging system for debugging and monitoring"""
+    
+    def __init__(self, verbose: bool = False, log_to_file: bool = False):
+        self.verbose = verbose
+        self.log_to_file = log_to_file
+        self.logs = []
+        self.error_count = 0
+        self.warning_count = 0
+        self.info_count = 0
+        
+        # Setup file logging if requested
+        if log_to_file:
+            log_filename = f"gpp_optimizer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            logging.basicConfig(
+                filename=log_filename,
+                level=logging.DEBUG if verbose else logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s'
+            )
+    
+    def log(self, message: str, level: str = "INFO", show_in_ui: bool = True):
+        """Log a message with timestamp and level"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        entry = {
+            'timestamp': timestamp,
+            'level': level,
+            'message': message
+        }
+        self.logs.append(entry)
+        
+        # Count by level
+        if level == "ERROR":
+            self.error_count += 1
+        elif level == "WARNING":
+            self.warning_count += 1
+        else:
+            self.info_count += 1
+        
+        # File logging
+        if self.log_to_file:
+            if level == "ERROR":
+                logging.error(message)
+            elif level == "WARNING":
+                logging.warning(message)
+            elif level == "DEBUG":
+                logging.debug(message)
+            else:
+                logging.info(message)
+        
+        # UI display
+        if show_in_ui and self.verbose:
+            if level == "ERROR":
+                st.error(f"[{timestamp}] {message}")
+            elif level == "WARNING":
+                st.warning(f"[{timestamp}] {message}")
+            elif level == "DEBUG":
+                st.caption(f"[{timestamp}] DEBUG: {message}")
+            else:
+                st.info(f"[{timestamp}] {message}")
+    
+    def log_exception(self, e: Exception, context: str = ""):
+        """Log an exception with full traceback"""
+        error_msg = f"Exception in {context}: {str(e)}"
+        self.log(error_msg, "ERROR")
+        
+        if self.verbose:
+            traceback_str = traceback.format_exc()
+            self.log(f"Traceback:\n{traceback_str}", "DEBUG", show_in_ui=False)
+    
+    def log_lineup_generation(self, strategy: str, lineup_num: int, status: str, details: Dict = None):
+        """Log lineup generation attempt"""
+        msg = f"Lineup #{lineup_num} ({strategy}): {status}"
+        if details:
+            msg += f" - {details}"
+        
+        level = "INFO" if status == "SUCCESS" else "WARNING" if status == "FAILED" else "DEBUG"
+        self.log(msg, level, show_in_ui=False)
+    
+    def log_optimization_start(self, num_lineups: int, field_size: str, settings: Dict):
+        """Log optimization start with settings"""
+        self.log(f"Starting optimization: {num_lineups} lineups for {field_size}", "INFO")
+        self.log(f"Settings: {settings}", "DEBUG", show_in_ui=False)
+    
+    def log_optimization_end(self, lineups_generated: int, time_elapsed: float):
+        """Log optimization completion"""
+        self.log(f"Optimization complete: {lineups_generated} lineups in {time_elapsed:.2f}s", "INFO")
+        if self.error_count > 0:
+            self.log(f"Encountered {self.error_count} errors during optimization", "WARNING")
+    
+    def get_summary(self) -> Dict:
+        """Get logging summary"""
+        return {
+            'total_logs': len(self.logs),
+            'errors': self.error_count,
+            'warnings': self.warning_count,
+            'info': self.info_count
+        }
+    
+    def get_recent_logs(self, n: int = 10, level_filter: str = None) -> List[Dict]:
+        """Get recent log entries"""
+        filtered = self.logs
+        if level_filter:
+            filtered = [log for log in self.logs if log['level'] == level_filter]
+        return filtered[-n:]
+    
+    def display_log_summary(self):
+        """Display log summary in Streamlit"""
+        summary = self.get_summary()
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Logs", summary['total_logs'])
+        with col2:
+            st.metric("Errors", summary['errors'])
+        with col3:
+            st.metric("Warnings", summary['warnings'])
+        with col4:
+            st.metric("Info", summary['info'])
+        
+        if self.error_count > 0:
+            with st.expander(f"Recent Errors ({self.error_count})"):
+                for log in self.get_recent_logs(5, "ERROR"):
+                    st.error(f"[{log['timestamp']}] {log['message']}")
+        
+        if self.warning_count > 0:
+            with st.expander(f"Recent Warnings ({self.warning_count})"):
+                for log in self.get_recent_logs(5, "WARNING"):
+                    st.warning(f"[{log['timestamp']}] {log['message']}")
+    
+    def export_logs(self) -> str:
+        """Export logs as formatted string"""
+        output = []
+        output.append(f"GPP Optimizer Log Export - {datetime.now()}")
+        output.append("=" * 60)
+        
+        for log in self.logs:
+            output.append(f"[{log['timestamp']}] {log['level']}: {log['message']}")
+        
+        output.append("=" * 60)
+        output.append(f"Summary: {self.get_summary()}")
+        
+        return "\n".join(output)
+
+class PerformanceMonitor:
+    """Monitor performance metrics during optimization"""
+    
+    def __init__(self):
+        self.timers = {}
+        self.counters = {}
+        self.start_times = {}
+    
+    def start_timer(self, name: str):
+        """Start a named timer"""
+        self.start_times[name] = datetime.now()
+    
+    def stop_timer(self, name: str) -> float:
+        """Stop a timer and return elapsed time"""
+        if name not in self.start_times:
+            return 0.0
+        
+        elapsed = (datetime.now() - self.start_times[name]).total_seconds()
+        
+        if name not in self.timers:
+            self.timers[name] = []
+        self.timers[name].append(elapsed)
+        
+        del self.start_times[name]
+        return elapsed
+    
+    def increment_counter(self, name: str, amount: int = 1):
+        """Increment a named counter"""
+        if name not in self.counters:
+            self.counters[name] = 0
+        self.counters[name] += amount
+    
+    def get_average_time(self, name: str) -> float:
+        """Get average time for a named operation"""
+        if name not in self.timers or len(self.timers[name]) == 0:
+            return 0.0
+        return sum(self.timers[name]) / len(self.timers[name])
+    
+    def get_metrics(self) -> Dict:
+        """Get all performance metrics"""
+        metrics = {
+            'timers': {},
+            'counters': self.counters
+        }
+        
+        for name, times in self.timers.items():
+            metrics['timers'][name] = {
+                'count': len(times),
+                'total': sum(times),
+                'average': self.get_average_time(name),
+                'min': min(times) if times else 0,
+                'max': max(times) if times else 0
+            }
+        
+        return metrics
+    
+    def display_metrics(self):
+        """Display performance metrics in Streamlit"""
+        metrics = self.get_metrics()
+        
+        if metrics['timers']:
+            st.subheader("⏱️ Performance Metrics")
+            
+            for name, stats in metrics['timers'].items():
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric(f"{name} Avg", f"{stats['average']:.3f}s")
+                with col2:
+                    st.metric(f"{name} Total", f"{stats['total']:.2f}s")
+                with col3:
+                    st.metric(f"{name} Count", stats['count'])
+        
+        if metrics['counters']:
+            st.subheader("📊 Operation Counts")
+            cols = st.columns(len(metrics['counters']))
+            for i, (name, count) in enumerate(metrics['counters'].items()):
+                with cols[i]:
+                    st.metric(name, count)
+
+# Global logger instance
+_global_logger = None
+_performance_monitor = None
+
+def get_logger(verbose: bool = False) -> OptimizationLogger:
+    """Get or create global logger instance"""
+    global _global_logger
+    if _global_logger is None:
+        _global_logger = OptimizationLogger(verbose=verbose)
+    return _global_logger
+
+def get_performance_monitor() -> PerformanceMonitor:
+    """Get or create global performance monitor"""
+    global _performance_monitor
+    if _performance_monitor is None:
+        _performance_monitor = PerformanceMonitor()
+    return _performance_monitor
 
 # ============================================================================
 # GPP-FOCUSED CONFIGURATION
@@ -147,6 +393,43 @@ class OptimizerConfig:
     }
 
 # ============================================================================
+# ENUMS AND DATA CLASSES
+# ============================================================================
+
+class StrategyType(Enum):
+    """GPP-focused strategies only"""
+    LEVERAGE = "leverage"
+    CONTRARIAN = "contrarian"
+    SUPER_CONTRARIAN = "super_contrarian"
+    GAME_STACK = "game_stack"
+    STARS_SCRUBS = "stars_scrubs"
+    CORRELATION = "correlation"
+
+@dataclass
+class AIRecommendation:
+    """Structure for AI strategist recommendations"""
+    strategist_name: str
+    confidence: float
+    captain_targets: List[str]
+    stacks: List[Dict[str, str]]
+    fades: List[str]
+    boosts: List[str]
+    strategy_weights: Dict[StrategyType, float]
+    key_insights: List[str]
+    gpp_specific_rules: Dict[str, Any]  # Field for GPP rules
+
+@dataclass
+class PlayerProjection:
+    """Enhanced player projection with GPP metrics"""
+    player: str
+    projection: float
+    floor: float
+    ceiling: float
+    volatility: float
+    boom_probability: float  # New for GPP
+    bust_probability: float  # New for GPP
+
+# ============================================================================
 # CONFIGURATION VALIDATION AND MANAGEMENT
 # ============================================================================
 
@@ -240,7 +523,7 @@ class ConfigValidator:
         return is_valid, issues, corrected
     
     @staticmethod
-    def get_strategy_distribution(field_size: str, num_lineups: int) -> Dict['StrategyType', int]:
+    def get_strategy_distribution(field_size: str, num_lineups: int) -> Dict[StrategyType, int]:
         """Calculate optimal strategy distribution for field size"""
         weights = OptimizerConfig.GPP_STRATEGY_WEIGHTS.get(
             field_size, 
@@ -250,18 +533,18 @@ class ConfigValidator:
         distribution = {}
         allocated = 0
         
+        # Map strategy names to StrategyType enum
+        strategy_enum_map = {
+            'leverage': StrategyType.LEVERAGE,
+            'contrarian': StrategyType.CONTRARIAN,
+            'super_contrarian': StrategyType.SUPER_CONTRARIAN,
+            'game_stack': StrategyType.GAME_STACK,
+            'stars_scrubs': StrategyType.STARS_SCRUBS,
+            'correlation': StrategyType.CORRELATION
+        }
+        
         # Allocate lineups proportionally
         for strategy_name, weight in weights.items():
-            # Map strategy name to StrategyType enum
-            strategy_enum_map = {
-                'leverage': StrategyType.LEVERAGE,
-                'contrarian': StrategyType.CONTRARIAN,
-                'super_contrarian': StrategyType.SUPER_CONTRARIAN,
-                'game_stack': StrategyType.GAME_STACK,
-                'stars_scrubs': StrategyType.STARS_SCRUBS,
-                'correlation': StrategyType.CORRELATION
-            }
-            
             if strategy_name in strategy_enum_map:
                 strategy = strategy_enum_map[strategy_name]
                 count = int(num_lineups * weight)
@@ -384,43 +667,6 @@ class OptimizationSettings:
         return self.settings.copy()
 
 # ============================================================================
-# ENUMS AND DATA CLASSES
-# ============================================================================
-
-class StrategyType(Enum):
-    """GPP-focused strategies only"""
-    LEVERAGE = "leverage"
-    CONTRARIAN = "contrarian"
-    SUPER_CONTRARIAN = "super_contrarian"
-    GAME_STACK = "game_stack"
-    STARS_SCRUBS = "stars_scrubs"
-    CORRELATION = "correlation"
-
-@dataclass
-class AIRecommendation:
-    """Structure for AI strategist recommendations"""
-    strategist_name: str
-    confidence: float
-    captain_targets: List[str]
-    stacks: List[Dict[str, str]]
-    fades: List[str]
-    boosts: List[str]
-    strategy_weights: Dict[StrategyType, float]
-    key_insights: List[str]
-    gpp_specific_rules: Dict[str, Any]  # Field for GPP rules
-
-@dataclass
-class PlayerProjection:
-    """Enhanced player projection with GPP metrics"""
-    player: str
-    projection: float
-    floor: float
-    ceiling: float
-    volatility: float
-    boom_probability: float  # New for GPP
-    bust_probability: float  # New for GPP
-
-# ============================================================================
 # CLAUDE API MANAGER
 # ============================================================================
 
@@ -434,28 +680,37 @@ class ClaudeAPIManager:
         self.cache = {}  # Cache API responses
         self.request_count = 0
         self.error_count = 0
+        logger = get_logger()
         
         if ANTHROPIC_AVAILABLE and api_key:
             try:
                 self.client = anthropic.Anthropic(api_key=api_key)
                 st.success("✅ Claude API connected successfully")
+                logger.log("Claude API initialized successfully", "INFO")
             except Exception as e:
                 st.error(f"Failed to initialize Claude API: {e}")
+                logger.log(f"Claude API initialization failed: {e}", "ERROR")
                 self.client = None
     
     def get_ai_response(self, prompt: str, system_prompt: str = None, use_cache: bool = True) -> str:
         """Get response from Claude API with caching and error handling"""
+        logger = get_logger()
+        
         if not self.client:
+            logger.log("API client not initialized", "WARNING")
             return "{}"
         
         # Check cache first
         prompt_hash = hashlib.md5(prompt.encode()).hexdigest()
         if use_cache and prompt_hash in self.cache:
+            logger.log("Using cached API response", "DEBUG")
             st.info("Using cached AI response")
             return self.cache[prompt_hash]
         
         try:
             self.request_count += 1
+            logger.log(f"Making API request #{self.request_count}", "DEBUG")
+            
             messages = [{"role": "user", "content": prompt}]
             
             if system_prompt:
@@ -484,8 +739,10 @@ class ClaudeAPIManager:
             # Validate JSON
             try:
                 json.loads(response_text)
+                logger.log("Valid JSON response received", "DEBUG")
             except json.JSONDecodeError:
                 self.error_count += 1
+                logger.log("Invalid JSON from API", "WARNING")
                 st.warning("Invalid JSON from API, using fallback")
                 return "{}"
             
@@ -495,6 +752,7 @@ class ClaudeAPIManager:
             
         except Exception as e:
             self.error_count += 1
+            logger.log_exception(e, "API call")
             st.error(f"API call failed: {e}")
             return "{}"
     
