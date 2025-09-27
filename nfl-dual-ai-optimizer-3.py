@@ -1571,7 +1571,7 @@ if uploaded_file is not None:
                 
                 st.info(f"Generated {len(pivots_df)} captain pivot variations")
                 
-                for idx, pivot in pivots_df.iterrows():
+                for idx, pivot in st.session_state.pivots_df.iterrows():
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.write(f"**Original:** {pivot['Original_Captain']} → **New:** {pivot['Captain']}")
