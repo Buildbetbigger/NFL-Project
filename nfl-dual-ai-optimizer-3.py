@@ -4672,7 +4672,7 @@ class GPPCaptainPivotGenerator:
             })
         
         return pivots
-                                     # NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS
+        # NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS
 # Version 6.3 - Enhanced UI with Robust Error Handling
 # NOTE: This continues from Parts 1-4 - all imports already consolidated at top
 
@@ -5555,7 +5555,7 @@ def main():
             # Display options
             col1, col2 = st.columns(2)
             with col1:
-
+                show_count = st.slider("Show lineups", 5, len(lineups_df), min(10, len(lineups_df)))
             with col2:
                 sort_by = st.selectbox("Sort by", ["Lineup", "Projected", "Total_Ownership", "Leverage_Score"])
             
@@ -5571,12 +5571,6 @@ def main():
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
-                        if len(lineups_df) <= 5:
-                    show_count = len(lineups_df)
-                    st.write(f"Showing all {show_count} lineups")
-                else:
-                    default_show = min(10, len(lineups_df))
-                    show_count = st.slider("Show lineups", 5, len(lineups_df), default_show)
                         st.markdown("**Roster:**")
                         st.write(f"CPT: {row['Captain']}")
                         for i, player in enumerate(row['FLEX']):
