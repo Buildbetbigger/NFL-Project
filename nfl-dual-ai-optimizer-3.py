@@ -1,20 +1,35 @@
+# NFL GPP DUAL-AI OPTIMIZER - CONSOLIDATED VERSION
+# Part 1: Configuration, Monitoring, and Base Classes
+# Version 6.4 - Single File Structure
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 1: CONFIGURATION & MONITORING
-# Version 6.4 - Complete with All Required Methods
+# ============================================================================
+# ALL IMPORTS CONSOLIDATED AT TOP
+# ============================================================================
 
+# Standard library imports
 import pandas as pd
 import numpy as np
-from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Optional, Set, Any, Union
-from enum import Enum
 import json
-from datetime import datetime
-import streamlit as st
 import threading
 import hashlib
 import os
-from collections import deque
 import traceback
+import time
+import pickle
+import base64
+from datetime import datetime
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple, Optional, Set, Any, Union
+from enum import Enum
+from collections import deque, defaultdict, Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
+
+# Third-party imports
+import streamlit as st
+import pulp
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # ============================================================================
 # ENUMS AND CONSTANTS
@@ -556,7 +571,7 @@ class GlobalLogger:
         try:
             summary = self.get_ai_summary()
             
-            st.markdown("### 🤖 AI Decision Enforcement")
+            st.markdown("### AI Decision Enforcement")
             
             col1, col2, col3, col4 = st.columns(4)
             
@@ -599,7 +614,7 @@ class GlobalLogger:
     def display_log_summary(self):
         """Display log summary in Streamlit"""
         try:
-            st.markdown("### 📋 Optimization Log Summary")
+            st.markdown("### Optimization Log Summary")
             
             col1, col2, col3, col4 = st.columns(4)
             
@@ -784,7 +799,7 @@ class PerformanceMonitor:
         """Display comprehensive metrics in Streamlit"""
         try:
             metrics = self.get_metrics()
-            st.markdown("### ⚡ Performance Metrics")
+            st.markdown("### Performance Metrics")
             
             if metrics['active_timers']:
                 st.markdown("#### Active Operations")
@@ -871,63 +886,9 @@ class AIRecommendation:
             
         self.validation_status = 'valid' if not errors else 'invalid'
         return len(errors) == 0, errors
-
-# ============================================================================
-# PLACEHOLDER STUBS FOR OTHER PARTS
-# ============================================================================
-
-class GPPCaptainPivotGenerator:
-    """Stub for Part 4"""
-    def __init__(self):
-        self.logger = get_logger()
-
-class AIOwnershipBucketManager:
-    """Stub for Part 2"""
-    def __init__(self, enforcement_engine=None):
-        self.enforcement_engine = enforcement_engine
-        self.logger = get_logger()
-
-class AIEnforcementEngine:
-    """Stub for Part 2"""
-    def __init__(self, enforcement_level: AIEnforcementLevel = AIEnforcementLevel.MANDATORY):
-        self.enforcement_level = enforcement_level
-        self.logger = get_logger()
-
-class AISynthesisEngine:
-    """Stub for Part 2"""
-    def __init__(self):
-        self.logger = get_logger()
-
-class AIConfigValidator:
-    """Stub for Part 2"""
-    @staticmethod
-    def validate_ai_requirements(rules: Dict, df: pd.DataFrame) -> Dict:
-        return {'is_valid': True, 'errors': [], 'warnings': []}
-
-class ConfigValidator:
-    """Stub for Part 2"""
-    @staticmethod
-    def validate_player_pool(df: pd.DataFrame, field_size: str) -> Dict:
-        return {'is_valid': True, 'errors': [], 'warnings': []}
-
-# NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (AI-AS-CHEF VERSION)
+        # NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (AI-AS-CHEF VERSION)
 # Version 6.3 - Enhanced Core Components with Robust Validation
-
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Tuple, Optional, Set, Any, Union
-from dataclasses import dataclass
-import streamlit as st
-import json
-import threading
-from collections import defaultdict, Counter
-import pulp
-
-# Import from Part 1
-from optimizer_part1 import (
-    OptimizerConfig, AIEnforcementLevel, AIStrategistType, 
-    StrategyType, AIRecommendation, get_logger, get_performance_monitor
-)
+# NOTE: This continues from Part 1 - all imports already consolidated at top
 
 # ============================================================================
 # AI ENFORCEMENT ENGINE WITH VALIDATION
@@ -1595,7 +1556,7 @@ class AIOwnershipBucketManager:
             summary += " [OPTIMAL]"
         
         if ai_enforced:
-            summary = "🤖 AI-ENFORCED | " + summary
+            summary = "AI-ENFORCED | " + summary
         
         return summary
 
@@ -2259,27 +2220,9 @@ class AISynthesisEngine:
                 s['confidence'] for s in self.synthesis_history[-10:]
             ]) if self.synthesis_history else 0
         }
-
-# NFL GPP DUAL-AI OPTIMIZER - PART 3: AI STRATEGISTS (AI-AS-CHEF VERSION)
+        # NFL GPP DUAL-AI OPTIMIZER - PART 3: AI STRATEGISTS (AI-AS-CHEF VERSION)
 # Version 6.3 - Triple AI System with Enhanced Robustness
-
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Tuple, Optional, Set, Any, Union
-from dataclasses import dataclass
-import json
-import streamlit as st
-import hashlib
-import threading
-from collections import defaultdict, Counter
-from datetime import datetime
-
-# Import from previous parts
-from optimizer_part1 import (
-    OptimizerConfig, AIEnforcementLevel, AIStrategistType,
-    AIRecommendation, get_logger, get_performance_monitor
-)
-from optimizer_part2 import AIEnforcementEngine, AIOwnershipBucketManager
+# NOTE: This continues from Parts 1-2 - all imports already consolidated at top
 
 # ============================================================================
 # BASE AI STRATEGIST CLASS WITH ENHANCED ERROR HANDLING
@@ -2385,7 +2328,6 @@ class BaseAIStrategist:
                 )
                 
                 if attempt < max_retries - 1:
-                    import time
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
         
@@ -3465,15 +3407,18 @@ class ClaudeAPIManager:
             if not self.api_key or not self.api_key.startswith('sk-'):
                 raise ValueError("Invalid API key format")
             
-            from anthropic import Anthropic
-            self.client = Anthropic(api_key=self.api_key)
+            # Only import when needed and with error handling
+            try:
+                from anthropic import Anthropic
+                self.client = Anthropic(api_key=self.api_key)
+            except ImportError:
+                self.logger.log("Anthropic library not installed", "ERROR")
+                self.client = None
+                return
             
             # Test the connection with a minimal request
             self.logger.log("Claude API client initialized successfully", "INFO")
             
-        except ImportError:
-            self.logger.log("Anthropic library not installed", "ERROR")
-            self.client = None
         except Exception as e:
             self.logger.log(f"Failed to initialize Claude API: {e}", "ERROR")
             self.client = None
@@ -3757,35 +3702,9 @@ class AIFallbackSystem:
             source_ai=AIStrategistType.CONTRARIAN_NARRATIVE,
             contrarian_angles=['Low ownership leverage']
         )
-
-# NFL GPP DUAL-AI OPTIMIZER - PART 4: MAIN OPTIMIZER & LINEUP GENERATION
+        # NFL GPP DUAL-AI OPTIMIZER - PART 4: MAIN OPTIMIZER & LINEUP GENERATION
 # Version 6.3 - Enhanced AI-Chef Functionality with Robust Generation
-
-import pandas as pd
-import numpy as np
-import pulp
-from typing import Dict, List, Tuple, Optional, Set, Any, Union
-import streamlit as st
-import json
-from datetime import datetime
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
-from collections import defaultdict, Counter
-
-# Import from previous parts
-from optimizer_part1 import (
-    OptimizerConfig, AIEnforcementLevel, AIStrategistType, StrategyType,
-    AIRecommendation, get_logger, get_performance_monitor
-)
-from optimizer_part2 import (
-    AIEnforcementEngine, AISynthesisEngine, AIOwnershipBucketManager,
-    AIConfigValidator, ConfigValidator
-)
-from optimizer_part3 import (
-    GPPGameTheoryStrategist, GPPCorrelationStrategist, 
-    GPPContrarianNarrativeStrategist, ClaudeAPIManager, AIFallbackSystem
-)
+# NOTE: This continues from Parts 1-3 - all imports already consolidated at top
 
 # ============================================================================
 # AI-DRIVEN GPP OPTIMIZER WITH COMPLETE FUNCTIONALITY
@@ -3887,19 +3806,19 @@ class AIChefGPPOptimizer:
                     executor.submit(
                         self._get_ai_recommendation,
                         self.game_theory_ai,
-                        "🎯 Game Theory AI",
+                        "Game Theory AI",
                         use_api
                     ): AIStrategistType.GAME_THEORY,
                     executor.submit(
                         self._get_ai_recommendation,
                         self.correlation_ai,
-                        "🔗 Correlation AI",
+                        "Correlation AI",
                         use_api
                     ): AIStrategistType.CORRELATION,
                     executor.submit(
                         self._get_ai_recommendation,
                         self.contrarian_ai,
-                        "🎭 Contrarian AI",
+                        "Contrarian AI",
                         use_api
                     ): AIStrategistType.CONTRARIAN_NARRATIVE
                 }
@@ -3956,9 +3875,9 @@ class AIChefGPPOptimizer:
         """Get AI strategies through manual input"""
         recommendations = {}
         
-        st.subheader("📝 Triple AI Strategy Input")
+        st.subheader("Triple AI Strategy Input")
         
-        tab1, tab2, tab3 = st.tabs(["🎯 Game Theory", "🔗 Correlation", "🎭 Contrarian"])
+        tab1, tab2, tab3 = st.tabs(["Game Theory", "Correlation", "Contrarian"])
         
         with tab1:
             gt_response = self._get_manual_ai_input("Game Theory", self.game_theory_ai)
@@ -4016,9 +3935,9 @@ class AIChefGPPOptimizer:
         if response and response != '{}':
             try:
                 json.loads(response)
-                st.success(f"✅ Valid {ai_name} JSON")
+                st.success(f"Valid {ai_name} JSON")
             except:
-                st.error(f"❌ Invalid {ai_name} JSON - will use fallback")
+                st.error(f"Invalid {ai_name} JSON - will use fallback")
                 response = '{}'
         
         return response
@@ -4052,13 +3971,13 @@ class AIChefGPPOptimizer:
             validation = AIConfigValidator.validate_ai_requirements(enforcement_rules, self.df)
             
             if not validation['is_valid']:
-                st.warning("⚠️ Some AI requirements cannot be satisfied:")
+                st.warning("Some AI requirements cannot be satisfied:")
                 for error in validation['errors'][:5]:
                     st.write(f"  - {error}")
                 
                 # Adjust rules if needed
                 if validation.get('adjustments'):
-                    st.info("📝 Applying adjustments to make requirements feasible")
+                    st.info("Applying adjustments to make requirements feasible")
             
             return {
                 'synthesis': synthesis,
@@ -4167,14 +4086,14 @@ class AIChefGPPOptimizer:
         
         # Handle results
         if len(all_lineups) == 0:
-            st.error("❌ No valid lineups generated with AI constraints")
+            st.error("No valid lineups generated with AI constraints")
             self._display_optimization_issues()
             return pd.DataFrame()
         
         if len(all_lineups) < num_lineups:
             st.warning(f"Generated {len(all_lineups)}/{num_lineups} AI-compliant lineups")
         else:
-            st.success(f"✅ Generated {len(all_lineups)} AI-driven lineups in {total_time:.1f}s!")
+            st.success(f"Generated {len(all_lineups)} AI-driven lineups in {total_time:.1f}s!")
         
         # Display AI enforcement statistics
         self.logger.display_ai_enforcement()
@@ -4514,13 +4433,13 @@ class AIChefGPPOptimizer:
             
             # Determine ownership tier
             if total_ownership < 60:
-                ownership_tier = '💎 Elite'
+                ownership_tier = 'Elite'
             elif total_ownership < 80:
-                ownership_tier = '🟢 Optimal'
+                ownership_tier = 'Optimal'
             elif total_ownership < 100:
-                ownership_tier = '🟡 Balanced'
+                ownership_tier = 'Balanced'
             else:
-                ownership_tier = '⚠️ Chalky'
+                ownership_tier = 'Chalky'
             
             return {
                 'Lineup': lineup_num,
@@ -4597,7 +4516,7 @@ class AIChefGPPOptimizer:
     def _display_ai_consensus(self, synthesis: Dict):
         """Display AI consensus analysis"""
         try:
-            st.markdown("### 🤖 AI Consensus Analysis")
+            st.markdown("### AI Consensus Analysis")
             
             col1, col2, col3, col4 = st.columns(4)
             
@@ -4624,7 +4543,7 @@ class AIChefGPPOptimizer:
             
             # Show narrative if present
             if synthesis.get('narrative'):
-                with st.expander("📖 AI Narrative"):
+                with st.expander("AI Narrative"):
                     st.write(synthesis['narrative'])
                     
         except Exception as e:
@@ -4633,7 +4552,7 @@ class AIChefGPPOptimizer:
     def _display_optimization_issues(self):
         """Display optimization issues for debugging"""
         if self.optimization_log:
-            with st.expander("⚠️ Optimization Issues", expanded=True):
+            with st.expander("Optimization Issues", expanded=True):
                 for issue in self.optimization_log[-10:]:
                     st.write(f"- {issue}")
         
@@ -4753,36 +4672,9 @@ class GPPCaptainPivotGenerator:
             })
         
         return pivots
-
-# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS
+                                     # NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS
 # Version 6.3 - Enhanced UI with Robust Error Handling
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import Dict, List, Tuple, Optional, Set, Any, Union
-from collections import defaultdict, Counter
-from datetime import datetime
-import hashlib
-import pickle
-import json
-import os
-import base64
-from io import BytesIO
-
-# Import from previous parts
-from optimizer_part1 import (
-    OptimizerConfig, AIEnforcementLevel, AIStrategistType, StrategyType,
-    AIRecommendation, get_logger, get_performance_monitor
-)
-from optimizer_part2 import (
-    AIEnforcementEngine, AISynthesisEngine, AIOwnershipBucketManager,
-    AIConfigValidator, ConfigValidator
-)
-from optimizer_part3 import ClaudeAPIManager
-from optimizer_part4 import AIChefGPPOptimizer
+# NOTE: This continues from Parts 1-4 - all imports already consolidated at top
 
 # ============================================================================
 # PERFORMANCE OPTIMIZATION - AI-FOCUSED CACHING
@@ -4998,32 +4890,32 @@ def validate_and_process_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict
 
 def display_ai_recommendations(recommendations: Dict[AIStrategistType, AIRecommendation]):
     """Display the three AI recommendations with enhanced visuals"""
-    st.markdown("### 🤖 Triple AI Strategic Analysis")
+    st.markdown("### AI Strategic Analysis")
     
-    tab1, tab2, tab3 = st.tabs(["🎯 Game Theory", "🔗 Correlation", "🎭 Contrarian"])
+    tab1, tab2, tab3 = st.tabs(["Game Theory", "Correlation", "Contrarian"])
     
     with tab1:
         display_single_ai_recommendation(
             recommendations.get(AIStrategistType.GAME_THEORY),
             "Game Theory",
-            "🎯"
+            "Target"
         )
     
     with tab2:
         display_single_ai_recommendation(
             recommendations.get(AIStrategistType.CORRELATION),
             "Correlation",
-            "🔗"
+            "Link"
         )
     
     with tab3:
         display_single_ai_recommendation(
             recommendations.get(AIStrategistType.CONTRARIAN_NARRATIVE),
             "Contrarian",
-            "🎭"
+            "Theater"
         )
 
-def display_single_ai_recommendation(rec: AIRecommendation, name: str, emoji: str):
+def display_single_ai_recommendation(rec: AIRecommendation, name: str, icon: str):
     """Display a single AI's recommendation with error handling"""
     if not rec:
         st.warning(f"No {name} recommendation available")
@@ -5033,7 +4925,7 @@ def display_single_ai_recommendation(rec: AIRecommendation, name: str, emoji: st
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown(f"#### {emoji} {name} Strategy")
+            st.markdown(f"#### {name} Strategy")
             
             # Confidence meter
             confidence_color = "green" if rec.confidence > 0.7 else "orange" if rec.confidence > 0.5 else "red"
@@ -5084,7 +4976,7 @@ def display_single_ai_recommendation(rec: AIRecommendation, name: str, emoji: st
 def display_ai_synthesis(synthesis: Dict):
     """Display the synthesized AI strategy"""
     try:
-        st.markdown("### 🔮 AI Synthesis & Consensus")
+        st.markdown("### AI Synthesis & Consensus")
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -5109,7 +5001,7 @@ def display_ai_synthesis(synthesis: Dict):
             st.metric("Enforcement Rules", len(synthesis.get('enforcement_rules', [])))
         
         # Show captain consensus details
-        with st.expander("📊 Captain Consensus Details"):
+        with st.expander("Captain Consensus Details"):
             captain_strategy = synthesis.get('captain_strategy', {})
             if captain_strategy:
                 for captain, consensus_type in list(captain_strategy.items())[:10]:
@@ -5120,7 +5012,7 @@ def display_ai_synthesis(synthesis: Dict):
         
         # Show stacking consensus
         if synthesis.get('stacking_rules'):
-            with st.expander("🔗 Stack Consensus"):
+            with st.expander("Stack Consensus"):
                 for stack in synthesis['stacking_rules'][:5]:
                     strength = stack.get('strength', 'moderate')
                     icon = "💪" if strength == 'strong' else "👍"
@@ -5141,7 +5033,7 @@ def display_ai_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
         return
     
     try:
-        st.markdown("### 📊 AI-Driven Lineup Analysis")
+        st.markdown("### AI-Driven Lineup Analysis")
         
         # Create safe visualizations
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -5226,7 +5118,7 @@ def display_ai_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
         st.pyplot(fig)
         
         # Summary statistics
-        st.markdown("### 📈 Summary Statistics")
+        st.markdown("### Summary Statistics")
         
         col1, col2, col3 = st.columns(3)
         
@@ -5345,7 +5237,7 @@ def main():
     
     # Sidebar configuration
     with st.sidebar:
-        st.header("🤖 AI-Chef Configuration")
+        st.header("AI-Chef Configuration")
         
         # AI Mode Selection
         st.markdown("### AI Enforcement Level")
@@ -5357,10 +5249,10 @@ def main():
         )
         
         if enforcement_level != 'Mandatory':
-            st.info("💡 AI-as-Chef mode works best with Mandatory enforcement")
+            st.info("AI-as-Chef mode works best with Mandatory enforcement")
         
         # Contest Type
-        st.markdown("### 🎯 Contest Type")
+        st.markdown("### Contest Type")
         contest_type = st.selectbox(
             "Select GPP Type",
             list(OptimizerConfig.FIELD_SIZES.keys()),
@@ -5371,7 +5263,7 @@ def main():
         
         # Display AI strategy for field
         ai_config = OptimizerConfig.FIELD_SIZE_CONFIGS.get(field_size, {})
-        with st.expander("📋 Field Configuration"):
+        with st.expander("Field Configuration"):
             st.write(f"**Enforcement:** {ai_config.get('ai_enforcement', AIEnforcementLevel.MANDATORY).value}")
             st.write(f"**Min Unique Captains:** {ai_config.get('min_unique_captains', 10)}")
             st.write(f"**Max Chalk Players:** {ai_config.get('max_chalk_players', 2)}")
@@ -5380,7 +5272,7 @@ def main():
         st.markdown("---")
         
         # API Configuration
-        st.markdown("### 🔌 AI Connection")
+        st.markdown("### AI Connection")
         api_mode = st.radio(
             "AI Input Mode",
             ["Manual (Copy/Paste)", "API (Automated)"],
@@ -5399,15 +5291,15 @@ def main():
             )
             
             if api_key:
-                if st.button("🔌 Connect to Claude"):
+                if st.button("Connect to Claude"):
                     try:
                         api_manager = ClaudeAPIManager(api_key)
                         if api_manager.validate_connection():
-                            st.success("✅ Connected to Claude AI")
+                            st.success("Connected to Claude AI")
                             st.session_state['api_manager'] = api_manager
                             use_api = True
                         else:
-                            st.error("❌ Failed to validate connection")
+                            st.error("Failed to validate connection")
                     except Exception as e:
                         st.error(f"Connection error: {str(e)}")
             
@@ -5415,12 +5307,12 @@ def main():
             if 'api_manager' in st.session_state and st.session_state['api_manager']:
                 api_manager = st.session_state['api_manager']
                 use_api = True
-                st.success("✅ Using existing connection")
+                st.success("Using existing connection")
         
         st.markdown("---")
         
         # Advanced Settings
-        with st.expander("⚙️ Advanced Settings"):
+        with st.expander("Advanced Settings"):
             st.markdown("### Optimization")
             
             force_unique_captains = st.checkbox(
@@ -5455,21 +5347,21 @@ def main():
                 }
         
         # Debug Panel
-        with st.expander("🐛 Debug & Monitoring"):
-            if st.button("📊 Show Performance Metrics"):
+        with st.expander("Debug & Monitoring"):
+            if st.button("Show Performance Metrics"):
                 perf = get_performance_monitor()
                 perf.display_metrics()
             
-            if st.button("📋 Show Logs"):
+            if st.button("Show Logs"):
                 logger = get_logger()
                 logger.display_log_summary()
             
-            if st.button("🔄 Clear Cache"):
+            if st.button("Clear Cache"):
                 st.cache_data.clear()
                 st.success("Cache cleared")
     
     # Main Content Area
-    st.markdown("## 📊 Data & Game Configuration")
+    st.markdown("## Data & Game Configuration")
     
     uploaded_file = st.file_uploader(
         "Upload DraftKings CSV",
@@ -5485,17 +5377,17 @@ def main():
             
             # Display validation results
             if validation['errors']:
-                st.error("❌ Validation Errors:")
+                st.error("Validation Errors:")
                 for error in validation['errors']:
                     st.write(f"  - {error}")
             
             if validation['warnings']:
-                st.warning("⚠️ Warnings:")
+                st.warning("Warnings:")
                 for warning in validation['warnings']:
                     st.write(f"  - {warning}")
             
             if validation['fixes_applied']:
-                st.info("✅ Fixes Applied:")
+                st.info("Fixes Applied:")
                 for fix in validation['fixes_applied']:
                     st.write(f"  - {fix}")
             
@@ -5507,7 +5399,7 @@ def main():
             st.session_state['df'] = df
             
             # Game configuration
-            st.markdown("### ⚙️ Game Setup")
+            st.markdown("### Game Setup")
             
             col1, col2, col3, col4 = st.columns(4)
             
@@ -5533,7 +5425,7 @@ def main():
             }
             
             # Display player pool
-            st.markdown("### 📋 Player Pool")
+            st.markdown("### Player Pool")
             
             # Summary statistics
             col1, col2, col3, col4 = st.columns(4)
@@ -5557,7 +5449,7 @@ def main():
             
             # Optimization section
             st.markdown("---")
-            st.markdown("## 🚀 AI-Driven Lineup Generation")
+            st.markdown("## AI-Driven Lineup Generation")
             
             col1, col2, col3 = st.columns(3)
             
@@ -5577,7 +5469,7 @@ def main():
             
             with col3:
                 generate_button = st.button(
-                    "🤖 Generate AI-Driven Lineups",
+                    "Generate AI-Driven Lineups",
                     type="primary",
                     use_container_width=True
                 )
@@ -5588,7 +5480,7 @@ def main():
                     optimizer = AIChefGPPOptimizer(df, game_info, field_size, api_manager)
                     
                     # Get AI strategies
-                    with st.spinner("🤖 Consulting Triple AI System..."):
+                    with st.spinner("Consulting Triple AI System..."):
                         ai_recommendations = optimizer.get_triple_ai_strategies(use_api=use_api)
                     
                     if not ai_recommendations:
@@ -5602,7 +5494,7 @@ def main():
                     display_ai_recommendations(ai_recommendations)
                     
                     # Synthesize strategies
-                    with st.spinner("🔮 Synthesizing AI strategies..."):
+                    with st.spinner("Synthesizing AI strategies..."):
                         ai_strategy = optimizer.synthesize_ai_strategies(ai_recommendations)
                     
                     # Store synthesis
@@ -5612,7 +5504,7 @@ def main():
                     display_ai_synthesis(ai_strategy['synthesis'])
                     
                     # Generate lineups
-                    with st.spinner(f"⚡ Generating {num_lineups} AI-enforced lineups..."):
+                    with st.spinner(f"Generating {num_lineups} AI-enforced lineups..."):
                         lineups_df = optimizer.generate_ai_driven_lineups(num_lineups, ai_strategy)
                     
                     if not lineups_df.empty:
@@ -5650,15 +5542,15 @@ def main():
         df = st.session_state.get('df', pd.DataFrame())
         
         st.markdown("---")
-        st.markdown("## 📊 AI Optimization Results")
+        st.markdown("## AI Optimization Results")
         
         # Results tabs
         tab1, tab2, tab3, tab4 = st.tabs([
-            "🏆 Lineups", "📊 Analysis", "📈 Visualizations", "💾 Export"
+            "Lineups", "Analysis", "Visualizations", "Export"
         ])
         
         with tab1:
-            st.markdown("### 🏆 AI-Generated Lineups")
+            st.markdown("### AI-Generated Lineups")
             
             # Display options
             col1, col2 = st.columns(2)
@@ -5703,7 +5595,7 @@ def main():
             display_ai_lineup_analysis(lineups_df, df, synthesis, field_size)
         
         with tab3:
-            st.markdown("### 📈 Strategy Visualizations")
+            st.markdown("### Strategy Visualizations")
             
             # Create visualizations
             fig, axes = plt.subplots(1, 2, figsize=(12, 5))
@@ -5735,7 +5627,7 @@ def main():
             st.pyplot(fig)
         
         with tab4:
-            st.markdown("### 💾 Export Options")
+            st.markdown("### Export Options")
             
             col1, col2 = st.columns(2)
             
@@ -5744,7 +5636,7 @@ def main():
                 dk_csv = export_lineups_draftkings(lineups_df)
                 if dk_csv:
                     st.download_button(
-                        label="📥 Download DraftKings CSV",
+                        label="Download DraftKings CSV",
                         data=dk_csv,
                         file_name=f"dk_lineups_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                         mime="text/csv"
@@ -5755,7 +5647,7 @@ def main():
                 detailed_csv = export_detailed_lineups(lineups_df)
                 if detailed_csv:
                     st.download_button(
-                        label="📥 Download Detailed CSV",
+                        label="Download Detailed CSV",
                         data=detailed_csv,
                         file_name=f"detailed_lineups_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                         mime="text/csv"
@@ -5773,7 +5665,7 @@ def main():
                 
                 strategy_json = json.dumps(strategy_export, default=str, indent=2)
                 st.download_button(
-                    label="🤖 Download AI Strategy",
+                    label="Download AI Strategy",
                     data=strategy_json,
                     file_name=f"ai_strategy_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
                     mime="application/json"
