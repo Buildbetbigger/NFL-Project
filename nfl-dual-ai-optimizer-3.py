@@ -1571,14 +1571,12 @@ if uploaded_file is not None:
                 
                 st.info(f"Generated {len(pivots_df)} captain pivot variations")
                 
-                for idx, pivot in st.session_state.pivots_df.iterrows():
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.write(f"**Original:** {pivot['Original_Captain']} → **New:** {pivot['Captain']}")
-                    with col2:
-                        st.write(f"Ownership Change: {pivot['Ownership_Delta']:+.1f}%")
-                    with col3:
-                        st.write(f"Type: {pivot['Pivot_Type']}")
+                # Display individual pivot explanations
+if hasattr(st.session_state, 'pivots_df') and st.session_state.pivots_df is not None:
+    if not st.session_state.pivots_df.empty:
+        st.subheader("Pivot Explanations")
+        for idx, pivot in st.session_state.pivots_df.iterrows():
+            # rest of the code that's inside this for loop stays the same
             else:
                 st.info("Enable captain pivots in settings to generate variations")
         
