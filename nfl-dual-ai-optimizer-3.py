@@ -1408,7 +1408,7 @@ class GPPDualAIOptimizer:
         strategy_weights = combined['strategy_weights']
         lineups_per_strategy = {}
         for strategy in StrategyType:
-            if strategy.value in [s.value for s in strategy_weights.keys()]:
+            if strategy in strategy_weights:
                 weight = strategy_weights.get(strategy, 0)
                 lineups_per_strategy[strategy] = max(0, int(num_lineups * weight))
         
