@@ -1,6 +1,6 @@
 
 # NFL GPP DUAL-AI OPTIMIZER - PART 1: CONFIGURATION & MONITORING
-# Version 6.3 - ENHANCED WITH CRITICAL FIXES (NO COMPROMISES)
+# Version 6.4 - Complete with All Required Methods
 
 import pandas as pd
 import numpy as np
@@ -14,6 +14,7 @@ import threading
 import hashlib
 import os
 from collections import deque
+import traceback
 
 # ============================================================================
 # ENUMS AND CONSTANTS
@@ -91,10 +92,10 @@ class OptimizerConfig:
     # AI Configuration
     AI_ENFORCEMENT_MODE = AIEnforcementLevel.MANDATORY
     REQUIRE_AI_FOR_GENERATION = False
-    MIN_AI_CONFIDENCE = 0.5  # Increased for reliability
-    MAX_AI_CONFIDENCE_OVERRIDE = 0.9  # Above this, AI can override user settings
+    MIN_AI_CONFIDENCE = 0.5
+    MAX_AI_CONFIDENCE_OVERRIDE = 0.9
 
-    # Triple AI Weights (now configurable)
+    # Triple AI Weights
     AI_WEIGHTS = {
         AIStrategistType.GAME_THEORY: 0.35,
         AIStrategistType.CORRELATION: 0.35,
@@ -109,7 +110,7 @@ class OptimizerConfig:
         'stack_required': 2
     }
 
-    # GPP Ownership targets with field-specific adjustments
+    # GPP Ownership targets
     GPP_OWNERSHIP_TARGETS = {
         'small_field': (80, 120),
         'medium_field': (70, 100),
@@ -119,7 +120,7 @@ class OptimizerConfig:
         'super_contrarian': (30, 60)
     }
 
-    # Enhanced field size configurations
+    # Field size configurations
     FIELD_SIZE_CONFIGS = {
         'small_field': {
             'min_unique_captains': 3,
@@ -223,7 +224,7 @@ class OptimizerConfig:
                 'bring_back_required': True
             }
         },
-        'super_contrarian': {  # New ultra-contrarian mode
+        'super_contrarian': {
             'min_unique_captains': 25,
             'max_chalk_players': 0,
             'min_leverage_players': 4,
@@ -239,12 +240,12 @@ class OptimizerConfig:
             'stack_requirements': {
                 'min_stacks': 1,
                 'max_stacks': 5,
-                'bring_back_required': False  # More flexibility
+                'bring_back_required': False
             }
         }
     }
 
-    # Enhanced AI Strategy Requirements
+    # AI Strategy Requirements
     AI_STRATEGY_REQUIREMENTS = {
         'ai_consensus': {
             'must_use_consensus_captain': True,
@@ -277,7 +278,7 @@ class OptimizerConfig:
         }
     }
 
-    # Ownership buckets with dynamic thresholds
+    # Ownership buckets
     OWNERSHIP_BUCKETS = {
         'mega_chalk': 35,
         'chalk': 20,
@@ -286,7 +287,7 @@ class OptimizerConfig:
         'super_leverage': 0
     }
 
-    # Enhanced contest types
+    # Contest types
     FIELD_SIZES = {
         'Single Entry': 'small_field',
         '3-Max Entry': 'small_field',
@@ -297,30 +298,30 @@ class OptimizerConfig:
         'Super Contrarian': 'super_contrarian'
     }
 
-    # Correlation thresholds with game context
+    # Correlation thresholds
     CORRELATION_THRESHOLDS = {
         'strong_positive': 0.6,
         'moderate_positive': 0.3,
         'weak': 0.0,
         'moderate_negative': -0.3,
         'strong_negative': -0.6,
-        'game_stack_min': 0.4,  # Minimum for game stacks
-        'bring_back_min': 0.2    # Minimum for bring-back correlations
+        'game_stack_min': 0.4,
+        'bring_back_min': 0.2
     }
 
     # Memory management settings
-    MAX_HISTORY_ENTRIES = 500  # Increased for better analysis
-    MAX_LOG_ENTRIES = 2000      # More comprehensive logging
-    MAX_SYNTHESIS_HISTORY = 100  # More synthesis tracking
-    MAX_DECISION_CACHE = 50      # Cache AI decisions
+    MAX_HISTORY_ENTRIES = 500
+    MAX_LOG_ENTRIES = 2000
+    MAX_SYNTHESIS_HISTORY = 100
+    MAX_DECISION_CACHE = 50
     
     # Performance settings
     PARALLEL_LINEUP_GENERATION = True
     MAX_PARALLEL_THREADS = 4
-    OPTIMIZATION_TIMEOUT = 300  # seconds
+    OPTIMIZATION_TIMEOUT = 300
 
 # ============================================================================
-# ENHANCED AI DECISION TRACKER
+# AI DECISION TRACKER
 # ============================================================================
 
 class AIDecisionTracker:
@@ -328,8 +329,8 @@ class AIDecisionTracker:
 
     def __init__(self, max_decisions: int = 2000):
         self.max_decisions = max_decisions
-        self.ai_decisions = deque(maxlen=max_decisions)  # Auto-manages memory
-        self.decision_cache = {}  # Cache for quick lookups
+        self.ai_decisions = deque(maxlen=max_decisions)
+        self.decision_cache = {}
         self.enforcement_stats = {
             'total_rules': 0,
             'enforced_rules': 0,
@@ -337,7 +338,7 @@ class AIDecisionTracker:
             'consensus_decisions': 0,
             'majority_decisions': 0,
             'single_ai_decisions': 0,
-            'override_decisions': 0  # New: tracks when AI overrides user
+            'override_decisions': 0
         }
         self.ai_performance = {
             AIStrategistType.GAME_THEORY: {
@@ -350,7 +351,7 @@ class AIDecisionTracker:
                 'suggestions': 0, 'used': 0, 'success_rate': 0.0
             }
         }
-        self._lock = threading.RLock()  # Reentrant lock for nested calls
+        self._lock = threading.RLock()
         self.analytics = {'decision_patterns': {}, 'consensus_patterns': {}}
 
     def track_decision(self, decision_type: str, ai_source: str,
@@ -368,7 +369,7 @@ class AIDecisionTracker:
             
             self.ai_decisions.append(decision)
             
-            # Update cache for quick lookup
+            # Update cache
             cache_key = f"{decision_type}_{ai_source}"
             self.decision_cache[cache_key] = decision
 
@@ -379,11 +380,9 @@ class AIDecisionTracker:
             else:
                 self.enforcement_stats['violated_rules'] += 1
                 
-            # Track override decisions
             if confidence > OptimizerConfig.MAX_AI_CONFIDENCE_OVERRIDE:
                 self.enforcement_stats['override_decisions'] += 1
                 
-            # Update analytics
             self._update_analytics(decision_type, ai_source, enforced)
 
     def track_consensus(self, consensus_type: str, ais_agreeing: List[str], 
@@ -399,16 +398,10 @@ class AIDecisionTracker:
             else:
                 self.enforcement_stats['single_ai_decisions'] += 1
                 
-            # Track consensus patterns
             pattern_key = tuple(sorted(ais_agreeing))
             if pattern_key not in self.analytics['consensus_patterns']:
                 self.analytics['consensus_patterns'][pattern_key] = 0
             self.analytics['consensus_patterns'][pattern_key] += 1
-            
-            # Track average confidence if provided
-            if confidence_levels:
-                avg_confidence = np.mean(confidence_levels)
-                self._track_confidence_trend(consensus_type, avg_confidence)
 
     def get_enforcement_rate(self) -> float:
         """Get the rate of AI decision enforcement"""
@@ -417,21 +410,13 @@ class AIDecisionTracker:
                 return 0.0
             return self.enforcement_stats['enforced_rules'] / self.enforcement_stats['total_rules']
 
-    def get_ai_performance(self, ai_type: AIStrategistType) -> Dict:
-        """Get detailed performance for specific AI"""
-        with self._lock:
-            perf = self.ai_performance.get(ai_type, {})
-            if perf.get('suggestions', 0) > 0:
-                perf['success_rate'] = perf.get('used', 0) / perf['suggestions']
-            return perf
-
     def get_summary(self) -> Dict:
         """Get comprehensive summary with analytics"""
         with self._lock:
             return {
                 'enforcement_rate': self.get_enforcement_rate(),
                 'stats': dict(self.enforcement_stats),
-                'ai_performance': {k: self.get_ai_performance(k) for k in AIStrategistType},
+                'ai_performance': {k: dict(v) for k, v in self.ai_performance.items()},
                 'recent_decisions': list(self.ai_decisions)[-10:] if self.ai_decisions else [],
                 'analytics': dict(self.analytics),
                 'cache_size': len(self.decision_cache),
@@ -445,28 +430,12 @@ class AIDecisionTracker:
             self.analytics['decision_patterns'][pattern_key] = 0
         self.analytics['decision_patterns'][pattern_key] += 1
 
-    def _track_confidence_trend(self, consensus_type: str, confidence: float):
-        """Track confidence trends over time"""
-        if 'confidence_trends' not in self.analytics:
-            self.analytics['confidence_trends'] = {}
-        if consensus_type not in self.analytics['confidence_trends']:
-            self.analytics['confidence_trends'][consensus_type] = []
-        self.analytics['confidence_trends'][consensus_type].append({
-            'timestamp': datetime.now(),
-            'confidence': confidence
-        })
-
-    def get_decision_from_cache(self, decision_type: str, ai_source: str) -> Optional[Dict]:
-        """Quick lookup from cache"""
-        with self._lock:
-            return self.decision_cache.get(f"{decision_type}_{ai_source}")
-
 # ============================================================================
-# ROBUST GLOBAL LOGGER
+# COMPLETE GLOBAL LOGGER WITH ALL METHODS
 # ============================================================================
 
 class GlobalLogger:
-    """Production-ready logger with all features intact"""
+    """Complete production-ready logger with all required methods"""
     _instance = None
     _lock = threading.RLock()
 
@@ -501,7 +470,6 @@ class GlobalLogger:
     def log(self, message: str, level: str = "INFO", **kwargs):
         """Enhanced logging with metadata"""
         with self._entry_lock:
-            # Check log level
             if self.log_levels.get(level, 1) < self.log_levels.get(self.min_log_level, 1):
                 return
                 
@@ -527,31 +495,14 @@ class GlobalLogger:
             if self.log_to_file:
                 self._write_to_file(entry)
 
-    def log_ai_decision(self, decision_type: str, ai_source: str,
-                       enforced: bool, details: Dict, confidence: float = 0.5):
-        """Log AI decision with confidence"""
-        self.ai_tracker.track_decision(decision_type, ai_source, enforced, details, confidence)
-        message = f"AI Decision [{ai_source}]: {decision_type} - {'ENFORCED' if enforced else 'VIOLATED'} (conf: {confidence:.2f})"
-        self.log(message, "AI_DECISION", confidence=confidence)
-
-    def log_ai_consensus(self, consensus_type: str, ais_agreeing: List[str],
-                        decision: str, confidence_levels: List[float] = None):
-        """Enhanced AI consensus logging"""
-        self.ai_tracker.track_consensus(consensus_type, ais_agreeing, confidence_levels)
-        avg_conf = np.mean(confidence_levels) if confidence_levels else 0.5
-        message = f"AI Consensus ({len(ais_agreeing)}/3): {decision} (avg conf: {avg_conf:.2f})"
-        self.log(message, "AI_CONSENSUS", avg_confidence=avg_conf)
-
-    def log_optimization_start(self, num_lineups: int, field_size: str,
-                              settings: Dict):
+    def log_optimization_start(self, num_lineups: int, field_size: str, settings: Dict):
         """Log optimization start with full context"""
         self.log(f"Starting optimization: {num_lineups} lineups for {field_size}", "INFO")
         self.log(f"Settings: {json.dumps(settings, default=str)}", "DEBUG", settings=settings)
         self.log(f"AI Enforcement: {settings.get('enforcement', 'UNKNOWN')}", "INFO")
 
-    def log_optimization_end(self, lineups_generated: int, total_time: float,
-                           success_rate: float = None):
-        """Enhanced optimization completion logging"""
+    def log_optimization_end(self, lineups_generated: int, total_time: float, success_rate: float = None):
+        """Log optimization completion with metrics"""
         self.log(f"Optimization complete: {lineups_generated} lineups in {total_time:.2f}s", "INFO")
         
         if lineups_generated > 0:
@@ -561,10 +512,9 @@ class GlobalLogger:
             if success_rate is not None:
                 self.log(f"Success rate: {success_rate:.1%}", "INFO")
 
-    def log_lineup_generation(self, strategy: str, lineup_num: int,
-                             status: str, ai_rules_enforced: int = 0,
-                             violations: List[str] = None):
-        """Enhanced lineup generation logging"""
+    def log_lineup_generation(self, strategy: str, lineup_num: int, status: str, 
+                             ai_rules_enforced: int = 0, violations: List[str] = None):
+        """Log individual lineup generation"""
         message = f"Lineup {lineup_num} ({strategy}): {status}"
         if ai_rules_enforced > 0:
             message += f" - {ai_rules_enforced} AI rules enforced"
@@ -574,11 +524,23 @@ class GlobalLogger:
         level = "DEBUG" if status == "SUCCESS" else "WARNING"
         self.log(message, level, lineup_num=lineup_num, strategy=strategy)
 
-    def log_exception(self, exception: Exception, context: str = "",
-                     critical: bool = False):
-        """Enhanced exception logging with stack trace option"""
-        import traceback
-        
+    def log_ai_decision(self, decision_type: str, ai_source: str, enforced: bool, 
+                       details: Dict, confidence: float = 0.5):
+        """Log AI decision with tracking"""
+        self.ai_tracker.track_decision(decision_type, ai_source, enforced, details, confidence)
+        message = f"AI Decision [{ai_source}]: {decision_type} - {'ENFORCED' if enforced else 'VIOLATED'} (conf: {confidence:.2f})"
+        self.log(message, "AI_DECISION", confidence=confidence)
+
+    def log_ai_consensus(self, consensus_type: str, ais_agreeing: List[str],
+                        decision: str, confidence_levels: List[float] = None):
+        """Log AI consensus with confidence tracking"""
+        self.ai_tracker.track_consensus(consensus_type, ais_agreeing, confidence_levels)
+        avg_conf = np.mean(confidence_levels) if confidence_levels else 0.5
+        message = f"AI Consensus ({len(ais_agreeing)}/3): {decision} (avg conf: {avg_conf:.2f})"
+        self.log(message, "AI_CONSENSUS", avg_confidence=avg_conf)
+
+    def log_exception(self, exception: Exception, context: str = "", critical: bool = False):
+        """Log exception with optional stack trace"""
         message = f"Exception in {context}: {str(exception)}"
         if critical:
             message += f"\nStack trace: {traceback.format_exc()}"
@@ -590,13 +552,12 @@ class GlobalLogger:
         return self.ai_tracker.get_summary()
 
     def display_ai_enforcement(self):
-        """Enhanced AI enforcement display in Streamlit"""
+        """Display AI enforcement statistics in Streamlit"""
         try:
             summary = self.get_ai_summary()
             
             st.markdown("### 🤖 AI Decision Enforcement")
             
-            # Main metrics
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -632,20 +593,14 @@ class GlobalLogger:
                         st.metric(ai_name, f"{success_rate:.1f}%",
                                  delta=f"{perf.get('used', 0)}/{perf.get('suggestions', 0)}")
                         
-            # Analytics insights
-            if summary.get('analytics'):
-                with st.expander("📊 Decision Analytics"):
-                    st.json(summary['analytics'].get('decision_patterns', {}))
-                    
         except Exception as e:
             st.error(f"Error displaying AI enforcement: {e}")
 
     def display_log_summary(self):
-        """Enhanced log summary display"""
+        """Display log summary in Streamlit"""
         try:
             st.markdown("### 📋 Optimization Log Summary")
             
-            # Statistics
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -701,7 +656,7 @@ class GlobalLogger:
                         'summary': self.get_ai_summary(),
                         'stats': dict(self.stats)
                     }
-                else:  # text format
+                else:
                     output = "=== OPTIMIZATION LOG ===\n\n"
                     for entry in list(self.entries)[-100:]:
                         timestamp = entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
@@ -722,7 +677,6 @@ class GlobalLogger:
     def _write_to_file(self, entry: Dict):
         """Thread-safe file writing with rotation"""
         try:
-            # Check file size and rotate if needed
             if os.path.exists(self.log_file_path):
                 if os.path.getsize(self.log_file_path) > 10 * 1024 * 1024:  # 10MB
                     os.rename(self.log_file_path, f"{self.log_file_path}.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
@@ -733,10 +687,10 @@ class GlobalLogger:
                 f.write(f"[{timestamp}] {entry.get('level', 'UNKNOWN')}: {entry.get('message', '')} {metadata}\n")
                 
         except Exception:
-            pass  # Fail silently
+            pass
 
 # ============================================================================
-# ENHANCED PERFORMANCE MONITOR
+# PERFORMANCE MONITOR
 # ============================================================================
 
 class PerformanceMonitor:
@@ -756,8 +710,8 @@ class PerformanceMonitor:
         if not self.initialized:
             self.timers = {}
             self.counters = {}
-            self.gauges = {}  # For current values
-            self.histograms = {}  # For distributions
+            self.gauges = {}
+            self.histograms = {}
             self.max_timers = 200
             self.initialized = True
             self._timer_lock = threading.RLock()
@@ -770,7 +724,6 @@ class PerformanceMonitor:
                 'metadata': metadata or {}
             }
             
-            # Cleanup old timers if needed
             if len(self.timers) > self.max_timers:
                 oldest = sorted(self.timers.items(), 
                               key=lambda x: x[1]['start'])[:20]
@@ -783,12 +736,10 @@ class PerformanceMonitor:
             if name in self.timers:
                 elapsed = (datetime.now() - self.timers[name]['start']).total_seconds()
                 
-                # Record in histogram
                 if name not in self.histograms:
                     self.histograms[name] = []
                 self.histograms[name].append(elapsed)
                 
-                # Keep only recent measurements
                 if len(self.histograms[name]) > 100:
                     self.histograms[name] = self.histograms[name][-100:]
                 
@@ -811,7 +762,6 @@ class PerformanceMonitor:
     def get_metrics(self) -> Dict:
         """Get comprehensive metrics"""
         with self._timer_lock:
-            # Calculate histogram stats
             histogram_stats = {}
             for name, values in self.histograms.items():
                 if values:
@@ -836,20 +786,17 @@ class PerformanceMonitor:
             metrics = self.get_metrics()
             st.markdown("### ⚡ Performance Metrics")
             
-            # Active operations
             if metrics['active_timers']:
                 st.markdown("#### Active Operations")
                 for timer in metrics['active_timers'][:5]:
                     st.write(f"• {timer}")
             
-            # Key counters
             if metrics['counters']:
                 st.markdown("#### Operation Counts")
                 counter_cols = st.columns(4)
                 for i, (name, value) in enumerate(list(metrics['counters'].items())[:8]):
                     counter_cols[i % 4].metric(name.replace('_', ' ').title(), value)
             
-            # Performance histograms
             if metrics['histogram_stats']:
                 st.markdown("#### Performance Statistics (seconds)")
                 for operation, stats in list(metrics['histogram_stats'].items())[:5]:
@@ -883,7 +830,7 @@ def get_performance_monitor() -> PerformanceMonitor:
     return PerformanceMonitor()
 
 # ============================================================================
-# ENHANCED DATA CLASSES
+# DATA CLASSES
 # ============================================================================
 
 @dataclass
@@ -906,7 +853,7 @@ class AIRecommendation:
     boosts: Optional[List[str]] = None
     fades: Optional[List[str]] = None
     
-    # New fields for enhanced tracking
+    # Enhanced tracking
     generation_time: datetime = field(default_factory=datetime.now)
     validation_status: str = 'pending'
     enforcement_priority: int = 1
@@ -926,7 +873,7 @@ class AIRecommendation:
         return len(errors) == 0, errors
 
 # ============================================================================
-# PLACEHOLDER STUBS (with basic structure for testing)
+# PLACEHOLDER STUBS FOR OTHER PARTS
 # ============================================================================
 
 class GPPCaptainPivotGenerator:
