@@ -465,6 +465,537 @@ class PerformanceMonitor:
         for name, stats in metrics['timers'].items():
             if 'average' in stats:
                 st.write(f"**{name}**: {stats['average']:.3f}s avg ({stats['count']} ops)")
+# NFL GPP DUAL-AI OPTIMIZER - PART 1: CONFIGURATION & MONITORING
+# Version 6.0 - AI-as-Chef Architecture with Triple AI System (COMPLETE CORRECTED)
+
+import pandas as pd
+import numpy as np
+from dataclasses import dataclass
+from typing import Dict, List, Tuple, Optional, Set, Any
+from enum import Enum
+import json
+from datetime import datetime
+import streamlit as st
+
+# ============================================================================
+# ENUMS AND CONSTANTS
+# ============================================================================
+
+class StrategyType(Enum):
+    """GPP Strategy Types - Now AI-Driven"""
+    AI_CONSENSUS = 'ai_consensus'        # All 3 AIs agree
+    AI_MAJORITY = 'ai_majority'          # 2 of 3 AIs agree  
+    AI_CONTRARIAN = 'ai_contrarian'      # Following contrarian AI specifically
+    AI_CORRELATION = 'ai_correlation'    # Following correlation AI specifically
+    AI_GAME_THEORY = 'ai_game_theory'    # Following game theory AI specifically
+    AI_MIXED = 'ai_mixed'                # Mixing different AI perspectives
+    LEVERAGE = 'leverage'                # Legacy - will be AI-driven
+    CONTRARIAN = 'contrarian'            # Legacy - will be AI-driven
+    GAME_STACK = 'game_stack'            # Legacy
+    STARS_SCRUBS = 'stars_scrubs'        # Legacy
+    CORRELATION = 'correlation'          # Legacy
+    SUPER_CONTRARIAN = 'super_contrarian' # Legacy
+
+class AIEnforcementLevel(Enum):
+    """How strictly to enforce AI decisions"""
+    MANDATORY = 'mandatory'              # AI decisions are hard constraints
+    STRONG = 'strong'                    # AI decisions heavily weighted
+    MODERATE = 'moderate'                # AI decisions moderately weighted
+    SUGGESTION = 'suggestion'            # AI decisions as hints only
+
+class AIStrategistType(Enum):
+    """Three AI Strategist Types"""
+    GAME_THEORY = 'game_theory'
+    CORRELATION = 'correlation'
+    CONTRARIAN_NARRATIVE = 'contrarian_narrative'
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+class OptimizerConfig:
+    """Core configuration for GPP optimizer - AI-as-Chef version"""
+    
+    # Salary and roster constraints
+    SALARY_CAP = 50000
+    MIN_SALARY = 3000
+    MAX_PLAYERS_PER_TEAM = 5
+    ROSTER_SIZE = 6  # 1 CPT + 5 FLEX
+    
+    # Default ownership when unknown (pre-lock)
+    DEFAULT_OWNERSHIP = 5.0
+    
+    # AI Configuration
+    AI_ENFORCEMENT_MODE = AIEnforcementLevel.MANDATORY
+    REQUIRE_AI_FOR_GENERATION = True  # If True, won't generate without AI input
+    MIN_AI_CONFIDENCE = 0.3  # Minimum confidence to use AI recommendations
+    
+    # Triple AI Weights (how much each AI contributes)
+    AI_WEIGHTS = {
+        AIStrategistType.GAME_THEORY: 0.35,
+        AIStrategistType.CORRELATION: 0.35,
+        AIStrategistType.CONTRARIAN_NARRATIVE: 0.30
+    }
+    
+    # AI Consensus Requirements
+    AI_CONSENSUS_THRESHOLDS = {
+        'captain': 2,  # How many AIs must agree for consensus captain
+        'must_play': 3,  # All 3 must agree for "must play"
+        'never_play': 2,  # 2 must agree for "never play"
+    }
+    
+    # GPP Ownership targets by field size
+    GPP_OWNERSHIP_TARGETS = {
+        'small_field': (80, 120),
+        'medium_field': (70, 100),
+        'large_field': (60, 90),
+        'milly_maker': (50, 80)
+    }
+    
+    # Field size configurations - Now with AI strategy distribution
+    FIELD_SIZE_CONFIGS = {
+        'small_field': {
+            'min_unique_captains': 3,
+            'max_chalk_players': 4,
+            'min_leverage_players': 0,
+            'max_ownership_per_player': 40,
+            'min_total_ownership': 80,
+            'max_total_ownership': 120,
+            'ai_enforcement': AIEnforcementLevel.MODERATE,
+            'ai_strategy_distribution': {
+                'ai_consensus': 0.4,
+                'ai_majority': 0.3,
+                'ai_mixed': 0.3
+            }
+        },
+        'medium_field': {
+            'min_unique_captains': 6,
+            'max_chalk_players': 2,
+            'min_leverage_players': 1,
+            'max_ownership_per_player': 20,
+            'min_total_ownership': 70,
+            'max_total_ownership': 100,
+            'ai_enforcement': AIEnforcementLevel.STRONG,
+            'ai_strategy_distribution': {
+                'ai_consensus': 0.2,
+                'ai_majority': 0.3,
+                'ai_contrarian': 0.2,
+                'ai_correlation': 0.2,
+                'ai_game_theory': 0.1
+            }
+        },
+        'large_field': {
+            'min_unique_captains': 10,
+            'max_chalk_players': 1,
+            'min_leverage_players': 2,
+            'max_ownership_per_player': 15,
+            'min_total_ownership': 60,
+            'max_total_ownership': 90,
+            'ai_enforcement': AIEnforcementLevel.MANDATORY,
+            'ai_strategy_distribution': {
+                'ai_consensus': 0.1,
+                'ai_majority': 0.2,
+                'ai_contrarian': 0.3,
+                'ai_correlation': 0.2,
+                'ai_game_theory': 0.2
+            }
+        },
+        'milly_maker': {
+            'min_unique_captains': 20,
+            'max_chalk_players': 0,
+            'min_leverage_players': 3,
+            'max_ownership_per_player': 10,
+            'min_total_ownership': 50,
+            'max_total_ownership': 80,
+            'ai_enforcement': AIEnforcementLevel.MANDATORY,
+            'ai_strategy_distribution': {
+                'ai_contrarian': 0.4,
+                'ai_game_theory': 0.3,
+                'ai_correlation': 0.2,
+                'ai_mixed': 0.1
+            }
+        }
+    }
+    
+    # AI Strategy Requirements - What each AI strategy type enforces
+    AI_STRATEGY_REQUIREMENTS = {
+        'ai_consensus': {
+            'must_use_consensus_captain': True,
+            'must_include_agreed_players': True,
+            'must_avoid_fade_players': True
+        },
+        'ai_majority': {
+            'must_use_majority_captain': True,
+            'should_include_agreed_players': True
+        },
+        'ai_contrarian': {
+            'must_use_contrarian_captain': True,
+            'must_include_narrative_plays': True,
+            'must_fade_chalk_narrative': True
+        },
+        'ai_correlation': {
+            'must_use_correlation_captain': True,
+            'must_include_primary_stack': True,
+            'should_include_secondary_correlation': True
+        },
+        'ai_game_theory': {
+            'must_use_leverage_captain': True,
+            'must_meet_ownership_targets': True,
+            'must_avoid_ownership_traps': True
+        }
+    }
+    
+    # Ownership bucket thresholds
+    OWNERSHIP_BUCKETS = {
+        'mega_chalk': 35,
+        'chalk': 20,
+        'pivot': 10,
+        'leverage': 5,
+        'super_leverage': 0
+    }
+    
+    # Contest types to field sizes
+    FIELD_SIZES = {
+        'Single Entry': 'small_field',
+        '3-Max Entry': 'small_field',
+        '20-Max Entry': 'medium_field',
+        '150-Max Entry': 'large_field',
+        'Milly Maker': 'milly_maker'
+    }
+    
+    # Correlation thresholds
+    CORRELATION_THRESHOLDS = {
+        'strong_positive': 0.6,
+        'moderate_positive': 0.3,
+        'weak': 0.0,
+        'moderate_negative': -0.3,
+        'strong_negative': -0.6
+    }
+
+# ============================================================================
+# MONITORING AND LOGGING - AI-FOCUSED
+# ============================================================================
+
+class AIDecisionTracker:
+    """Tracks AI decisions and enforcement throughout optimization"""
+    
+    def __init__(self):
+        self.ai_decisions = []
+        self.enforcement_stats = {
+            'total_rules': 0,
+            'enforced_rules': 0,
+            'violated_rules': 0,
+            'consensus_decisions': 0,
+            'majority_decisions': 0,
+            'single_ai_decisions': 0
+        }
+        self.ai_performance = {
+            AIStrategistType.GAME_THEORY: {'suggestions': 0, 'used': 0},
+            AIStrategistType.CORRELATION: {'suggestions': 0, 'used': 0},
+            AIStrategistType.CONTRARIAN_NARRATIVE: {'suggestions': 0, 'used': 0}
+        }
+    
+    def track_decision(self, decision_type: str, ai_source: str, 
+                      enforced: bool, details: Dict):
+        """Track an AI decision and whether it was enforced"""
+        self.ai_decisions.append({
+            'timestamp': datetime.now(),
+            'type': decision_type,
+            'source': ai_source,
+            'enforced': enforced,
+            'details': details
+        })
+        
+        self.enforcement_stats['total_rules'] += 1
+        if enforced:
+            self.enforcement_stats['enforced_rules'] += 1
+        else:
+            self.enforcement_stats['violated_rules'] += 1
+    
+    def track_consensus(self, consensus_type: str, ais_agreeing: List[str]):
+        """Track consensus between AIs"""
+        if len(ais_agreeing) == 3:
+            self.enforcement_stats['consensus_decisions'] += 1
+        elif len(ais_agreeing) == 2:
+            self.enforcement_stats['majority_decisions'] += 1
+        else:
+            self.enforcement_stats['single_ai_decisions'] += 1
+    
+    def get_enforcement_rate(self) -> float:
+        """Get the rate of AI decision enforcement"""
+        if self.enforcement_stats['total_rules'] == 0:
+            return 0.0
+        return self.enforcement_stats['enforced_rules'] / self.enforcement_stats['total_rules']
+    
+    def get_summary(self) -> Dict:
+        """Get summary of AI decision tracking"""
+        return {
+            'enforcement_rate': self.get_enforcement_rate(),
+            'stats': self.enforcement_stats,
+            'ai_performance': self.ai_performance,
+            'recent_decisions': self.ai_decisions[-10:]
+        }
+
+class GlobalLogger:
+    """Enhanced logger with AI decision tracking and all required methods"""
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.initialize()
+        return cls._instance
+    
+    def initialize(self):
+        self.entries = []
+        self.ai_tracker = AIDecisionTracker()
+        self.verbose = False
+        self.log_to_file = False
+        
+    def log(self, message: str, level: str = "INFO"):
+        """Log a message with level"""
+        entry = {
+            'timestamp': datetime.now(),
+            'level': level,
+            'message': message
+        }
+        self.entries.append(entry)
+        
+        if self.verbose or level in ["ERROR", "WARNING"]:
+            timestamp = entry['timestamp'].strftime('%H:%M:%S')
+            print(f"[{timestamp}] {level}: {message}")
+            
+        if self.log_to_file:
+            self._write_to_file(entry)
+    
+    def log_ai_decision(self, decision_type: str, ai_source: str, 
+                       enforced: bool, details: Dict):
+        """Log an AI decision"""
+        self.ai_tracker.track_decision(decision_type, ai_source, enforced, details)
+        message = f"AI Decision [{ai_source}]: {decision_type} - {'ENFORCED' if enforced else 'VIOLATED'}"
+        self.log(message, "AI_DECISION")
+    
+    def log_ai_consensus(self, consensus_type: str, ais_agreeing: List[str], 
+                        decision: str):
+        """Log AI consensus"""
+        self.ai_tracker.track_consensus(consensus_type, ais_agreeing)
+        message = f"AI Consensus ({len(ais_agreeing)}/3): {decision}"
+        self.log(message, "AI_CONSENSUS")
+    
+    def log_optimization_start(self, num_lineups: int, field_size: str, 
+                              settings: Dict):
+        """Log optimization start with AI focus"""
+        self.log(f"Starting AI-driven optimization: {num_lineups} lineups for {field_size}", "INFO")
+        self.log(f"AI Enforcement: {settings.get('ai_enforcement', 'MANDATORY')}", "INFO")
+        self.log(f"Settings: {settings}", "DEBUG")
+    
+    def log_optimization_end(self, lineups_generated: int, total_time: float):
+        """Log optimization completion"""
+        self.log(f"Optimization complete: {lineups_generated} lineups in {total_time:.2f}s", "INFO")
+        if lineups_generated > 0:
+            avg_time = total_time / lineups_generated
+            self.log(f"Average time per lineup: {avg_time:.3f}s", "DEBUG")
+    
+    def log_lineup_generation(self, strategy: str, lineup_num: int, 
+                             status: str, ai_rules_enforced: int = 0):
+        """Log lineup generation with AI enforcement tracking"""
+        message = f"Lineup {lineup_num} ({strategy}): {status}"
+        if ai_rules_enforced > 0:
+            message += f" - {ai_rules_enforced} AI rules enforced"
+        self.log(message, "DEBUG" if status == "SUCCESS" else "WARNING")
+    
+    def log_exception(self, exception: Exception, context: str = ""):
+        """Log an exception"""
+        message = f"Exception in {context}: {str(exception)}"
+        self.log(message, "ERROR")
+    
+    def get_ai_summary(self) -> Dict:
+        """Get AI tracking summary"""
+        return self.ai_tracker.get_summary()
+    
+    def display_ai_enforcement(self):
+        """Display AI enforcement statistics in Streamlit"""
+        summary = self.get_ai_summary()
+        
+        st.markdown("### 🤖 AI Decision Enforcement")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            rate = summary['enforcement_rate'] * 100
+            st.metric("Enforcement Rate", f"{rate:.1f}%")
+        
+        with col2:
+            stats = summary['stats']
+            st.metric("Rules Enforced", 
+                     f"{stats['enforced_rules']}/{stats['total_rules']}")
+        
+        with col3:
+            st.metric("Consensus Decisions", stats['consensus_decisions'])
+        
+        # Show AI performance
+        st.markdown("#### AI Performance")
+        for ai_type, perf in summary['ai_performance'].items():
+            if perf['suggestions'] > 0:
+                usage_rate = (perf['used'] / perf['suggestions']) * 100
+                st.write(f"**{ai_type.value}**: {usage_rate:.1f}% usage rate")
+    
+    def display_log_summary(self):
+        """Display log summary in Streamlit"""
+        st.markdown("### 📋 Log Summary")
+        
+        # Count by level
+        level_counts = {}
+        for entry in self.entries:
+            level = entry['level']
+            level_counts[level] = level_counts.get(level, 0) + 1
+        
+        # Display counts
+        if level_counts:
+            cols = st.columns(len(level_counts))
+            for i, (level, count) in enumerate(level_counts.items()):
+                cols[i].metric(level, count)
+        
+        # Show recent logs
+        if self.entries:
+            st.markdown("#### Recent Entries")
+            for entry in self.entries[-10:]:
+                timestamp = entry['timestamp'].strftime('%H:%M:%S')
+                level_color = {
+                    'ERROR': '🔴',
+                    'WARNING': '🟡',
+                    'INFO': '🟢',
+                    'DEBUG': '🔵',
+                    'AI_DECISION': '🤖',
+                    'AI_CONSENSUS': '🤝'
+                }.get(entry['level'], '⚪')
+                st.text(f"{level_color} [{timestamp}] {entry['level']}: {entry['message']}")
+    
+    def export_logs(self) -> str:
+        """Export logs including AI decisions"""
+        output = "=== OPTIMIZATION LOG ===\n\n"
+        for entry in self.entries:
+            timestamp = entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+            output += f"[{timestamp}] {entry['level']}: {entry['message']}\n"
+        
+        output += "\n=== AI DECISION SUMMARY ===\n"
+        summary = self.get_ai_summary()
+        output += f"Enforcement Rate: {summary['enforcement_rate']*100:.1f}%\n"
+        output += f"Total AI Rules: {summary['stats']['total_rules']}\n"
+        output += f"Enforced: {summary['stats']['enforced_rules']}\n"
+        output += f"Violated: {summary['stats']['violated_rules']}\n"
+        
+        return output
+    
+    def _write_to_file(self, entry: Dict):
+        """Write log entry to file"""
+        try:
+            with open('optimizer_log.txt', 'a') as f:
+                timestamp = entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+                f.write(f"[{timestamp}] {entry['level']}: {entry['message']}\n")
+        except:
+            pass  # Fail silently if can't write to file
+
+# ============================================================================
+# PERFORMANCE MONITOR
+# ============================================================================
+
+class PerformanceMonitor:
+    """Monitor performance with AI-specific metrics"""
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.initialize()
+        return cls._instance
+    
+    def initialize(self):
+        self.timers = {}
+        self.counters = {}
+        self.ai_metrics = {
+            'ai_api_calls': 0,
+            'ai_response_time': [],
+            'ai_cache_hits': 0,
+            'ai_enforcement_time': []
+        }
+    
+    def start_timer(self, name: str):
+        self.timers[name] = {'start': datetime.now()}
+    
+    def stop_timer(self, name: str) -> float:
+        if name in self.timers and 'start' in self.timers[name]:
+            elapsed = (datetime.now() - self.timers[name]['start']).total_seconds()
+            if 'total' not in self.timers[name]:
+                self.timers[name]['total'] = 0
+                self.timers[name]['count'] = 0
+            self.timers[name]['total'] += elapsed
+            self.timers[name]['count'] += 1
+            self.timers[name]['average'] = self.timers[name]['total'] / self.timers[name]['count']
+            
+            # Track AI-specific timings
+            if 'ai' in name.lower():
+                self.ai_metrics['ai_response_time'].append(elapsed)
+            
+            return elapsed
+        return 0.0
+    
+    def increment_counter(self, name: str, value: int = 1):
+        if name not in self.counters:
+            self.counters[name] = 0
+        self.counters[name] += value
+        
+        # Track AI-specific counters
+        if 'ai' in name.lower():
+            if 'cache' in name.lower():
+                self.ai_metrics['ai_cache_hits'] += value
+            elif 'api' in name.lower():
+                self.ai_metrics['ai_api_calls'] += value
+    
+    def get_metrics(self) -> Dict:
+        """Get all metrics including AI-specific ones"""
+        avg_ai_response = (
+            np.mean(self.ai_metrics['ai_response_time']) 
+            if self.ai_metrics['ai_response_time'] else 0
+        )
+        
+        return {
+            'timers': self.timers,
+            'counters': self.counters,
+            'ai_metrics': {
+                'api_calls': self.ai_metrics['ai_api_calls'],
+                'cache_hits': self.ai_metrics['ai_cache_hits'],
+                'avg_response_time': avg_ai_response,
+                'cache_hit_rate': (
+                    self.ai_metrics['ai_cache_hits'] / 
+                    (self.ai_metrics['ai_api_calls'] + self.ai_metrics['ai_cache_hits'])
+                    if (self.ai_metrics['ai_api_calls'] + self.ai_metrics['ai_cache_hits']) > 0
+                    else 0
+                )
+            }
+        }
+    
+    def display_metrics(self):
+        """Display performance metrics with AI focus"""
+        metrics = self.get_metrics()
+        
+        st.markdown("### ⚡ Performance Metrics")
+        
+        # AI Metrics
+        if metrics['ai_metrics']['api_calls'] > 0:
+            st.markdown("#### AI Performance")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("API Calls", metrics['ai_metrics']['api_calls'])
+            with col2:
+                st.metric("Avg Response", f"{metrics['ai_metrics']['avg_response_time']:.2f}s")
+            with col3:
+                st.metric("Cache Hit Rate", f"{metrics['ai_metrics']['cache_hit_rate']*100:.1f}%")
+        
+        # General Metrics
+        st.markdown("#### Optimization Performance")
+        for name, stats in metrics['timers'].items():
+            if 'average' in stats:
+                st.write(f"**{name}**: {stats['average']:.3f}s avg ({stats['count']} ops)")
 
 # ============================================================================
 # SINGLETON GETTERS
@@ -499,6 +1030,8 @@ class AIRecommendation:
     contrarian_angles: Optional[List[str]] = None
     correlation_matrix: Optional[Dict] = None
     ownership_leverage: Optional[Dict] = None
+    boosts: Optional[List[str]] = None  # For backward compatibility
+    fades: Optional[List[str]] = None   # For backward compatibility
     
     def get_hard_constraints(self) -> List[str]:
         """Get constraints that MUST be enforced"""
@@ -515,6 +1048,45 @@ class AIRecommendation:
             if rule.get('type') == 'soft':
                 constraints.append((rule['constraint'], rule.get('weight', 1.0)))
         return constraints
+
+# ============================================================================
+# CAPTAIN PIVOT GENERATOR CLASS STUB
+# ============================================================================
+
+class GPPCaptainPivotGenerator:
+    """Stub class for captain pivot generation - full implementation in Part 4"""
+    def __init__(self):
+        self.logger = get_logger()
+    
+    def generate_pivots(self, lineup: Dict, df: pd.DataFrame) -> List[Dict]:
+        """Generate captain pivots - placeholder"""
+        return []
+
+# ============================================================================
+# CORRELATION ENGINE STUB
+# ============================================================================
+
+class GPPCorrelationEngine:
+    """Stub class for correlation engine - full implementation in Part 2"""
+    def __init__(self):
+        self.logger = get_logger()
+    
+    def calculate_correlations(self, df: pd.DataFrame) -> Dict:
+        """Calculate correlations - placeholder"""
+        return {}
+
+# ============================================================================
+# TOURNAMENT SIMULATOR STUB
+# ============================================================================
+
+class GPPTournamentSimulator:
+    """Stub class for tournament simulation - full implementation in Part 2"""
+    def __init__(self):
+        self.logger = get_logger()
+    
+    def simulate(self, lineup: Dict) -> Dict:
+        """Simulate tournament - placeholder"""
+        return {}
 
 # NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (AI-AS-CHEF VERSION)
 # Version 6.0 - AI-Driven Core Components with Enforcement
