@@ -1612,7 +1612,7 @@ class GPPCorrelationStrategist:
 # ============================================================================
 
 class GPPDualAIOptimizer:
-    """Main GPP optimizer with dual AI strategy integration"""
+    """Main GPP optimizer with dual AI strategy integration and configuration validation"""
     
     def __init__(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field', 
                  api_manager: ClaudeAPIManager = None):
@@ -1627,6 +1627,7 @@ class GPPDualAIOptimizer:
         self.correlation_engine = GPPCorrelationEngine()
         self.tournament_sim = GPPTournamentSimulator()
         self.optimization_logger = []  # Track optimization issues
+        self.field_config = None  # Store field configuration
     
     def safe_api_call(self, prompt: str, strategist_name: str, fallback_response: str = '{}') -> str:
         """Safely make API calls with fallback"""
@@ -1725,7 +1726,7 @@ class GPPDualAIOptimizer:
             captain_scores[captain] = score
         
         # Get GPP strategy weights for field size
-        strategy_weights = OptimizerConfig.GPP_STRATEGY_WEIGHTS[self.field_size]
+        strategy_weights = ConfigValidator.get_strategy_distribution(self.field_size, 20)
         
         # Merge GPP-specific rules
         gpp_rules = {}
@@ -1759,7 +1760,8 @@ class GPPDualAIOptimizer:
             return False, f"Salary {total_salary} exceeds cap"
         
         # Check ownership for field size
-        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[self.field_size]
+        min_own = self.field_config['min_total_ownership']
+        max_own = self.field_config['max_total_ownership']
         total_ownership = ownership.get(captain, 5) * 1.5 + sum(ownership.get(p, 5) for p in flex_players)
         
         if total_ownership < min_own - 10:  # Allow some flexibility
@@ -1771,7 +1773,27 @@ class GPPDualAIOptimizer:
     
     def generate_gpp_lineups(self, num_lineups: int, rec1: AIRecommendation, 
                             rec2: AIRecommendation, force_unique_captains: bool = True) -> pd.DataFrame:
-        """Generate GPP-optimized lineups with improved constraint handling"""
+        """Generate GPP-optimized lineups with improved constraint handling and configuration validation"""
+        
+        # Validate configuration
+        self.field_config = ConfigValidator.validate_field_config(self.field_size, num_lineups)
+        
+        # Validate player pool
+        pool_validation = ConfigValidator.validate_player_pool(self.df, self.field_size)
+        if not pool_validation['is_valid']:
+            for error in pool_validation['errors']:
+                st.error(f"Player pool issue: {error}")
+            return pd.DataFrame()
+        
+        # Show warnings if any
+        for warning in pool_validation.get('warnings', []):
+            st.warning(warning)
+        
+        # Log configuration being used
+        st.info(f"Optimization config for {self.field_size}: "
+               f"Max chalk={self.field_config['max_chalk_players']}, "
+               f"Min leverage={self.field_config['min_leverage_players']}, "
+               f"Target ownership={self.field_config['min_total_ownership']}-{self.field_config['max_total_ownership']}%")
         
         combined = self.combine_gpp_recommendations(rec1, rec2)
         
@@ -1788,7 +1810,7 @@ class GPPDualAIOptimizer:
             st.error(f"Not enough players ({len(players)}) to create lineups")
             return pd.DataFrame()
         
-        # Apply GPP AI adjustments more aggressively
+        # Apply GPP AI adjustments
         adjusted_points = points.copy()
         for player in combined['consensus_fades']:
             if player in adjusted_points and ownership.get(player, 5) > 30:
@@ -1805,22 +1827,8 @@ class GPPDualAIOptimizer:
                 ownership.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
             )
         
-        # Get ownership targets for field size
-        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[self.field_size]
-        
-        # Distribute lineups across GPP strategies
-        strategy_weights = combined['strategy_weights']
-        lineups_per_strategy = {}
-        for strategy in StrategyType:
-            if strategy in strategy_weights:
-                weight = strategy_weights.get(strategy, 0)
-                lineups_per_strategy[strategy] = max(0, int(num_lineups * weight))
-        
-        # Ensure we hit target number
-        total_assigned = sum(lineups_per_strategy.values())
-        if total_assigned < num_lineups:
-            lineups_per_strategy[StrategyType.LEVERAGE] = lineups_per_strategy.get(
-                StrategyType.LEVERAGE, 0) + (num_lineups - total_assigned)
+        # Get strategy distribution based on configuration
+        strategy_distribution = ConfigValidator.get_strategy_distribution(self.field_size, num_lineups)
         
         all_lineups = []
         used_captains = set()
@@ -1828,7 +1836,7 @@ class GPPDualAIOptimizer:
         failed_attempts = 0
         max_failures = 50  # Prevent infinite loops
         
-        for strategy, count in lineups_per_strategy.items():
+        for strategy, count in strategy_distribution.items():
             strategy_attempts = 0
             strategy_max_attempts = count * 3  # Allow 3x attempts per lineup
             
@@ -1845,7 +1853,6 @@ class GPPDualAIOptimizer:
                 
                 # GPP-SPECIFIC OBJECTIVE FUNCTIONS
                 if strategy == StrategyType.LEVERAGE:
-                    # Maximum leverage for GPP
                     model += pulp.lpSum([
                         adjusted_points[p] * flex[p] * (1 + max(0, 20 - ownership.get(p, 10))/20) +
                         1.5 * adjusted_points[p] * captain[p] * (1 + max(0, 15 - ownership.get(p, 10))/15)
@@ -1853,7 +1860,6 @@ class GPPDualAIOptimizer:
                     ])
                 
                 elif strategy == StrategyType.CONTRARIAN:
-                    # Contrarian GPP approach
                     model += pulp.lpSum([
                         adjusted_points[p] * flex[p] * (1 - ownership.get(p, 5)/80) +
                         1.5 * adjusted_points[p] * captain[p] * (1 - ownership.get(p, 5)/60)
@@ -1861,7 +1867,6 @@ class GPPDualAIOptimizer:
                     ])
                 
                 elif strategy == StrategyType.SUPER_CONTRARIAN:
-                    # Ultra-contrarian for large GPP
                     model += pulp.lpSum([
                         adjusted_points[p] * flex[p] * (1 - ownership.get(p, 5)/50) +
                         1.5 * adjusted_points[p] * captain[p] * (1 - ownership.get(p, 5)/40)
@@ -1869,7 +1874,6 @@ class GPPDualAIOptimizer:
                     ])
                 
                 elif strategy == StrategyType.GAME_STACK:
-                    # Game stack with correlation bonus
                     model += pulp.lpSum([
                         adjusted_points[p] * flex[p] * (1 + (self.game_info.get('total', 48) > 52) * 0.1) +
                         1.5 * adjusted_points[p] * captain[p]
@@ -1877,7 +1881,6 @@ class GPPDualAIOptimizer:
                     ])
                 
                 elif strategy == StrategyType.STARS_SCRUBS:
-                    # High variance construction
                     model += pulp.lpSum([
                         adjusted_points[p] * flex[p] * (1 + (salaries[p] < 3500 or salaries[p] > 9000) * 0.25) +
                         1.5 * adjusted_points[p] * captain[p]
@@ -1885,7 +1888,6 @@ class GPPDualAIOptimizer:
                     ])
                 
                 else:  # CORRELATION
-                    # Standard GPP objective
                     model += pulp.lpSum([
                         adjusted_points[p] * flex[p] + 1.5 * adjusted_points[p] * captain[p]
                         for p in players
@@ -1910,45 +1912,28 @@ class GPPDualAIOptimizer:
                     if team_players:
                         model += pulp.lpSum([flex[p] + captain[p] for p in team_players]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM
                 
-                # GPP-SPECIFIC CONSTRAINTS (FIXED)
+                # GPP-SPECIFIC CONSTRAINTS WITH CONFIGURATION VALIDATION
                 
-                # CRITICAL FIX: Actually constrain total ownership
+                # Total ownership constraints based on field configuration
                 ownership_expr = pulp.lpSum([
                     ownership.get(p, 5) * (flex[p] + 0.5 * captain[p])
                     for p in players
                 ])
                 
-                # Add flexibility for edge cases but still constrain
-                model += ownership_expr >= max(0, min_own - 10)
-                model += ownership_expr <= max_own + 10
+                model += ownership_expr >= self.field_config['min_total_ownership'] - 10
+                model += ownership_expr <= self.field_config['max_total_ownership'] + 10
                 
-                # Field-size specific chalk constraints
-                if self.field_size == 'milly_maker':
-                    # Ultra strict for Milly
-                    high_ownership_players = [p for p in players if ownership.get(p, 5) > 25]
-                    if high_ownership_players:
-                        model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) <= 0
-                    
-                    # Force super leverage
-                    super_low_owned = [p for p in players if ownership.get(p, 5) < 5]
-                    if super_low_owned and len(super_low_owned) >= 2:
-                        model += pulp.lpSum([flex[p] + captain[p] for p in super_low_owned]) >= 2
+                # Field-size specific chalk constraints from configuration
+                high_ownership_players = [p for p in players if ownership.get(p, 5) > 30]
+                if high_ownership_players and self.field_config['max_chalk_players'] == 0:
+                    model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) == 0
+                elif high_ownership_players:
+                    model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) <= self.field_config['max_chalk_players']
                 
-                elif self.field_size == 'large_field':
-                    # Strict for large field
-                    high_ownership_players = [p for p in players if ownership.get(p, 5) > 30]
-                    if high_ownership_players:
-                        model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) <= 1
-                    
-                    low_owned = [p for p in players if ownership.get(p, 5) < 10]
-                    if low_owned and len(low_owned) >= 2:
-                        model += pulp.lpSum([flex[p] + captain[p] for p in low_owned]) >= 2
-                
-                else:
-                    # More flexible for smaller fields
-                    high_ownership_players = [p for p in players if ownership.get(p, 5) > 35]
-                    if high_ownership_players:
-                        model += pulp.lpSum([flex[p] + captain[p] for p in high_ownership_players]) <= 2
+                # Minimum leverage players from configuration
+                low_owned = [p for p in players if ownership.get(p, 5) < 10]
+                if low_owned and len(low_owned) >= self.field_config['min_leverage_players']:
+                    model += pulp.lpSum([flex[p] + captain[p] for p in low_owned]) >= self.field_config['min_leverage_players']
                 
                 # Force unique captains if enabled
                 if force_unique_captains and used_captains:
@@ -1956,26 +1941,25 @@ class GPPDualAIOptimizer:
                         if prev_captain in players:
                             model += captain[prev_captain] == 0
                 
-                # Force leverage captain for certain strategies
+                # Strategy-specific constraints
                 if strategy in [StrategyType.LEVERAGE, StrategyType.SUPER_CONTRARIAN]:
-                    leverage_captains = [p for p in players if ownership.get(p, 5) < 15]
+                    # Force leverage captain
+                    max_captain_own = self.field_config.get('max_ownership_per_player', 15)
+                    leverage_captains = [p for p in players if ownership.get(p, 5) < max_captain_own]
                     if leverage_captains:
                         model += pulp.lpSum([captain[p] for p in leverage_captains]) == 1
                 
-                # Game stack constraints
-                if strategy == StrategyType.GAME_STACK and combined['combined_stacks']:
+                elif strategy == StrategyType.GAME_STACK and combined['combined_stacks']:
                     # Try to force a recommended stack
                     stack_forced = False
                     for stack in combined['combined_stacks'][:3]:
                         if isinstance(stack, dict) and not stack_forced:
                             p1, p2 = stack.get('player1'), stack.get('player2')
                             if p1 in players and p2 in players:
-                                # Soft constraint - at least one of the stack
                                 model += flex[p1] + captain[p1] + flex[p2] + captain[p2] >= 1
                                 stack_forced = True
                 
-                # Stars and scrubs specific
-                if strategy == StrategyType.STARS_SCRUBS:
+                elif strategy == StrategyType.STARS_SCRUBS:
                     min_salary_players = [p for p in players if salaries[p] <= 3000]
                     max_salary_players = [p for p in players if salaries[p] >= 9000]
                     
@@ -1984,9 +1968,9 @@ class GPPDualAIOptimizer:
                     if max_salary_players and len(max_salary_players) >= 2:
                         model += pulp.lpSum([flex[p] + captain[p] for p in max_salary_players]) >= 2
                 
-                # Diversity constraint - ensure lineup uniqueness
+                # Diversity constraint
                 if lineup_num > 1 and all_lineups:
-                    for prev_lineup in all_lineups[-min(3, len(all_lineups)):]:  # Check last 3
+                    for prev_lineup in all_lineups[-min(3, len(all_lineups)):]:
                         prev_players = [prev_lineup['Captain']] + prev_lineup['FLEX']
                         model += pulp.lpSum([flex[p] + captain[p] for p in prev_players]) <= 5
                 
@@ -2038,7 +2022,7 @@ class GPPDualAIOptimizer:
                                 ownership_tier = '⚠️ Chalky'
                             
                             all_lineups.append({
-                                'Lineup': len(all_lineups) + 1,  # Use actual count
+                                'Lineup': len(all_lineups) + 1,
                                 'Strategy': strategy.value,
                                 'Captain': captain_pick,
                                 'Captain_Own%': ownership.get(captain_pick, 5),
@@ -2060,6 +2044,9 @@ class GPPDualAIOptimizer:
                         else:
                             self.optimization_logger.append(f"Invalid lineup: {reason}")
                             strategy_attempts += 1
+                    else:
+                        strategy_attempts += 1
+                        self.optimization_logger.append(f"Incomplete lineup for {strategy.value}")
                 else:
                     failed_attempts += 1
                     strategy_attempts += 1
@@ -2069,13 +2056,20 @@ class GPPDualAIOptimizer:
                         st.warning(f"Optimization struggling. Generated {len(all_lineups)}/{num_lineups} lineups")
                         break
         
-        # If we didn't get enough lineups, report issues
+        # Report generation results
         if len(all_lineups) < num_lineups:
             st.warning(f"Only generated {len(all_lineups)}/{num_lineups} valid lineups")
             if self.optimization_logger:
                 with st.expander("Optimization Issues"):
-                    for log in self.optimization_logger[-10:]:  # Show last 10 issues
+                    for log in self.optimization_logger[-10:]:
                         st.write(f"- {log}")
+        else:
+            st.success(f"Successfully generated all {num_lineups} lineups!")
+        
+        # Log API usage stats if available
+        if self.api_manager:
+            stats = self.api_manager.get_stats()
+            st.caption(f"API Stats - Requests: {stats['requests']}, Errors: {stats['errors']}, Cache: {stats['cache_size']}")
         
         return pd.DataFrame(all_lineups)
 
