@@ -1,5 +1,5 @@
-# NFL GPP DUAL-AI OPTIMIZER - PART 1: IMPORTS AND CONFIGURATION
-# Version 5.0 - GPP Tournament Focus
+# NFL GPP DUAL-AI OPTIMIZER - PART 1: IMPORTS AND CONFIGURATION (CORRECTED)
+# Version 5.0 - GPP Tournament Focus with Configuration Management
 
 import streamlit as st
 import pandas as pd
@@ -8,7 +8,7 @@ import numpy as np
 from scipy.stats import multivariate_normal, gamma, norm
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, List, Tuple, Optional, Set, Any
 import json
 from dataclasses import dataclass
 from enum import Enum
@@ -146,6 +146,247 @@ class OptimizerConfig:
         }
     }
 
+# ============================================================================
+# CONFIGURATION VALIDATION AND MANAGEMENT
+# ============================================================================
+
+class ConfigValidator:
+    """Validates and adjusts configuration settings for consistency"""
+    
+    @staticmethod
+    def validate_field_config(field_size: str, num_lineups: int) -> Dict[str, Any]:
+        """Ensure configuration makes sense for the field size"""
+        config = {}
+        
+        # Field-size specific validation
+        if field_size == 'milly_maker':
+            config['min_unique_captains'] = min(num_lineups, num_lineups)  # All unique
+            config['max_chalk_players'] = 0
+            config['min_leverage_players'] = 3
+            config['max_ownership_per_player'] = 10
+            config['min_total_ownership'] = 50
+            config['max_total_ownership'] = 80
+            
+        elif field_size == 'large_field':
+            config['min_unique_captains'] = min(num_lineups, max(5, num_lineups // 2))
+            config['max_chalk_players'] = 1
+            config['min_leverage_players'] = 2
+            config['max_ownership_per_player'] = 15
+            config['min_total_ownership'] = 60
+            config['max_total_ownership'] = 90
+            
+        elif field_size == 'medium_field':
+            config['min_unique_captains'] = min(num_lineups, max(3, num_lineups // 3))
+            config['max_chalk_players'] = 2
+            config['min_leverage_players'] = 1
+            config['max_ownership_per_player'] = 20
+            config['min_total_ownership'] = 70
+            config['max_total_ownership'] = 100
+            
+        else:  # small_field
+            config['min_unique_captains'] = min(num_lineups, max(2, num_lineups // 4))
+            config['max_chalk_players'] = 2
+            config['min_leverage_players'] = 1
+            config['max_ownership_per_player'] = 25
+            config['min_total_ownership'] = 80
+            config['max_total_ownership'] = 120
+        
+        # Ensure logical consistency
+        if config['min_leverage_players'] > 5:  # Can't have more than 5 FLEX spots
+            config['min_leverage_players'] = 5
+        
+        return config
+    
+    @staticmethod
+    def validate_optimization_params(params: Dict[str, Any]) -> Tuple[bool, List[str], Dict[str, Any]]:
+        """Validate optimization parameters and return corrected version"""
+        issues = []
+        corrected = params.copy()
+        
+        # Check lineup count
+        if params.get('num_lineups', 0) < 1:
+            issues.append("Number of lineups must be at least 1")
+            corrected['num_lineups'] = 1
+        elif params.get('num_lineups', 0) > 150:
+            issues.append("Number of lineups capped at 150 for performance")
+            corrected['num_lineups'] = 150
+        
+        # Check simulation count
+        if params.get('num_sims', 0) < 100:
+            issues.append("Simulations should be at least 100 for accuracy")
+            corrected['num_sims'] = 100
+        elif params.get('num_sims', 0) > 50000:
+            issues.append("Simulations capped at 50,000 for performance")
+            corrected['num_sims'] = 50000
+        
+        # Check ownership thresholds
+        min_own = params.get('min_captain_ownership', 0)
+        max_own = params.get('max_captain_ownership', 100)
+        
+        if min_own >= max_own:
+            issues.append("Min captain ownership must be less than max")
+            corrected['min_captain_ownership'] = 0
+            corrected['max_captain_ownership'] = 20
+        
+        # Check correlation settings
+        if params.get('correlation_weight', 0) < 0:
+            issues.append("Correlation weight cannot be negative")
+            corrected['correlation_weight'] = 0
+        elif params.get('correlation_weight', 0) > 1:
+            issues.append("Correlation weight cannot exceed 1.0")
+            corrected['correlation_weight'] = 1.0
+        
+        is_valid = len(issues) == 0
+        return is_valid, issues, corrected
+    
+    @staticmethod
+    def get_strategy_distribution(field_size: str, num_lineups: int) -> Dict['StrategyType', int]:
+        """Calculate optimal strategy distribution for field size"""
+        weights = OptimizerConfig.GPP_STRATEGY_WEIGHTS.get(
+            field_size, 
+            OptimizerConfig.GPP_STRATEGY_WEIGHTS['large_field']
+        )
+        
+        distribution = {}
+        allocated = 0
+        
+        # Allocate lineups proportionally
+        for strategy_name, weight in weights.items():
+            # Map strategy name to StrategyType enum
+            strategy_enum_map = {
+                'leverage': StrategyType.LEVERAGE,
+                'contrarian': StrategyType.CONTRARIAN,
+                'super_contrarian': StrategyType.SUPER_CONTRARIAN,
+                'game_stack': StrategyType.GAME_STACK,
+                'stars_scrubs': StrategyType.STARS_SCRUBS,
+                'correlation': StrategyType.CORRELATION
+            }
+            
+            if strategy_name in strategy_enum_map:
+                strategy = strategy_enum_map[strategy_name]
+                count = int(num_lineups * weight)
+                distribution[strategy] = count
+                allocated += count
+        
+        # Handle rounding - give extra to leverage
+        remaining = num_lineups - allocated
+        if remaining > 0:
+            distribution[StrategyType.LEVERAGE] = distribution.get(StrategyType.LEVERAGE, 0) + remaining
+        
+        return distribution
+    
+    @staticmethod
+    def validate_player_pool(df: pd.DataFrame, field_size: str) -> Dict[str, Any]:
+        """Validate player pool is suitable for optimization"""
+        validation_results = {
+            'is_valid': True,
+            'warnings': [],
+            'errors': [],
+            'suggestions': []
+        }
+        
+        # Check leverage play availability
+        leverage_players = df[df['Ownership'] < 10]
+        super_leverage = df[df['Ownership'] < 5]
+        
+        if field_size == 'milly_maker':
+            if len(super_leverage) < 10:
+                validation_results['errors'].append(
+                    f"Milly Maker requires at least 10 super-leverage (<5%) players, found {len(super_leverage)}"
+                )
+                validation_results['is_valid'] = False
+            
+        elif field_size == 'large_field':
+            if len(leverage_players) < 8:
+                validation_results['warnings'].append(
+                    f"Large field GPPs work best with 8+ leverage plays, found {len(leverage_players)}"
+                )
+        
+        # Check for minimum viable roster
+        positions_needed = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 1}
+        for pos, min_count in positions_needed.items():
+            actual_count = len(df[df['Position'] == pos])
+            if actual_count < min_count:
+                validation_results['errors'].append(
+                    f"Need at least {min_count} {pos}, found {actual_count}"
+                )
+                validation_results['is_valid'] = False
+        
+        # Check salary distribution
+        min_salary_players = df[df['Salary'] <= 3000]
+        if len(min_salary_players) < 3:
+            validation_results['suggestions'].append(
+                "Limited min-salary players may restrict stars & scrubs strategies"
+            )
+        
+        # Check for reasonable projections
+        if df['Projected_Points'].max() < 10:
+            validation_results['errors'].append(
+                "Maximum projection is too low - check your projections"
+            )
+            validation_results['is_valid'] = False
+        
+        return validation_results
+
+class OptimizationSettings:
+    """Centralized settings management with validation"""
+    
+    def __init__(self, field_size: str = 'large_field'):
+        self.field_size = field_size
+        self.settings = self._get_default_settings()
+    
+    def _get_default_settings(self) -> Dict[str, Any]:
+        """Get default settings for field size"""
+        defaults = {
+            'num_lineups': 20,
+            'force_unique_captains': True,
+            'num_sims': 5000,
+            'correlation_weight': 0.5,
+            'min_leverage_players': 2,
+            'max_chalk_players': 2,
+            'include_pivots': True,
+            'export_top_n': 20
+        }
+        
+        # Adjust defaults by field size
+        if self.field_size == 'milly_maker':
+            defaults['min_leverage_players'] = 3
+            defaults['max_chalk_players'] = 0
+            defaults['force_unique_captains'] = True
+            
+        elif self.field_size == 'large_field':
+            defaults['min_leverage_players'] = 2
+            defaults['max_chalk_players'] = 1
+            
+        return defaults
+    
+    def update(self, **kwargs) -> Tuple[bool, List[str]]:
+        """Update settings with validation"""
+        new_settings = self.settings.copy()
+        new_settings.update(kwargs)
+        
+        # Validate the new settings
+        is_valid, issues, corrected = ConfigValidator.validate_optimization_params(new_settings)
+        
+        if is_valid:
+            self.settings = new_settings
+        else:
+            self.settings = corrected
+            
+        return is_valid, issues
+    
+    def get(self, key: str, default=None):
+        """Get a setting value"""
+        return self.settings.get(key, default)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Export all settings as dictionary"""
+        return self.settings.copy()
+
+# ============================================================================
+# ENUMS AND DATA CLASSES
+# ============================================================================
+
 class StrategyType(Enum):
     """GPP-focused strategies only"""
     LEVERAGE = "leverage"
@@ -166,7 +407,7 @@ class AIRecommendation:
     boosts: List[str]
     strategy_weights: Dict[StrategyType, float]
     key_insights: List[str]
-    gpp_specific_rules: Dict[str, any]  # New field for GPP rules
+    gpp_specific_rules: Dict[str, Any]  # Field for GPP rules
 
 @dataclass
 class PlayerProjection:
@@ -184,13 +425,15 @@ class PlayerProjection:
 # ============================================================================
 
 class ClaudeAPIManager:
-    """Manages Claude API interactions with caching"""
+    """Manages Claude API interactions with caching and error handling"""
     
     def __init__(self, api_key: str):
         """Initialize with API key"""
         self.api_key = api_key
         self.client = None
         self.cache = {}  # Cache API responses
+        self.request_count = 0
+        self.error_count = 0
         
         if ANTHROPIC_AVAILABLE and api_key:
             try:
@@ -201,7 +444,7 @@ class ClaudeAPIManager:
                 self.client = None
     
     def get_ai_response(self, prompt: str, system_prompt: str = None, use_cache: bool = True) -> str:
-        """Get response from Claude API with caching"""
+        """Get response from Claude API with caching and error handling"""
         if not self.client:
             return "{}"
         
@@ -212,6 +455,7 @@ class ClaudeAPIManager:
             return self.cache[prompt_hash]
         
         try:
+            self.request_count += 1
             messages = [{"role": "user", "content": prompt}]
             
             if system_prompt:
@@ -237,13 +481,30 @@ class ClaudeAPIManager:
                 if response_text.startswith("json"):
                     response_text = response_text[4:]
             
+            # Validate JSON
+            try:
+                json.loads(response_text)
+            except json.JSONDecodeError:
+                self.error_count += 1
+                st.warning("Invalid JSON from API, using fallback")
+                return "{}"
+            
             # Cache the response
             self.cache[prompt_hash] = response_text
             return response_text
             
         except Exception as e:
+            self.error_count += 1
             st.error(f"API call failed: {e}")
             return "{}"
+    
+    def get_stats(self) -> Dict[str, int]:
+        """Get API usage statistics"""
+        return {
+            'requests': self.request_count,
+            'errors': self.error_count,
+            'cache_size': len(self.cache)
+        }
 
 # ============================================================================
 # OWNERSHIP BUCKET MANAGER WITH GPP FOCUS
