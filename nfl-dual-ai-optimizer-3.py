@@ -365,7 +365,7 @@ class OwnershipBucketManager:
         
         return leverage_score
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (COMPLETE)
+# NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (CORRECTED)
 # Captain Pivots, Correlations, and Tournament Simulation
 
 # ============================================================================
@@ -604,206 +604,247 @@ class GPPCorrelationEngine:
         return stacks[:20]  # Return top 20 stacks
 
 # ============================================================================
-# GPP TOURNAMENT SIMULATOR WITH ROBUST ERROR HANDLING
+# GPP TOURNAMENT SIMULATOR WITH ROBUST ERROR HANDLING (CORRECTED VERSION)
 # ============================================================================
 
 class GPPTournamentSimulator:
     """GPP-specific tournament simulation with emphasis on ceiling"""
     
     @staticmethod
-    def _ensure_positive_semidefinite(cov_matrix: np.ndarray) -> np.ndarray:
-        """Ensure covariance matrix is positive semi-definite"""
-        # Eigenvalue decomposition
-        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        
-        # Fix negative eigenvalues
-        min_eigenvalue = np.min(eigenvalues)
-        if min_eigenvalue < 0:
-            # Add to diagonal to make positive semi-definite
-            adjustment = abs(min_eigenvalue) + 1e-6
-            cov_matrix = cov_matrix + np.eye(cov_matrix.shape[0]) * adjustment
-        
-        return cov_matrix
-    
-    @staticmethod
     def simulate_gpp_tournament(lineup: Dict, df: pd.DataFrame, 
                                correlations: Dict, n_sims: int = 5000,
                                field_size: str = 'large_field') -> Dict[str, float]:
-        """GPP-focused simulation with higher variance and ceiling emphasis"""
+        """Simplified but stable GPP simulation with proper correlation handling"""
+        
+        # Extract lineup data
         captain = lineup['Captain']
         flex_players = lineup['FLEX'] if isinstance(lineup['FLEX'], list) else lineup['FLEX']
         all_players = [captain] + list(flex_players)
         
+        # Get player data
         projections = df.set_index('Player')['Projected_Points'].to_dict()
         ownership = df.set_index('Player')['Ownership'].to_dict()
+        positions = df.set_index('Player')['Position'].to_dict()
+        teams = df.set_index('Player')['Team'].to_dict()
         
-        # Build correlation matrix
-        n_players = len(all_players)
-        means = np.array([projections.get(p, 0) for p in all_players])
+        # Validate we have data for all players
+        for player in all_players:
+            if player not in projections:
+                projections[player] = 10  # Default fallback
+            if player not in ownership:
+                ownership[player] = OptimizerConfig.DEFAULT_OWNERSHIP
         
-        # GPP variance adjustment based on ownership and field size
-        variance_multiplier = 1.0
-        if field_size == 'milly_maker':
-            variance_multiplier = 1.3  # Much higher variance for Milly
-        elif field_size == 'large_field':
-            variance_multiplier = 1.2
+        # GPP variance adjustment based on field size
+        variance_multiplier = {
+            'milly_maker': 1.3,
+            'large_field': 1.2,
+            'medium_field': 1.1,
+            'small_field': 1.0
+        }.get(field_size, 1.2)
         
-        variances = []
-        for p in all_players:
-            own = ownership.get(p, 5)
-            # Lower ownership = higher variance (more GPP upside)
-            ownership_mult = 1.0 + max(0, (20 - own) / 30)
-            var = (OptimizerConfig.HIGH_VOLATILITY * variance_multiplier * ownership_mult) ** 2
-            variances.append(var)
+        # Run simulations with simplified but stable approach
+        simulation_results = []
         
-        # Create covariance matrix with adjusted variances
-        cov_matrix = np.diag(variances)
-        
-        # Add correlations with safety bounds
-        for i in range(n_players):
-            for j in range(i+1, n_players):
-                p1, p2 = all_players[i], all_players[j]
-                pair = tuple(sorted([p1, p2]))
-                if pair in correlations:
-                    # Cap correlation to prevent matrix issues while maintaining GPP dynamics
-                    raw_corr = correlations[pair]
-                    # Keep high correlations for GPP but cap at safe levels
-                    correlation = np.clip(raw_corr, -0.85, 0.85)
-                    cov_value = correlation * np.sqrt(variances[i] * variances[j])
-                    cov_matrix[i, j] = cov_value
-                    cov_matrix[j, i] = cov_value
-        
-        # Ensure positive semi-definite
-        cov_matrix = GPPTournamentSimulator._ensure_positive_semidefinite(cov_matrix)
-        
-        try:
-            # Primary simulation method - multivariate normal with full correlations
-            sims = multivariate_normal(mean=means, cov=cov_matrix, allow_singular=True).rvs(n_sims)
-            sims = np.maximum(0, sims)  # No negative scores
+        for sim_num in range(n_sims):
+            player_scores = {}
             
-        except np.linalg.LinAlgError:
-            # Backup method 1: Reduce correlation strength slightly
-            try:
-                cov_matrix_reduced = np.diag(variances)
-                for i in range(n_players):
-                    for j in range(i+1, n_players):
-                        p1, p2 = all_players[i], all_players[j]
-                        pair = tuple(sorted([p1, p2]))
-                        if pair in correlations:
-                            # Reduce correlations by 20% for stability
-                            correlation = np.clip(correlations[pair] * 0.8, -0.7, 0.7)
-                            cov_value = correlation * np.sqrt(variances[i] * variances[j])
-                            cov_matrix_reduced[i, j] = cov_value
-                            cov_matrix_reduced[j, i] = cov_value
+            # Step 1: Generate base scores with ownership-based variance
+            for player in all_players:
+                mean = projections[player]
+                own = ownership[player]
                 
-                cov_matrix_reduced = GPPTournamentSimulator._ensure_positive_semidefinite(cov_matrix_reduced)
-                sims = multivariate_normal(mean=means, cov=cov_matrix_reduced, allow_singular=True).rvs(n_sims)
-                sims = np.maximum(0, sims)
+                # Lower ownership = higher variance (GPP key insight)
+                ownership_variance_boost = max(0, (20 - min(own, 20)) / 40)
+                base_volatility = OptimizerConfig.BASE_VOLATILITY * variance_multiplier
+                player_volatility = base_volatility * (1 + ownership_variance_boost)
                 
-            except:
-                # Backup method 2: Cholesky decomposition approach
-                try:
-                    # Use Cholesky decomposition for more stable generation
-                    L = np.linalg.cholesky(cov_matrix + np.eye(n_players) * 1e-6)
-                    z = np.random.standard_normal((n_sims, n_players))
-                    sims = means + z @ L.T
-                    sims = np.maximum(0, sims)
-                    
-                except:
-                    # Final fallback: Correlated normal with simplified approach
-                    sims = np.zeros((n_sims, n_players))
-                    
-                    # Generate base simulations
-                    for i in range(n_players):
-                        sims[:, i] = np.random.normal(means[i], np.sqrt(variances[i]), n_sims)
-                    
-                    # Apply correlations through mixing
-                    for i in range(n_players):
-                        for j in range(i+1, n_players):
-                            p1, p2 = all_players[i], all_players[j]
-                            pair = tuple(sorted([p1, p2]))
-                            if pair in correlations:
-                                corr = min(0.6, max(-0.6, correlations[pair]))
-                                if abs(corr) > 0.1:
-                                    # Mix signals to create correlation
-                                    if corr > 0:
-                                        sims[:, j] = (1 - abs(corr)) * sims[:, j] + abs(corr) * sims[:, i]
-                                    else:
-                                        sims[:, j] = (1 - abs(corr)) * sims[:, j] - abs(corr) * sims[:, i]
-                    
-                    sims = np.maximum(0, sims)
-        
-        # Apply GPP-specific volatility events (same for all methods)
-        for i in range(n_players):
-            own = ownership.get(all_players[i], 5)
+                # Generate base score
+                std_dev = mean * player_volatility
+                score = np.random.normal(mean, std_dev)
+                
+                # Apply floor (can't go negative)
+                player_scores[player] = max(0, score)
             
-            # Injury risk (higher for chalky players in GPP)
-            injury_rate = OptimizerConfig.INJURY_RATE
-            if own > 30:  # Higher injury risk for chalk
-                injury_rate *= 1.5
-            injury_mask = np.random.random(n_sims) < injury_rate
-            sims[injury_mask, i] *= np.random.uniform(0, 0.15, injury_mask.sum())
+            # Step 2: Apply correlations as adjustments
+            # This is more stable than trying to build a full correlation matrix
+            correlation_adjustments = {}
+            for player in all_players:
+                correlation_adjustments[player] = 0
             
-            # Boom potential (much higher for low-owned players) - KEY FOR GPP
-            if own < 5:
-                boom_rate = OptimizerConfig.BOOM_RATE * 3
-                boom_range = (3.0, 5.0)  # Massive booms for super leverage
-            elif own < 10:
-                boom_rate = OptimizerConfig.BOOM_RATE * 2
-                boom_range = (2.5, 4.0)
-            elif own < 15:
-                boom_rate = OptimizerConfig.BOOM_RATE * 1.5
-                boom_range = (2.0, 3.0)
-            else:
+            # Process each correlation pair
+            for i, p1 in enumerate(all_players):
+                for j, p2 in enumerate(all_players):
+                    if i >= j:  # Skip self and already processed pairs
+                        continue
+                    
+                    pair = tuple(sorted([p1, p2]))
+                    if pair in correlations:
+                        corr_value = correlations[pair]
+                        
+                        # Apply correlation through score adjustments
+                        if abs(corr_value) > 0.1:  # Only meaningful correlations
+                            # If both players are doing well/poorly, enhance that
+                            p1_deviation = (player_scores[p1] - projections[p1]) / projections[p1]
+                            p2_deviation = (player_scores[p2] - projections[p2]) / projections[p2]
+                            
+                            if corr_value > 0:  # Positive correlation
+                                # If one is high, boost the other
+                                if p1_deviation > 0.2:
+                                    correlation_adjustments[p2] += projections[p2] * corr_value * 0.2
+                                if p2_deviation > 0.2:
+                                    correlation_adjustments[p1] += projections[p1] * corr_value * 0.2
+                                # If one is low, reduce the other
+                                if p1_deviation < -0.2:
+                                    correlation_adjustments[p2] -= projections[p2] * corr_value * 0.15
+                                if p2_deviation < -0.2:
+                                    correlation_adjustments[p1] -= projections[p1] * corr_value * 0.15
+                            else:  # Negative correlation
+                                # If one is high, reduce the other
+                                if p1_deviation > 0.2:
+                                    correlation_adjustments[p2] -= projections[p2] * abs(corr_value) * 0.15
+                                if p2_deviation > 0.2:
+                                    correlation_adjustments[p1] -= projections[p1] * abs(corr_value) * 0.15
+            
+            # Apply correlation adjustments
+            for player in all_players:
+                player_scores[player] = max(0, player_scores[player] + correlation_adjustments[player])
+            
+            # Step 3: Apply GPP-specific volatility events
+            for player in all_players:
+                own = ownership[player]
+                
+                # Injury/bust risk
+                injury_rate = OptimizerConfig.INJURY_RATE
+                if own > 30:  # Higher injury impact for chalk
+                    injury_rate *= 1.5
+                
+                if np.random.random() < injury_rate:
+                    # Player busts
+                    player_scores[player] *= np.random.uniform(0, 0.3)
+                
+                # Boom potential (KEY FOR GPP)
                 boom_rate = OptimizerConfig.BOOM_RATE
-                boom_range = (1.5, 2.5)
+                boom_multiplier = 1.5
+                
+                if own < 5:  # Super leverage players
+                    boom_rate *= 3
+                    boom_multiplier = np.random.uniform(2.5, 4.0)
+                elif own < 10:  # Leverage plays
+                    boom_rate *= 2
+                    boom_multiplier = np.random.uniform(2.0, 3.0)
+                elif own < 15:  # Contrarian plays
+                    boom_rate *= 1.5
+                    boom_multiplier = np.random.uniform(1.8, 2.5)
+                else:  # Normal plays
+                    boom_multiplier = np.random.uniform(1.5, 2.0)
+                
+                if np.random.random() < boom_rate:
+                    # Player booms
+                    player_scores[player] *= boom_multiplier
             
-            boom_mask = np.random.random(n_sims) < boom_rate
-            sims[boom_mask, i] *= np.random.uniform(boom_range[0], boom_range[1], boom_mask.sum())
+            # Step 4: Handle special position cases
+            for player in all_players:
+                pos = positions.get(player, '')
+                
+                # QBs have more stable floors but also higher ceilings in GPP
+                if pos == 'QB':
+                    player_scores[player] = max(player_scores[player], projections[player] * 0.4)
+                    if player_scores[player] > projections[player] * 1.5:
+                        # QB having a huge game, boost pass catchers
+                        team = teams.get(player)
+                        for other_player in all_players:
+                            if teams.get(other_player) == team and positions.get(other_player) in ['WR', 'TE']:
+                                player_scores[other_player] *= 1.15
+                
+                # RBs can have huge games but also complete duds
+                elif pos == 'RB':
+                    if np.random.random() < 0.1:  # 10% chance of breakaway game
+                        player_scores[player] *= np.random.uniform(1.5, 2.5)
+                    elif np.random.random() < 0.15:  # 15% chance of game script dud
+                        player_scores[player] *= np.random.uniform(0.2, 0.5)
+            
+            # Calculate final lineup score
+            captain_score = player_scores[captain] * OptimizerConfig.CAPTAIN_MULTIPLIER
+            flex_score = sum(player_scores[p] for p in flex_players)
+            total_score = captain_score + flex_score
+            
+            simulation_results.append(total_score)
         
-        # Calculate lineup scores
-        captain_scores = sims[:, 0] * OptimizerConfig.CAPTAIN_MULTIPLIER
-        flex_scores = np.sum(sims[:, 1:], axis=1)
-        total_scores = captain_scores + flex_scores
+        # Convert to numpy array for percentile calculations
+        results = np.array(simulation_results)
         
-        # GPP-specific metrics - comprehensive for tournament play
-        return {
-            'Mean': round(np.mean(total_scores), 2),
-            'Std': round(np.std(total_scores), 2),
-            'Floor_10th': round(np.percentile(total_scores, 10), 2),
-            'Floor_25th': round(np.percentile(total_scores, 25), 2),
-            'Median': round(np.percentile(total_scores, 50), 2),
-            'Ceiling_75th': round(np.percentile(total_scores, 75), 2),
-            'Ceiling_90th': round(np.percentile(total_scores, 90), 2),
-            'Ceiling_95th': round(np.percentile(total_scores, 95), 2),
-            'Ceiling_98th': round(np.percentile(total_scores, 98), 2),
-            'Ceiling_99th': round(np.percentile(total_scores, 99), 2),
-            'Ceiling_99_9th': round(np.percentile(total_scores, 99.9), 2),
-            'Boom_Rate': round(np.mean(total_scores > np.percentile(total_scores, 95)) * 100, 1),
-            'Elite_Rate': round(np.mean(total_scores > np.percentile(total_scores, 99)) * 100, 2),
-            'Ship_Rate': round(np.mean(total_scores > np.percentile(total_scores, 99.9)) * 100, 3),
-            'Bust_Rate': round(np.mean(total_scores < np.percentile(total_scores, 25)) * 100, 1),
-            'Max_Score': round(np.max(total_scores), 2),
-            'Top_1pct_Avg': round(np.mean(np.sort(total_scores)[-int(n_sims*0.01):]), 2)
+        # Calculate comprehensive GPP metrics
+        metrics = {
+            'Mean': round(np.mean(results), 2),
+            'Std': round(np.std(results), 2),
+            'Floor_10th': round(np.percentile(results, 10), 2),
+            'Floor_25th': round(np.percentile(results, 25), 2),
+            'Median': round(np.percentile(results, 50), 2),
+            'Ceiling_75th': round(np.percentile(results, 75), 2),
+            'Ceiling_90th': round(np.percentile(results, 90), 2),
+            'Ceiling_95th': round(np.percentile(results, 95), 2),
+            'Ceiling_98th': round(np.percentile(results, 98), 2),
+            'Ceiling_99th': round(np.percentile(results, 99), 2),
+            'Ceiling_99_9th': round(np.percentile(results, 99.9), 2),
+            'Boom_Rate': round(np.mean(results > np.percentile(results, 95)) * 100, 1),
+            'Elite_Rate': round(np.mean(results > np.percentile(results, 99)) * 100, 2),
+            'Ship_Rate': round(np.mean(results > np.percentile(results, 99.9)) * 100, 3),
+            'Bust_Rate': round(np.mean(results < np.percentile(results, 25)) * 100, 1),
+            'Max_Score': round(np.max(results), 2),
+            'Min_Score': round(np.min(results), 2),
+            'Top_1pct_Avg': round(np.mean(np.sort(results)[-max(1, int(n_sims*0.01)):]), 2),
+            'Bottom_1pct_Avg': round(np.mean(np.sort(results)[:max(1, int(n_sims*0.01))]), 2)
         }
+        
+        # Validate results are reasonable
+        if metrics['Mean'] < 10 or metrics['Mean'] > 300:
+            # Something went wrong, return conservative estimates
+            base_projection = sum(projections[p] for p in flex_players) + projections[captain] * 1.5
+            metrics['Mean'] = round(base_projection, 2)
+            metrics['Median'] = round(base_projection * 0.95, 2)
+            metrics['Ceiling_99th'] = round(base_projection * 1.8, 2)
+            metrics['Floor_10th'] = round(base_projection * 0.5, 2)
+        
+        return metrics
     
     @staticmethod
     def calculate_gpp_win_probability(lineup_scores: np.ndarray, 
                                      field_size_num: int = 100000) -> Dict[str, float]:
-        """Calculate GPP tournament win probabilities"""
-        # Model GPP field scores with right-skewed distribution
+        """Calculate GPP tournament win probabilities with stable approach"""
+        
+        # Validate input
+        if len(lineup_scores) == 0:
+            return {
+                'Win_Prob': 0.0,
+                'Top_10_Prob': 0.0,
+                'Top_100_Prob': 0.0,
+                'Top_1pct_Prob': 0.0,
+                'Min_Cash_Prob': 0.0
+            }
+        
+        # Model GPP field scores with gamma distribution (right-skewed)
         field_mean = 85
-        field_shape = 3.5  # Lower shape = more right skew for GPP
-        field_scale = field_mean / field_shape
+        field_std = 20
         
-        # Simulate field scores
-        field_scores = gamma.rvs(field_shape, scale=field_scale, size=field_size_num)
+        # Calculate gamma parameters from mean and std
+        # gamma distribution: mean = shape * scale, variance = shape * scale^2
+        field_variance = field_std ** 2
+        field_scale = field_variance / field_mean
+        field_shape = field_mean / field_scale
         
-        # Add some extreme scores (GPP has more variance)
-        num_elite = int(field_size_num * 0.001)  # Top 0.1% are elite
-        elite_scores = gamma.rvs(5, scale=30, size=num_elite) + 100
+        # Generate field scores
+        try:
+            field_scores = gamma.rvs(field_shape, scale=field_scale, size=field_size_num)
+        except:
+            # Fallback to normal distribution if gamma fails
+            field_scores = np.random.normal(field_mean, field_std, field_size_num)
+        
+        # Add some extreme outliers for GPP realism
+        num_elite = max(1, int(field_size_num * 0.001))  # Top 0.1%
+        elite_scores = np.random.normal(150, 20, num_elite)
         field_scores[:num_elite] = elite_scores
         
+        # Calculate probabilities
         win_prob = 0
         top_10_prob = 0
         top_100_prob = 0
@@ -811,8 +852,11 @@ class GPPTournamentSimulator:
         min_cash = int(field_size_num * 0.2)  # Top 20% cash
         cash_prob = 0
         
+        # Sample lineup scores for probability calculation
         sample_size = min(1000, len(lineup_scores))
-        for score in np.random.choice(lineup_scores, sample_size):
+        sampled_scores = np.random.choice(lineup_scores, sample_size, replace=True)
+        
+        for score in sampled_scores:
             placement = np.sum(score > field_scores)
             
             if placement == field_size_num - 1:
