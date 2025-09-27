@@ -1863,15 +1863,15 @@ class GPPCorrelationStrategist:
             gpp_specific_rules=gpp_rules
         )
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 4: MAIN OPTIMIZER & LINEUP GENERATION (COMPLETE CORRECTED)
-# Version 5.2 - With Enhanced Diagnostics and Error Recovery
+# NFL GPP DUAL-AI OPTIMIZER - PART 4: MAIN OPTIMIZER & LINEUP GENERATION (COMPLETE CORRECTED v5.3)
+# With Enhanced Diagnostics, Fallback Strategies, and Relaxed Constraints
 
 # ============================================================================
 # GPP DUAL AI OPTIMIZER
 # ============================================================================
 
 class GPPDualAIOptimizer:
-    """Main GPP optimizer with dual AI strategy integration, diagnostics, and error recovery"""
+    """Main GPP optimizer with dual AI strategy integration, diagnostics, and fallback mechanisms"""
     
     def __init__(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field', 
                  api_manager: ClaudeAPIManager = None):
@@ -1885,10 +1885,114 @@ class GPPDualAIOptimizer:
         self.pivot_generator = GPPCaptainPivotGenerator()
         self.correlation_engine = GPPCorrelationEngine()
         self.tournament_sim = GPPTournamentSimulator()
-        self.optimization_logger = []  # Track optimization issues
-        self.field_config = None  # Store field configuration
-        self.logger = get_logger()  # Get global logger
-        self.perf_monitor = get_performance_monitor()  # Get performance monitor
+        self.optimization_logger = []
+        self.field_config = None
+        self.logger = get_logger()
+        self.perf_monitor = get_performance_monitor()
+    
+    def get_fallback_recommendations(self) -> Dict:
+        """Generate fallback recommendations when AI is not available"""
+        self.logger.log("Using fallback recommendations", "WARNING")
+        st.info("📊 Using statistical analysis for lineup generation (no AI input detected)")
+        
+        # Analyze player pool
+        df = self.df.copy()
+        
+        # Calculate value metrics
+        df['Value_Score'] = df['Projected_Points'] / (df['Salary'] / 1000)
+        df['GPP_Score'] = df['Value_Score'] * (30 / (df['Ownership'] + 10))
+        
+        # Find captain candidates
+        captain_candidates = []
+        
+        # Strategy 1: Low-owned high projection players
+        low_own_high_proj = df[(df['Ownership'] < 20) & (df['Projected_Points'] > df['Projected_Points'].quantile(0.6))]
+        if not low_own_high_proj.empty:
+            captain_candidates.extend(low_own_high_proj.nlargest(5, 'Projected_Points')['Player'].tolist())
+        
+        # Strategy 2: Best GPP value plays
+        best_gpp = df.nlargest(7, 'GPP_Score')['Player'].tolist()
+        captain_candidates.extend(best_gpp)
+        
+        # Strategy 3: QBs (usually good captains)
+        qbs = df[df['Position'] == 'QB']['Player'].tolist()
+        captain_candidates.extend(qbs)
+        
+        # Strategy 4: Top projected scorers
+        top_proj = df.nlargest(5, 'Projected_Points')['Player'].tolist()
+        captain_candidates.extend(top_proj)
+        
+        # Remove duplicates and ensure we have candidates
+        captain_candidates = list(dict.fromkeys(captain_candidates))
+        if not captain_candidates:
+            # Fallback to any players
+            captain_candidates = df.nlargest(10, 'Projected_Points')['Player'].tolist()
+        
+        # Limit to top 15 candidates
+        captain_candidates = captain_candidates[:15]
+        
+        # Create captain scores based on GPP value
+        captain_scores = {}
+        for captain in captain_candidates:
+            if captain in df['Player'].values:
+                row = df[df['Player'] == captain].iloc[0]
+                score = row['GPP_Score'] / 100  # Normalize
+                captain_scores[captain] = min(1.0, max(0.1, score))
+        
+        # Identify potential stacks
+        stacks = []
+        teams = df['Team'].unique()
+        
+        for team in teams[:2]:  # Limit to 2 teams for performance
+            team_df = df[df['Team'] == team]
+            
+            # QB stacks
+            qbs = team_df[team_df['Position'] == 'QB']['Player'].tolist()
+            pass_catchers = team_df[team_df['Position'].isin(['WR', 'TE'])].nlargest(4, 'Projected_Points')['Player'].tolist()
+            
+            for qb in qbs:
+                for pc in pass_catchers:
+                    stacks.append({'player1': qb, 'player2': pc, 'type': 'qb_stack'})
+            
+            # RB-DEF anti-correlation
+            rbs = team_df[team_df['Position'] == 'RB'].nlargest(2, 'Projected_Points')['Player'].tolist()
+            opposing_team = [t for t in teams if t != team]
+            if opposing_team:
+                opp_def = df[(df['Team'] == opposing_team[0]) & (df['Position'] == 'DST')]['Player'].tolist()
+                for rb in rbs:
+                    for def_player in opp_def:
+                        stacks.append({'player1': rb, 'player2': def_player, 'type': 'negative'})
+        
+        # Identify fades (high owned, lower projection)
+        high_owned = df[df['Ownership'] > 25]
+        if not high_owned.empty:
+            fades = high_owned.nsmallest(3, 'Value_Score')['Player'].tolist()
+        else:
+            fades = []
+        
+        # Identify boosts (low owned, high projection)
+        low_owned = df[df['Ownership'] < 15]
+        if not low_owned.empty:
+            boosts = low_owned.nlargest(5, 'Projected_Points')['Player'].tolist()
+        else:
+            boosts = df.nsmallest(5, 'Ownership')['Player'].tolist()
+        
+        # Get strategy distribution
+        strategy_weights = ConfigValidator.get_strategy_distribution(self.field_size, 20)
+        
+        return {
+            'captain_scores': captain_scores,
+            'strategy_weights': strategy_weights,
+            'consensus_fades': fades[:3] if fades else [],
+            'all_boosts': boosts[:5] if boosts else [],
+            'combined_stacks': stacks[:15],
+            'confidence': 0.5,
+            'insights': ['Using statistical analysis (no AI input)', 
+                        f'Found {len(captain_candidates)} captain candidates',
+                        f'Identified {len(stacks)} potential stacks'],
+            'gpp_rules': {},
+            'field_size': self.field_size
+        }
     
     def diagnose_optimization_issues(self, df: pd.DataFrame, field_size: str, 
                                     field_config: Dict, salaries: Dict, 
@@ -1914,15 +2018,11 @@ class GPPDualAIOptimizer:
             max_lineup_salary = sorted_salaries[-1] * 1.5 + sum(sorted_salaries[-5:])
             
             if min_lineup_salary > OptimizerConfig.SALARY_CAP:
-                issues.append(f"Minimum possible salary (${min_lineup_salary:.0f}) exceeds cap (${OptimizerConfig.SALARY_CAP})")
+                issues.append(f"Minimum possible salary (${min_lineup_salary:.0f}) exceeds cap")
             
             st.write(f"**Salary Range:** ${min_lineup_salary:.0f} - ${max_lineup_salary:.0f}")
-            
-            if max_lineup_salary < OptimizerConfig.SALARY_CAP * 0.9:
-                warnings.append("Player salaries may be too low - consider adjusting projections")
         
-        # Check ownership distribution for field size
-        ownership_values = list(ownership.values())
+        # Check ownership distribution
         low_owned = [p for p, own in ownership.items() if own < 10]
         super_low = [p for p, own in ownership.items() if own < 5]
         high_owned = [p for p, own in ownership.items() if own > 30]
@@ -1938,29 +2038,7 @@ class GPPDualAIOptimizer:
         with col4:
             st.metric(">30%", len(high_owned))
         
-        # Field-specific ownership checks
-        if field_size == 'milly_maker':
-            if len(super_low) < field_config['min_leverage_players']:
-                issues.append(f"Need {field_config['min_leverage_players']} super-leverage (<5%) players, found {len(super_low)}")
-        elif field_size == 'large_field':
-            if len(low_owned) < field_config['min_leverage_players']:
-                issues.append(f"Need {field_config['min_leverage_players']} leverage (<10%) players, found {len(low_owned)}")
-        
-        # Check for valid projections
-        valid_projections = [p for p, proj in points.items() if proj > 0]
-        if len(valid_projections) < 6:
-            issues.append(f"Only {len(valid_projections)} players with positive projections")
-        
-        # Check team constraints
-        teams = df['Team'].value_counts()
-        if len(teams) != 2:
-            issues.append(f"Found {len(teams)} team(s) - Showdown requires exactly 2")
-        else:
-            for team, count in teams.items():
-                if count < 3:
-                    issues.append(f"Team {team} has only {count} players - need at least 3")
-        
-        # Test if basic lineup is possible
+        # Test basic lineup
         st.write("**Testing Basic Lineup Generation...**")
         test_result = self.test_basic_lineup(df, salaries, points, ownership)
         
@@ -1969,48 +2047,26 @@ class GPPDualAIOptimizer:
             if test_result.get('lineup'):
                 st.write(f"Test Captain: {test_result['lineup']['captain']}")
                 st.write(f"Test Ownership: {test_result['lineup']['ownership']:.1f}%")
-                
-                # Check why it might fail GPP constraints
-                if test_result['lineup']['ownership'] < field_config['min_total_ownership']:
-                    suggestions.append(f"Ownership too low for {field_size}. Consider relaxing constraints or adjusting ownership projections.")
-                elif test_result['lineup']['ownership'] > field_config['max_total_ownership']:
-                    suggestions.append(f"Ownership too high for {field_size}. Need more low-owned players.")
         else:
-            issues.append("Even basic lineup generation failed")
+            issues.append("Basic lineup generation failed")
             st.error(f"Reason: {test_result.get('reason', 'Unknown')}")
         
-        # Display diagnostics summary
+        # Display diagnostics
         if issues:
             with st.expander("❌ Critical Issues", expanded=True):
                 for issue in issues:
                     st.error(issue)
-                    self.logger.log(f"Diagnostic issue: {issue}", "ERROR")
         
         if warnings:
             with st.expander("⚠️ Warnings"):
                 for warning in warnings:
                     st.warning(warning)
-                    self.logger.log(f"Diagnostic warning: {warning}", "WARNING")
         
-        if suggestions:
-            with st.expander("💡 Suggestions"):
-                for suggestion in suggestions:
-                    st.info(suggestion)
-        
-        # Show sample of player pool
-        with st.expander("📊 Player Pool Sample"):
-            st.dataframe(df[['Player', 'Position', 'Team', 'Salary', 'Projected_Points', 'Ownership']].head(10))
-        
-        return {
-            'has_critical_issues': len(issues) > 0,
-            'issues': issues,
-            'warnings': warnings,
-            'suggestions': suggestions
-        }
+        return {'has_critical_issues': len(issues) > 0, 'issues': issues}
     
     def test_basic_lineup(self, df: pd.DataFrame, salaries: Dict, 
                          points: Dict, ownership: Dict) -> Dict:
-        """Test if a basic lineup can be generated with minimal constraints"""
+        """Test if a basic lineup can be generated"""
         players = list(salaries.keys())
         
         if len(players) < 6:
@@ -2036,11 +2092,11 @@ class GPPDualAIOptimizer:
             for p in players:
                 model += flex[p] + captain[p] <= 1
             
-            # Relaxed salary constraint
+            # Relaxed salary
             model += pulp.lpSum([
                 salaries[p] * flex[p] + 1.5 * salaries[p] * captain[p]
                 for p in players
-            ]) <= OptimizerConfig.SALARY_CAP + 500  # Allow slight overrun for testing
+            ]) <= OptimizerConfig.SALARY_CAP + 500
             
             model.solve(pulp.PULP_CBC_CMD(msg=0))
             
@@ -2067,7 +2123,7 @@ class GPPDualAIOptimizer:
             return {'success': False, 'reason': str(e)}
     
     def safe_api_call(self, prompt: str, strategist_name: str, fallback_response: str = '{}') -> str:
-        """Safely make API calls with fallback and logging"""
+        """Safely make API calls with fallback"""
         if not self.api_manager or not self.api_manager.client:
             self.logger.log(f"{strategist_name}: No API client available", "WARNING")
             return fallback_response
@@ -2075,23 +2131,15 @@ class GPPDualAIOptimizer:
         try:
             self.logger.log(f"{strategist_name}: Making API call", "DEBUG")
             response = self.api_manager.get_ai_response(prompt)
-            
-            # Validate it's actual JSON
             json.loads(response)
             self.logger.log(f"{strategist_name}: Valid response received", "DEBUG")
             return response
-            
-        except json.JSONDecodeError as e:
-            st.warning(f"{strategist_name}: Invalid JSON response. Using fallback strategy.")
-            self.logger.log(f"{strategist_name}: JSON decode error - {e}", "ERROR")
-            return fallback_response
         except Exception as e:
-            st.warning(f"{strategist_name}: API call failed. Using fallback strategy.")
-            self.logger.log_exception(e, f"{strategist_name} API call")
+            self.logger.log(f"{strategist_name}: API failed - {e}", "ERROR")
             return fallback_response
     
     def get_ai_strategies(self, use_api: bool = True) -> Tuple[AIRecommendation, AIRecommendation]:
-        """Get strategies from both GPP AIs with error handling and logging"""
+        """Get strategies from both GPP AIs"""
         self.logger.log("Getting AI strategies", "INFO")
         
         if use_api and self.api_manager and self.api_manager.client:
@@ -2135,12 +2183,12 @@ class GPPDualAIOptimizer:
         rec1 = self.game_theory_ai.parse_response(gt_response, self.df, self.field_size)
         rec2 = self.correlation_ai.parse_response(corr_response, self.df, self.field_size)
         
-        self.logger.log(f"AI strategies parsed - GT confidence: {rec1.confidence:.0%}, Corr confidence: {rec2.confidence:.0%}", "INFO")
+        self.logger.log(f"AI strategies parsed - GT: {rec1.confidence:.0%}, Corr: {rec2.confidence:.0%}", "INFO")
         
         return rec1, rec2
     
     def combine_gpp_recommendations(self, rec1: AIRecommendation, rec2: AIRecommendation) -> Dict:
-        """Combine recommendations with GPP-specific weighting and logging"""
+        """Combine recommendations with GPP-specific weighting"""
         self.logger.log("Combining AI recommendations", "DEBUG")
         
         total_confidence = rec1.confidence + rec2.confidence
@@ -2175,10 +2223,8 @@ class GPPDualAIOptimizer:
             
             captain_scores[captain] = score
         
-        # Get strategy distribution
         strategy_weights = ConfigValidator.get_strategy_distribution(self.field_size, 20)
         
-        # Merge GPP rules
         gpp_rules = {}
         if hasattr(rec1, 'gpp_specific_rules'):
             gpp_rules.update(rec1.gpp_specific_rules)
@@ -2204,21 +2250,21 @@ class GPPDualAIOptimizer:
     def validate_lineup_constraints(self, captain: str, flex_players: List[str], 
                                   salaries: Dict, ownership: Dict, teams: Dict) -> Tuple[bool, str]:
         """Validate that a lineup meets all constraints"""
-        # Check basic structure
+        # Basic structure
         if not captain or len(flex_players) != 5:
             return False, "Invalid lineup structure"
         
-        # Check no duplicate players
+        # No duplicates
         all_players = [captain] + flex_players
         if len(set(all_players)) != 6:
-            return False, "Duplicate players in lineup"
+            return False, "Duplicate players"
         
-        # Check salary
+        # Salary check
         total_salary = salaries.get(captain, 0) * 1.5 + sum(salaries.get(p, 0) for p in flex_players)
         if total_salary > OptimizerConfig.SALARY_CAP:
-            return False, f"Salary {total_salary:.0f} exceeds cap {OptimizerConfig.SALARY_CAP}"
+            return False, f"Salary {total_salary:.0f} exceeds cap"
         
-        # Check team limits
+        # Team limits
         team_counts = {}
         for player in all_players:
             team = teams.get(player, 'Unknown')
@@ -2226,26 +2272,25 @@ class GPPDualAIOptimizer:
         
         for team, count in team_counts.items():
             if count > OptimizerConfig.MAX_PLAYERS_PER_TEAM:
-                return False, f"Too many players from {team} ({count})"
+                return False, f"Too many from {team}"
         
-        # Check ownership for field size
+        # Very relaxed ownership check
         if self.field_config:
-            min_own = self.field_config['min_total_ownership']
-            max_own = self.field_config['max_total_ownership']
             total_ownership = ownership.get(captain, 5) * 1.5 + sum(ownership.get(p, 5) for p in flex_players)
             
-            if total_ownership < min_own - 15:  # More flexibility
-                return False, f"Ownership {total_ownership:.1f}% too low (min: {min_own}%)"
-            if total_ownership > max_own + 15:
-                return False, f"Ownership {total_ownership:.1f}% too high (max: {max_own}%)"
+            # Super relaxed bounds
+            if total_ownership < self.field_config['min_total_ownership'] - 40:
+                return False, f"Ownership {total_ownership:.1f}% too low"
+            if total_ownership > self.field_config['max_total_ownership'] + 40:
+                return False, f"Ownership {total_ownership:.1f}% too high"
         
         return True, "Valid"
     
     def generate_gpp_lineups(self, num_lineups: int, rec1: AIRecommendation, 
                             rec2: AIRecommendation, force_unique_captains: bool = True) -> pd.DataFrame:
-        """Generate GPP-optimized lineups with comprehensive error handling and diagnostics"""
+        """Generate GPP-optimized lineups with fallback mechanisms"""
         
-        # Start performance monitoring
+        # Start monitoring
         self.perf_monitor.start_timer("total_optimization")
         self.logger.log_optimization_start(num_lineups, self.field_size, {
             'force_unique_captains': force_unique_captains,
@@ -2255,7 +2300,7 @@ class GPPDualAIOptimizer:
         # Validate configuration
         self.logger.log("Validating configuration", "DEBUG")
         self.field_config = ConfigValidator.validate_field_config(self.field_size, num_lineups)
-        self.logger.log(f"Configuration: {self.field_config}", "DEBUG")
+        self.logger.log(f"Configuration validated: {self.field_config}", "DEBUG")
         
         # Validate player pool
         self.logger.log("Validating player pool", "DEBUG")
@@ -2271,7 +2316,7 @@ class GPPDualAIOptimizer:
             self.logger.log(f"Player pool warning: {warning}", "WARNING")
             st.warning(warning)
         
-        # Display configuration
+        # Display config
         config_msg = (f"Optimization config for {self.field_size}: "
                      f"Max chalk={self.field_config['max_chalk_players']}, "
                      f"Min leverage={self.field_config['min_leverage_players']}, "
@@ -2280,9 +2325,18 @@ class GPPDualAIOptimizer:
         self.logger.log(config_msg, "INFO")
         
         # Combine recommendations
+        self.logger.log("Combining AI recommendations", "DEBUG")
         combined = self.combine_gpp_recommendations(rec1, rec2)
         
-        # Get data dictionaries
+        # Check if we have valid recommendations
+        if not combined.get('captain_scores') or len(combined['captain_scores']) == 0:
+            st.warning("No AI recommendations available - using statistical analysis")
+            self.logger.log("No AI recommendations - using fallback", "WARNING")
+            combined = self.get_fallback_recommendations()
+        
+        self.logger.log(f"Using {len(combined.get('captain_scores', []))} captain candidates", "INFO")
+        
+        # Get data
         players = self.df['Player'].tolist()
         positions = self.df.set_index('Player')['Position'].to_dict()
         teams = self.df.set_index('Player')['Team'].to_dict()
@@ -2290,29 +2344,26 @@ class GPPDualAIOptimizer:
         points = self.df.set_index('Player')['Projected_Points'].to_dict()
         ownership = self.df.set_index('Player')['Ownership'].to_dict()
         
-        # Validate minimum requirements
+        # Check minimum requirements
         if len(players) < 6:
             self.logger.log(f"Not enough players ({len(players)})", "ERROR")
             st.error(f"Not enough players ({len(players)}) to create lineups")
-            
-            # Run diagnostics
             self.diagnose_optimization_issues(self.df, self.field_size, self.field_config,
                                              salaries, ownership, points)
             return pd.DataFrame()
         
-        # Apply AI adjustments
+        # Apply adjustments
         adjusted_points = points.copy()
-        for player in combined['consensus_fades']:
+        for player in combined.get('consensus_fades', []):
             if player in adjusted_points and ownership.get(player, 5) > 30:
-                adjusted_points[player] *= 0.70
-                self.logger.log(f"Fading {player} (chalk)", "DEBUG")
+                adjusted_points[player] *= 0.80
         
-        for player in combined['all_boosts']:
+        for player in combined.get('all_boosts', []):
             if player in adjusted_points and ownership.get(player, 5) < 10:
-                adjusted_points[player] *= 1.25
-                self.logger.log(f"Boosting {player} (leverage)", "DEBUG")
+                adjusted_points[player] *= 1.20
         
         # Get strategy distribution
+        self.logger.log("Getting strategy distribution", "DEBUG")
         strategy_distribution = ConfigValidator.get_strategy_distribution(self.field_size, num_lineups)
         self.logger.log(f"Strategy distribution: {strategy_distribution}", "DEBUG")
         
@@ -2320,15 +2371,15 @@ class GPPDualAIOptimizer:
         used_captains = set()
         lineup_num = 0
         failed_attempts = 0
-        max_failures = 100
+        max_failures = 150  # Increased limit
         
-        # Generate lineups by strategy
+        # Generate lineups
         for strategy, count in strategy_distribution.items():
-            self.logger.log(f"Generating {count} lineups for {strategy.value}", "INFO")
+            self.logger.log(f"Generating {count} lineups for strategy: {strategy.value}", "INFO")
             self.perf_monitor.start_timer(f"strategy_{strategy.value}")
             
             strategy_attempts = 0
-            strategy_max_attempts = count * 5  # More attempts allowed
+            strategy_max_attempts = count * 10  # More attempts
             
             for i in range(count):
                 if strategy_attempts > strategy_max_attempts:
@@ -2349,17 +2400,17 @@ class GPPDualAIOptimizer:
                     flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
                     captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
                     
-                    # Strategy-specific objective
+                    # Objective based on strategy
                     if strategy == StrategyType.LEVERAGE:
                         model += pulp.lpSum([
-                            adjusted_points[p] * flex[p] * (1 + max(0, 20 - ownership.get(p, 10))/20) +
-                            1.5 * adjusted_points[p] * captain[p] * (1 + max(0, 15 - ownership.get(p, 10))/15)
+                            adjusted_points[p] * flex[p] * (1 + max(0, 20 - ownership.get(p, 10))/30) +
+                            1.5 * adjusted_points[p] * captain[p] * (1 + max(0, 15 - ownership.get(p, 10))/20)
                             for p in players
                         ])
                     elif strategy == StrategyType.CONTRARIAN:
                         model += pulp.lpSum([
-                            adjusted_points[p] * flex[p] * (1 - ownership.get(p, 5)/80) +
-                            1.5 * adjusted_points[p] * captain[p] * (1 - ownership.get(p, 5)/60)
+                            adjusted_points[p] * flex[p] * (1.2 - ownership.get(p, 5)/100) +
+                            1.5 * adjusted_points[p] * captain[p] * (1.2 - ownership.get(p, 5)/80)
                             for p in players
                         ])
                     else:
@@ -2375,39 +2426,44 @@ class GPPDualAIOptimizer:
                     for p in players:
                         model += flex[p] + captain[p] <= 1
                     
-                    # Salary constraint
+                    # Salary
                     model += pulp.lpSum([
                         salaries[p] * flex[p] + 1.5 * salaries[p] * captain[p]
                         for p in players
                     ]) <= OptimizerConfig.SALARY_CAP
                     
-                    # Team constraint
+                    # Team limit
                     for team in self.df['Team'].unique():
                         team_players = [p for p in players if teams.get(p) == team]
                         if team_players:
                             model += pulp.lpSum([flex[p] + captain[p] for p in team_players]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM
                     
-                    # Ownership constraints with flexibility
+                    # VERY RELAXED ownership constraints
                     ownership_expr = pulp.lpSum([
                         ownership.get(p, 5) * (flex[p] + 0.5 * captain[p])
                         for p in players
                     ])
                     
-                    # More flexible ownership bounds
-                    model += ownership_expr >= max(0, self.field_config['min_total_ownership'] - 20)
-                    model += ownership_expr <= self.field_config['max_total_ownership'] + 20
+                    # Super relaxed bounds
+                    if self.field_size == 'milly_maker':
+                        model += ownership_expr >= 30  # Very low minimum
+                        model += ownership_expr <= 120  # Allow higher
+                    else:
+                        model += ownership_expr >= 40
+                        model += ownership_expr <= 150
                     
                     # Unique captains
                     if force_unique_captains and used_captains:
-                        for prev_captain in used_captains:
+                        for prev_captain in list(used_captains)[:50]:  # Limit to last 50
                             if prev_captain in players:
                                 model += captain[prev_captain] == 0
                     
-                    # Diversity constraint
-                    if all_lineups:
-                        for prev_lineup in all_lineups[-min(2, len(all_lineups)):]:
-                            prev_players = [prev_lineup['Captain']] + prev_lineup['FLEX']
-                            model += pulp.lpSum([flex[p] + captain[p] for p in prev_players]) <= 5
+                    # Light diversity constraint
+                    if all_lineups and len(all_lineups) > 0:
+                        # Only check against last lineup
+                        prev_lineup = all_lineups[-1]
+                        prev_players = [prev_lineup['Captain']] + prev_lineup['FLEX']
+                        model += pulp.lpSum([flex[p] + captain[p] for p in prev_players]) <= 5
                     
                     # Solve
                     model.solve(pulp.PULP_CBC_CMD(msg=0))
@@ -2426,7 +2482,7 @@ class GPPDualAIOptimizer:
                                 flex_picks.append(p)
                         
                         if captain_pick and len(flex_picks) == 5:
-                            # Validate lineup
+                            # Validate
                             is_valid, reason = self.validate_lineup_constraints(
                                 captain_pick, flex_picks, salaries, ownership, teams
                             )
@@ -2438,7 +2494,7 @@ class GPPDualAIOptimizer:
                                 
                                 lineup_players = [captain_pick] + flex_picks
                                 
-                                # Determine ownership tier
+                                # Ownership tier
                                 if total_ownership < 60:
                                     ownership_tier = '💎 Elite'
                                 elif total_ownership < 80:
@@ -2461,7 +2517,7 @@ class GPPDualAIOptimizer:
                                     'Ownership_Tier': ownership_tier,
                                     'GPP_Summary': self.bucket_manager.get_gpp_summary(lineup_players, self.df, self.field_size),
                                     'Leverage_Score': self.bucket_manager.calculate_gpp_leverage(lineup_players, self.df),
-                                    'Has_Stack': False,  # Will be updated later
+                                    'Has_Stack': False,
                                     'Stack_Details': 'None',
                                     'Field_Size': self.field_size,
                                     'Unique_Captain': True,
@@ -2473,18 +2529,15 @@ class GPPDualAIOptimizer:
                                 self.perf_monitor.increment_counter("successful_lineups")
                             else:
                                 self.logger.log_lineup_generation(strategy.value, lineup_num, "FAILED", {'reason': reason})
-                                self.perf_monitor.increment_counter("failed_validations")
                                 strategy_attempts += 1
                         else:
                             strategy_attempts += 1
-                            self.perf_monitor.increment_counter("incomplete_lineups")
                     else:
                         failed_attempts += 1
                         strategy_attempts += 1
-                        self.perf_monitor.increment_counter("no_solutions")
                         
                 except Exception as e:
-                    self.logger.log_exception(e, f"Lineup {lineup_num} generation")
+                    self.logger.log_exception(e, f"Lineup {lineup_num}")
                     failed_attempts += 1
                     strategy_attempts += 1
             
@@ -2494,40 +2547,20 @@ class GPPDualAIOptimizer:
         total_time = self.perf_monitor.stop_timer("total_optimization")
         self.logger.log_optimization_end(len(all_lineups), total_time)
         
-        # Handle optimization failures
+        # Handle results
         if len(all_lineups) == 0:
             st.error("❌ No valid lineups generated")
-            self.logger.log("No lineups generated - running diagnostics", "ERROR")
-            
-            # Run comprehensive diagnostics
-            diagnostic_result = self.diagnose_optimization_issues(
-                self.df, self.field_size, self.field_config, 
-                salaries, ownership, points
-            )
-            
-            if not diagnostic_result['has_critical_issues']:
-                st.info("Attempting generation with relaxed constraints...")
-                # Could implement a fallback optimization here
-            
+            self.logger.log("No lineups generated", "ERROR")
+            self.diagnose_optimization_issues(self.df, self.field_size, self.field_config,
+                                             salaries, ownership, points)
             return pd.DataFrame()
         
-        # Report results
         if len(all_lineups) < num_lineups:
-            st.warning(f"Generated {len(all_lineups)}/{num_lineups} lineups")
-            self.logger.log(f"Partial generation: {len(all_lineups)}/{num_lineups}", "WARNING")
-            
-            if st.checkbox("Show Optimization Issues"):
-                with st.expander("Optimization Log"):
-                    for log in self.optimization_logger[-20:]:
-                        st.write(f"- {log}")
+            st.warning(f"Only generated {len(all_lineups)}/{num_lineups} valid lineups")
+            self.logger.log(f"Partial generation: {len(all_lineups)}/{num_lineups} lineups", "WARNING")
         else:
             st.success(f"✅ Generated all {num_lineups} lineups!")
-            self.logger.log(f"Successfully generated {num_lineups} lineups", "INFO")
-        
-        # Display performance metrics
-        if self.api_manager:
-            stats = self.api_manager.get_stats()
-            st.caption(f"API Stats - Requests: {stats['requests']}, Errors: {stats['errors']}, Cache: {stats['cache_size']}")
+            self.logger.log(f"Successfully generated all {num_lineups} lineups", "INFO")
         
         return pd.DataFrame(all_lineups)
 
@@ -3942,5 +3975,6 @@ if 'field_size' in st.session_state:
     st.caption(f"GPP Optimizer last run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Field: {current_field} | Cache Status: Active")
 else:
     st.caption(f"GPP Optimizer ready: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | No active session")
+
 
 
