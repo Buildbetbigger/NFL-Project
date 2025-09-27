@@ -1,888 +1,520 @@
-# NFL GPP DUAL-AI OPTIMIZER - PART 1: IMPORTS AND CONFIGURATION (COMPLETE CORRECTED)
-# Version 5.1 - GPP Tournament Focus with Full Error Handling
+# NFL GPP DUAL-AI OPTIMIZER - PART 1: CONFIGURATION & MONITORING
+# Version 6.0 - AI-as-Chef Architecture with Triple AI System
 
-import streamlit as st
 import pandas as pd
-import pulp
 import numpy as np
-from scipy.stats import multivariate_normal, gamma, norm
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import Dict, List, Tuple, Optional, Set, Any
-import json
 from dataclasses import dataclass
+from typing import Dict, List, Tuple, Optional, Set, Any
 from enum import Enum
-import itertools
-from collections import defaultdict
-import hashlib
-from datetime import datetime, timedelta
-import logging
-import traceback
-
-# For Google Colab compatibility
-try:
-    import anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
-    st.warning("Anthropic package not installed. Install with: pip install anthropic")
-
-st.set_page_config(page_title="NFL GPP Optimizer Pro", page_icon="🏈", layout="wide")
-st.title('🏈 NFL GPP Tournament Optimizer - Professional Edition')
+import json
+from datetime import datetime
+import streamlit as st
 
 # ============================================================================
-# LOGGING AND DEBUGGING SYSTEM
-# ============================================================================
-
-class OptimizationLogger:
-    """Comprehensive logging system for debugging and monitoring"""
-    
-    def __init__(self, verbose: bool = False, log_to_file: bool = False):
-        self.verbose = verbose
-        self.log_to_file = log_to_file
-        self.logs = []
-        self.error_count = 0
-        self.warning_count = 0
-        self.info_count = 0
-        
-        # Setup file logging if requested
-        if log_to_file:
-            log_filename = f"gpp_optimizer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-            logging.basicConfig(
-                filename=log_filename,
-                level=logging.DEBUG if verbose else logging.INFO,
-                format='%(asctime)s - %(levelname)s - %(message)s'
-            )
-    
-    def log(self, message: str, level: str = "INFO", show_in_ui: bool = True):
-        """Log a message with timestamp and level"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        entry = {
-            'timestamp': timestamp,
-            'level': level,
-            'message': message
-        }
-        self.logs.append(entry)
-        
-        # Count by level
-        if level == "ERROR":
-            self.error_count += 1
-        elif level == "WARNING":
-            self.warning_count += 1
-        else:
-            self.info_count += 1
-        
-        # File logging
-        if self.log_to_file:
-            if level == "ERROR":
-                logging.error(message)
-            elif level == "WARNING":
-                logging.warning(message)
-            elif level == "DEBUG":
-                logging.debug(message)
-            else:
-                logging.info(message)
-        
-        # UI display
-        if show_in_ui and self.verbose:
-            if level == "ERROR":
-                st.error(f"[{timestamp}] {message}")
-            elif level == "WARNING":
-                st.warning(f"[{timestamp}] {message}")
-            elif level == "DEBUG":
-                st.caption(f"[{timestamp}] DEBUG: {message}")
-            else:
-                st.info(f"[{timestamp}] {message}")
-    
-    def log_exception(self, e: Exception, context: str = ""):
-        """Log an exception with full traceback"""
-        error_msg = f"Exception in {context}: {str(e)}"
-        self.log(error_msg, "ERROR")
-        
-        if self.verbose:
-            traceback_str = traceback.format_exc()
-            self.log(f"Traceback:\n{traceback_str}", "DEBUG", show_in_ui=False)
-    
-    def log_lineup_generation(self, strategy: str, lineup_num: int, status: str, details: Dict = None):
-        """Log lineup generation attempt"""
-        msg = f"Lineup #{lineup_num} ({strategy}): {status}"
-        if details:
-            msg += f" - {details}"
-        
-        level = "INFO" if status == "SUCCESS" else "WARNING" if status == "FAILED" else "DEBUG"
-        self.log(msg, level, show_in_ui=False)
-    
-    def log_optimization_start(self, num_lineups: int, field_size: str, settings: Dict):
-        """Log optimization start with settings"""
-        self.log(f"Starting optimization: {num_lineups} lineups for {field_size}", "INFO")
-        self.log(f"Settings: {settings}", "DEBUG", show_in_ui=False)
-    
-    def log_optimization_end(self, lineups_generated: int, time_elapsed: float):
-        """Log optimization completion"""
-        self.log(f"Optimization complete: {lineups_generated} lineups in {time_elapsed:.2f}s", "INFO")
-        if self.error_count > 0:
-            self.log(f"Encountered {self.error_count} errors during optimization", "WARNING")
-    
-    def get_summary(self) -> Dict:
-        """Get logging summary"""
-        return {
-            'total_logs': len(self.logs),
-            'errors': self.error_count,
-            'warnings': self.warning_count,
-            'info': self.info_count
-        }
-    
-    def get_recent_logs(self, n: int = 10, level_filter: str = None) -> List[Dict]:
-        """Get recent log entries"""
-        filtered = self.logs
-        if level_filter:
-            filtered = [log for log in self.logs if log['level'] == level_filter]
-        return filtered[-n:]
-    
-    def display_log_summary(self):
-        """Display log summary in Streamlit"""
-        summary = self.get_summary()
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Logs", summary['total_logs'])
-        with col2:
-            st.metric("Errors", summary['errors'])
-        with col3:
-            st.metric("Warnings", summary['warnings'])
-        with col4:
-            st.metric("Info", summary['info'])
-        
-        if self.error_count > 0:
-            with st.expander(f"Recent Errors ({self.error_count})"):
-                for log in self.get_recent_logs(5, "ERROR"):
-                    st.error(f"[{log['timestamp']}] {log['message']}")
-        
-        if self.warning_count > 0:
-            with st.expander(f"Recent Warnings ({self.warning_count})"):
-                for log in self.get_recent_logs(5, "WARNING"):
-                    st.warning(f"[{log['timestamp']}] {log['message']}")
-    
-    def export_logs(self) -> str:
-        """Export logs as formatted string"""
-        output = []
-        output.append(f"GPP Optimizer Log Export - {datetime.now()}")
-        output.append("=" * 60)
-        
-        for log in self.logs:
-            output.append(f"[{log['timestamp']}] {log['level']}: {log['message']}")
-        
-        output.append("=" * 60)
-        output.append(f"Summary: {self.get_summary()}")
-        
-        return "\n".join(output)
-
-class PerformanceMonitor:
-    """Monitor performance metrics during optimization"""
-    
-    def __init__(self):
-        self.timers = {}
-        self.counters = {}
-        self.start_times = {}
-    
-    def start_timer(self, name: str):
-        """Start a named timer"""
-        self.start_times[name] = datetime.now()
-    
-    def stop_timer(self, name: str) -> float:
-        """Stop a timer and return elapsed time"""
-        if name not in self.start_times:
-            return 0.0
-        
-        elapsed = (datetime.now() - self.start_times[name]).total_seconds()
-        
-        if name not in self.timers:
-            self.timers[name] = []
-        self.timers[name].append(elapsed)
-        
-        del self.start_times[name]
-        return elapsed
-    
-    def increment_counter(self, name: str, amount: int = 1):
-        """Increment a named counter"""
-        if name not in self.counters:
-            self.counters[name] = 0
-        self.counters[name] += amount
-    
-    def get_average_time(self, name: str) -> float:
-        """Get average time for a named operation"""
-        if name not in self.timers or len(self.timers[name]) == 0:
-            return 0.0
-        return sum(self.timers[name]) / len(self.timers[name])
-    
-    def get_metrics(self) -> Dict:
-        """Get all performance metrics"""
-        metrics = {
-            'timers': {},
-            'counters': self.counters
-        }
-        
-        for name, times in self.timers.items():
-            metrics['timers'][name] = {
-                'count': len(times),
-                'total': sum(times),
-                'average': self.get_average_time(name),
-                'min': min(times) if times else 0,
-                'max': max(times) if times else 0
-            }
-        
-        return metrics
-    
-    def display_metrics(self):
-        """Display performance metrics in Streamlit"""
-        metrics = self.get_metrics()
-        
-        if metrics['timers']:
-            st.subheader("⏱️ Performance Metrics")
-            
-            for name, stats in metrics['timers'].items():
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric(f"{name} Avg", f"{stats['average']:.3f}s")
-                with col2:
-                    st.metric(f"{name} Total", f"{stats['total']:.2f}s")
-                with col3:
-                    st.metric(f"{name} Count", stats['count'])
-        
-        if metrics['counters']:
-            st.subheader("📊 Operation Counts")
-            cols = st.columns(len(metrics['counters']))
-            for i, (name, count) in enumerate(metrics['counters'].items()):
-                with cols[i]:
-                    st.metric(name, count)
-
-# Global logger instance
-_global_logger = None
-_performance_monitor = None
-
-def get_logger(verbose: bool = False) -> OptimizationLogger:
-    """Get or create global logger instance"""
-    global _global_logger
-    if _global_logger is None:
-        _global_logger = OptimizationLogger(verbose=verbose)
-    return _global_logger
-
-def get_performance_monitor() -> PerformanceMonitor:
-    """Get or create global performance monitor"""
-    global _performance_monitor
-    if _performance_monitor is None:
-        _performance_monitor = PerformanceMonitor()
-    return _performance_monitor
-
-# ============================================================================
-# GPP-FOCUSED CONFIGURATION
-# ============================================================================
-
-class OptimizerConfig:
-    """GPP-optimized configuration settings"""
-    SALARY_CAP = 50000
-    ROSTER_SIZE = 6  # 1 Captain + 5 FLEX
-    MAX_PLAYERS_PER_TEAM = 4
-    CAPTAIN_MULTIPLIER = 1.5
-    DEFAULT_OWNERSHIP = 5
-    MIN_SALARY = 1000
-    
-    # GPP-FOCUSED VOLATILITY (increased for more variance)
-    BASE_VOLATILITY = 0.30  # Increased from 0.25
-    HIGH_VOLATILITY = 0.45  # Increased from 0.35
-    INJURY_RATE = 0.08  # Increased from 0.05
-    BOOM_RATE = 0.08  # Increased from 0.05
-    
-    # Simulation parameters
-    NUM_SIMS = 5000
-    FIELD_SIZE = 100000
-    
-    # API Configuration
-    CLAUDE_MODEL = "claude-3-haiku-20240307"
-    MAX_TOKENS = 2000
-    TEMPERATURE = 0.7
-    
-    # GPP-FOCUSED OWNERSHIP BUCKETS
-    OWNERSHIP_BUCKETS = {
-        'mega_chalk': (35, 100),      # Lowered from 40%
-        'chalk': (20, 35),             # Lowered from 25%
-        'pivot': (10, 20),             # Tightened range
-        'leverage': (5, 10),           # 5-10% ownership
-        'super_leverage': (0, 5)       # <5% ownership
-    }
-    
-    # GPP-ONLY BUCKET RULES
-    BUCKET_RULES = {
-        'gpp_balanced': {
-            'mega_chalk': (0, 2),      # Max 2 mega chalk
-            'chalk': (0, 3),           # Max 3 chalk
-            'pivot': (1, 6),           # At least 1 pivot
-            'leverage': (1, 6),        # At least 1 leverage
-            'super_leverage': (0, 6)   # Any super leverage
-        },
-        'contrarian': {
-            'mega_chalk': (0, 0),      # NO mega chalk
-            'chalk': (0, 1),           # Max 1 chalk
-            'pivot': (2, 6),           # At least 2 pivots
-            'leverage': (2, 6),        # At least 2 leverage
-            'super_leverage': (1, 6)   # At least 1 super leverage
-        },
-        'super_contrarian': {  # NEW for GPP
-            'mega_chalk': (0, 0),      
-            'chalk': (0, 0),           # NO chalk at all
-            'pivot': (1, 6),           
-            'leverage': (2, 6),        # At least 2 leverage
-            'super_leverage': (2, 6)   # At least 2 super leverage
-        }
-    }
-    
-    # GPP-FOCUSED TARGET OWNERSHIP BY FIELD SIZE
-    GPP_OWNERSHIP_TARGETS = {
-        'small_field': (80, 120),    # Small GPP/Single Entry
-        'medium_field': (70, 100),   # Medium GPP
-        'large_field': (60, 90),     # Large GPP (default)
-        'milly_maker': (50, 80)      # Massive GPP
-    }
-    
-    # GPP FIELD SIZE DEFINITIONS
-    FIELD_SIZES = {
-        'Single Entry': 'small_field',
-        '3-Max': 'small_field',
-        '20-Max': 'medium_field',
-        '150-Max': 'large_field',
-        'Milly Maker': 'milly_maker'
-    }
-    
-    # Correlation values adjusted for GPP
-    QB_PASS_CATCHER_CORR = 0.50  # Increased from 0.45
-    QB_RB_CORR = -0.20  # More negative
-    SAME_TEAM_WR_CORR = 0.10  # Decreased to avoid doubling up
-    OPPOSING_QB_CORR = 0.35  # Increased for shootouts
-    DST_OPPOSING_CORR = -0.40  # More negative
-    
-    # GPP Strategy Weights by Field Size
-    GPP_STRATEGY_WEIGHTS = {
-        'small_field': {
-            'leverage': 0.25,
-            'contrarian': 0.15,
-            'game_stack': 0.25,
-            'stars_scrubs': 0.15,
-            'correlation': 0.20
-        },
-        'medium_field': {
-            'leverage': 0.30,
-            'contrarian': 0.20,
-            'game_stack': 0.20,
-            'stars_scrubs': 0.15,
-            'correlation': 0.15
-        },
-        'large_field': {
-            'leverage': 0.35,
-            'contrarian': 0.25,
-            'game_stack': 0.20,
-            'stars_scrubs': 0.15,
-            'correlation': 0.05
-        },
-        'milly_maker': {
-            'leverage': 0.40,
-            'contrarian': 0.35,
-            'game_stack': 0.15,
-            'stars_scrubs': 0.10,
-            'correlation': 0.00
-        }
-    }
-
-# ============================================================================
-# ENUMS AND DATA CLASSES
+# ENUMS AND CONSTANTS
 # ============================================================================
 
 class StrategyType(Enum):
-    """GPP-focused strategies only"""
-    LEVERAGE = "leverage"
-    CONTRARIAN = "contrarian"
-    SUPER_CONTRARIAN = "super_contrarian"
-    GAME_STACK = "game_stack"
-    STARS_SCRUBS = "stars_scrubs"
-    CORRELATION = "correlation"
+    """GPP Strategy Types - Now AI-Driven"""
+    AI_CONSENSUS = 'ai_consensus'        # All 3 AIs agree
+    AI_MAJORITY = 'ai_majority'          # 2 of 3 AIs agree  
+    AI_CONTRARIAN = 'ai_contrarian'      # Following contrarian AI specifically
+    AI_CORRELATION = 'ai_correlation'    # Following correlation AI specifically
+    AI_GAME_THEORY = 'ai_game_theory'    # Following game theory AI specifically
+    AI_MIXED = 'ai_mixed'                # Mixing different AI perspectives
+    LEVERAGE = 'leverage'                # Legacy - will be AI-driven
+    CONTRARIAN = 'contrarian'            # Legacy - will be AI-driven
+
+class AIEnforcementLevel(Enum):
+    """How strictly to enforce AI decisions"""
+    MANDATORY = 'mandatory'              # AI decisions are hard constraints
+    STRONG = 'strong'                    # AI decisions heavily weighted
+    MODERATE = 'moderate'                # AI decisions moderately weighted
+    SUGGESTION = 'suggestion'            # AI decisions as hints only
+
+class AIStrategistType(Enum):
+    """Three AI Strategist Types"""
+    GAME_THEORY = 'game_theory'
+    CORRELATION = 'correlation'
+    CONTRARIAN_NARRATIVE = 'contrarian_narrative'
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+class OptimizerConfig:
+    """Core configuration for GPP optimizer - AI-as-Chef version"""
+    
+    # Salary and roster constraints
+    SALARY_CAP = 50000
+    MIN_SALARY = 3000
+    MAX_PLAYERS_PER_TEAM = 5
+    ROSTER_SIZE = 6  # 1 CPT + 5 FLEX
+    
+    # Default ownership when unknown (pre-lock)
+    DEFAULT_OWNERSHIP = 5.0
+    
+    # AI Configuration
+    AI_ENFORCEMENT_MODE = AIEnforcementLevel.MANDATORY
+    REQUIRE_AI_FOR_GENERATION = True  # If True, won't generate without AI input
+    MIN_AI_CONFIDENCE = 0.3  # Minimum confidence to use AI recommendations
+    
+    # Triple AI Weights (how much each AI contributes)
+    AI_WEIGHTS = {
+        AIStrategistType.GAME_THEORY: 0.35,
+        AIStrategistType.CORRELATION: 0.35,
+        AIStrategistType.CONTRARIAN_NARRATIVE: 0.30
+    }
+    
+    # AI Consensus Requirements
+    AI_CONSENSUS_THRESHOLDS = {
+        'captain': 2,  # How many AIs must agree for consensus captain
+        'must_play': 3,  # All 3 must agree for "must play"
+        'never_play': 2,  # 2 must agree for "never play"
+    }
+    
+    # Field size configurations - Now with AI strategy distribution
+    FIELD_SIZE_CONFIGS = {
+        'small_field': {
+            'min_unique_captains': 3,
+            'max_chalk_players': 4,
+            'min_leverage_players': 0,
+            'max_ownership_per_player': 40,
+            'min_total_ownership': 80,
+            'max_total_ownership': 120,
+            'ai_enforcement': AIEnforcementLevel.MODERATE,
+            'ai_strategy_distribution': {
+                'ai_consensus': 0.4,
+                'ai_majority': 0.3,
+                'ai_mixed': 0.3
+            }
+        },
+        'medium_field': {
+            'min_unique_captains': 6,
+            'max_chalk_players': 2,
+            'min_leverage_players': 1,
+            'max_ownership_per_player': 20,
+            'min_total_ownership': 70,
+            'max_total_ownership': 100,
+            'ai_enforcement': AIEnforcementLevel.STRONG,
+            'ai_strategy_distribution': {
+                'ai_consensus': 0.2,
+                'ai_majority': 0.3,
+                'ai_contrarian': 0.2,
+                'ai_correlation': 0.2,
+                'ai_game_theory': 0.1
+            }
+        },
+        'large_field': {
+            'min_unique_captains': 10,
+            'max_chalk_players': 1,
+            'min_leverage_players': 2,
+            'max_ownership_per_player': 15,
+            'min_total_ownership': 60,
+            'max_total_ownership': 90,
+            'ai_enforcement': AIEnforcementLevel.MANDATORY,
+            'ai_strategy_distribution': {
+                'ai_consensus': 0.1,
+                'ai_majority': 0.2,
+                'ai_contrarian': 0.3,
+                'ai_correlation': 0.2,
+                'ai_game_theory': 0.2
+            }
+        },
+        'milly_maker': {
+            'min_unique_captains': 20,
+            'max_chalk_players': 0,
+            'min_leverage_players': 3,
+            'max_ownership_per_player': 10,
+            'min_total_ownership': 50,
+            'max_total_ownership': 80,
+            'ai_enforcement': AIEnforcementLevel.MANDATORY,
+            'ai_strategy_distribution': {
+                'ai_contrarian': 0.4,
+                'ai_game_theory': 0.3,
+                'ai_correlation': 0.2,
+                'ai_mixed': 0.1
+            }
+        }
+    }
+    
+    # AI Strategy Requirements - What each AI strategy type enforces
+    AI_STRATEGY_REQUIREMENTS = {
+        'ai_consensus': {
+            'must_use_consensus_captain': True,
+            'must_include_agreed_players': True,
+            'must_avoid_fade_players': True
+        },
+        'ai_majority': {
+            'must_use_majority_captain': True,
+            'should_include_agreed_players': True
+        },
+        'ai_contrarian': {
+            'must_use_contrarian_captain': True,
+            'must_include_narrative_plays': True,
+            'must_fade_chalk_narrative': True
+        },
+        'ai_correlation': {
+            'must_use_correlation_captain': True,
+            'must_include_primary_stack': True,
+            'should_include_secondary_correlation': True
+        },
+        'ai_game_theory': {
+            'must_use_leverage_captain': True,
+            'must_meet_ownership_targets': True,
+            'must_avoid_ownership_traps': True
+        }
+    }
+    
+    # Ownership bucket thresholds
+    OWNERSHIP_BUCKETS = {
+        'mega_chalk': 35,
+        'chalk': 20,
+        'pivot': 10,
+        'leverage': 5,
+        'super_leverage': 0
+    }
+    
+    # Contest types to field sizes
+    FIELD_SIZES = {
+        'Single Entry': 'small_field',
+        '3-Max Entry': 'small_field',
+        '20-Max Entry': 'medium_field',
+        '150-Max Entry': 'large_field',
+        'Milly Maker': 'milly_maker'
+    }
+    
+    # Correlation thresholds
+    CORRELATION_THRESHOLDS = {
+        'strong_positive': 0.6,
+        'moderate_positive': 0.3,
+        'weak': 0.0,
+        'moderate_negative': -0.3,
+        'strong_negative': -0.6
+    }
+
+# ============================================================================
+# MONITORING AND LOGGING - AI-FOCUSED
+# ============================================================================
+
+class AIDecisionTracker:
+    """Tracks AI decisions and enforcement throughout optimization"""
+    
+    def __init__(self):
+        self.ai_decisions = []
+        self.enforcement_stats = {
+            'total_rules': 0,
+            'enforced_rules': 0,
+            'violated_rules': 0,
+            'consensus_decisions': 0,
+            'majority_decisions': 0,
+            'single_ai_decisions': 0
+        }
+        self.ai_performance = {
+            AIStrategistType.GAME_THEORY: {'suggestions': 0, 'used': 0},
+            AIStrategistType.CORRELATION: {'suggestions': 0, 'used': 0},
+            AIStrategistType.CONTRARIAN_NARRATIVE: {'suggestions': 0, 'used': 0}
+        }
+    
+    def track_decision(self, decision_type: str, ai_source: str, 
+                      enforced: bool, details: Dict):
+        """Track an AI decision and whether it was enforced"""
+        self.ai_decisions.append({
+            'timestamp': datetime.now(),
+            'type': decision_type,
+            'source': ai_source,
+            'enforced': enforced,
+            'details': details
+        })
+        
+        self.enforcement_stats['total_rules'] += 1
+        if enforced:
+            self.enforcement_stats['enforced_rules'] += 1
+        else:
+            self.enforcement_stats['violated_rules'] += 1
+    
+    def track_consensus(self, consensus_type: str, ais_agreeing: List[str]):
+        """Track consensus between AIs"""
+        if len(ais_agreeing) == 3:
+            self.enforcement_stats['consensus_decisions'] += 1
+        elif len(ais_agreeing) == 2:
+            self.enforcement_stats['majority_decisions'] += 1
+        else:
+            self.enforcement_stats['single_ai_decisions'] += 1
+    
+    def get_enforcement_rate(self) -> float:
+        """Get the rate of AI decision enforcement"""
+        if self.enforcement_stats['total_rules'] == 0:
+            return 0.0
+        return self.enforcement_stats['enforced_rules'] / self.enforcement_stats['total_rules']
+    
+    def get_summary(self) -> Dict:
+        """Get summary of AI decision tracking"""
+        return {
+            'enforcement_rate': self.get_enforcement_rate(),
+            'stats': self.enforcement_stats,
+            'ai_performance': self.ai_performance,
+            'recent_decisions': self.ai_decisions[-10:]
+        }
+
+class GlobalLogger:
+    """Enhanced logger with AI decision tracking"""
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.initialize()
+        return cls._instance
+    
+    def initialize(self):
+        self.entries = []
+        self.ai_tracker = AIDecisionTracker()
+        self.verbose = False
+        self.log_to_file = False
+        
+    def log(self, message: str, level: str = "INFO"):
+        """Log a message with level"""
+        entry = {
+            'timestamp': datetime.now(),
+            'level': level,
+            'message': message
+        }
+        self.entries.append(entry)
+        
+        if self.verbose or level in ["ERROR", "WARNING"]:
+            timestamp = entry['timestamp'].strftime('%H:%M:%S')
+            print(f"[{timestamp}] {level}: {message}")
+            
+        if self.log_to_file:
+            self._write_to_file(entry)
+    
+    def log_ai_decision(self, decision_type: str, ai_source: str, 
+                       enforced: bool, details: Dict):
+        """Log an AI decision"""
+        self.ai_tracker.track_decision(decision_type, ai_source, enforced, details)
+        message = f"AI Decision [{ai_source}]: {decision_type} - {'ENFORCED' if enforced else 'VIOLATED'}"
+        self.log(message, "AI_DECISION")
+    
+    def log_ai_consensus(self, consensus_type: str, ais_agreeing: List[str], 
+                        decision: str):
+        """Log AI consensus"""
+        self.ai_tracker.track_consensus(consensus_type, ais_agreeing)
+        message = f"AI Consensus ({len(ais_agreeing)}/3): {decision}"
+        self.log(message, "AI_CONSENSUS")
+    
+    def log_optimization_start(self, num_lineups: int, field_size: str, 
+                              settings: Dict):
+        """Log optimization start with AI focus"""
+        self.log(f"Starting AI-driven optimization: {num_lineups} lineups for {field_size}", "INFO")
+        self.log(f"AI Enforcement: {settings.get('ai_enforcement', 'MANDATORY')}", "INFO")
+        self.log(f"Settings: {settings}", "DEBUG")
+    
+    def log_lineup_generation(self, strategy: str, lineup_num: int, 
+                             status: str, ai_rules_enforced: int = 0):
+        """Log lineup generation with AI enforcement tracking"""
+        message = f"Lineup {lineup_num} ({strategy}): {status}"
+        if ai_rules_enforced > 0:
+            message += f" - {ai_rules_enforced} AI rules enforced"
+        self.log(message, "DEBUG" if status == "SUCCESS" else "WARNING")
+    
+    def get_ai_summary(self) -> Dict:
+        """Get AI tracking summary"""
+        return self.ai_tracker.get_summary()
+    
+    def display_ai_enforcement(self):
+        """Display AI enforcement statistics in Streamlit"""
+        summary = self.get_ai_summary()
+        
+        st.markdown("### 🤖 AI Decision Enforcement")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            rate = summary['enforcement_rate'] * 100
+            st.metric("Enforcement Rate", f"{rate:.1f}%")
+        
+        with col2:
+            stats = summary['stats']
+            st.metric("Rules Enforced", 
+                     f"{stats['enforced_rules']}/{stats['total_rules']}")
+        
+        with col3:
+            st.metric("Consensus Decisions", stats['consensus_decisions'])
+        
+        # Show AI performance
+        st.markdown("#### AI Performance")
+        for ai_type, perf in summary['ai_performance'].items():
+            if perf['suggestions'] > 0:
+                usage_rate = (perf['used'] / perf['suggestions']) * 100
+                st.write(f"**{ai_type.value}**: {usage_rate:.1f}% usage rate")
+    
+    def export_logs(self) -> str:
+        """Export logs including AI decisions"""
+        output = "=== OPTIMIZATION LOG ===\n\n"
+        for entry in self.entries:
+            timestamp = entry['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+            output += f"[{timestamp}] {entry['level']}: {entry['message']}\n"
+        
+        output += "\n=== AI DECISION SUMMARY ===\n"
+        summary = self.get_ai_summary()
+        output += f"Enforcement Rate: {summary['enforcement_rate']*100:.1f}%\n"
+        output += f"Total AI Rules: {summary['stats']['total_rules']}\n"
+        output += f"Enforced: {summary['stats']['enforced_rules']}\n"
+        output += f"Violated: {summary['stats']['violated_rules']}\n"
+        
+        return output
+
+# ============================================================================
+# PERFORMANCE MONITOR
+# ============================================================================
+
+class PerformanceMonitor:
+    """Monitor performance with AI-specific metrics"""
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.initialize()
+        return cls._instance
+    
+    def initialize(self):
+        self.timers = {}
+        self.counters = {}
+        self.ai_metrics = {
+            'ai_api_calls': 0,
+            'ai_response_time': [],
+            'ai_cache_hits': 0,
+            'ai_enforcement_time': []
+        }
+    
+    def start_timer(self, name: str):
+        self.timers[name] = {'start': datetime.now()}
+    
+    def stop_timer(self, name: str) -> float:
+        if name in self.timers and 'start' in self.timers[name]:
+            elapsed = (datetime.now() - self.timers[name]['start']).total_seconds()
+            if 'total' not in self.timers[name]:
+                self.timers[name]['total'] = 0
+                self.timers[name]['count'] = 0
+            self.timers[name]['total'] += elapsed
+            self.timers[name]['count'] += 1
+            self.timers[name]['average'] = self.timers[name]['total'] / self.timers[name]['count']
+            
+            # Track AI-specific timings
+            if 'ai' in name.lower():
+                self.ai_metrics['ai_response_time'].append(elapsed)
+            
+            return elapsed
+        return 0.0
+    
+    def increment_counter(self, name: str, value: int = 1):
+        if name not in self.counters:
+            self.counters[name] = 0
+        self.counters[name] += value
+        
+        # Track AI-specific counters
+        if 'ai' in name.lower():
+            if 'cache' in name.lower():
+                self.ai_metrics['ai_cache_hits'] += value
+            elif 'api' in name.lower():
+                self.ai_metrics['ai_api_calls'] += value
+    
+    def get_metrics(self) -> Dict:
+        """Get all metrics including AI-specific ones"""
+        avg_ai_response = (
+            np.mean(self.ai_metrics['ai_response_time']) 
+            if self.ai_metrics['ai_response_time'] else 0
+        )
+        
+        return {
+            'timers': self.timers,
+            'counters': self.counters,
+            'ai_metrics': {
+                'api_calls': self.ai_metrics['ai_api_calls'],
+                'cache_hits': self.ai_metrics['ai_cache_hits'],
+                'avg_response_time': avg_ai_response,
+                'cache_hit_rate': (
+                    self.ai_metrics['ai_cache_hits'] / 
+                    (self.ai_metrics['ai_api_calls'] + self.ai_metrics['ai_cache_hits'])
+                    if (self.ai_metrics['ai_api_calls'] + self.ai_metrics['ai_cache_hits']) > 0
+                    else 0
+                )
+            }
+        }
+    
+    def display_metrics(self):
+        """Display performance metrics with AI focus"""
+        metrics = self.get_metrics()
+        
+        st.markdown("### ⚡ Performance Metrics")
+        
+        # AI Metrics
+        if metrics['ai_metrics']['api_calls'] > 0:
+            st.markdown("#### AI Performance")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("API Calls", metrics['ai_metrics']['api_calls'])
+            with col2:
+                st.metric("Avg Response", f"{metrics['ai_metrics']['avg_response_time']:.2f}s")
+            with col3:
+                st.metric("Cache Hit Rate", f"{metrics['ai_metrics']['cache_hit_rate']*100:.1f}%")
+        
+        # General Metrics
+        st.markdown("#### Optimization Performance")
+        for name, stats in metrics['timers'].items():
+            if 'average' in stats:
+                st.write(f"**{name}**: {stats['average']:.3f}s avg ({stats['count']} ops)")
+
+# ============================================================================
+# SINGLETON GETTERS
+# ============================================================================
+
+def get_logger() -> GlobalLogger:
+    """Get the global logger instance"""
+    return GlobalLogger()
+
+def get_performance_monitor() -> PerformanceMonitor:
+    """Get the global performance monitor instance"""
+    return PerformanceMonitor()
+
+# ============================================================================
+# AI RECOMMENDATION DATACLASS - ENHANCED
+# ============================================================================
 
 @dataclass
 class AIRecommendation:
-    """Structure for AI strategist recommendations"""
-    strategist_name: str
-    confidence: float
+    """Enhanced AI recommendation with enforcement rules"""
     captain_targets: List[str]
-    stacks: List[Dict[str, str]]
-    fades: List[str]
-    boosts: List[str]
-    strategy_weights: Dict[StrategyType, float]
+    must_play: List[str]  # Players that must be included
+    never_play: List[str]  # Players to avoid
+    stacks: List[Dict]
     key_insights: List[str]
-    gpp_specific_rules: Dict[str, Any]  # Field for GPP rules
-
-@dataclass
-class PlayerProjection:
-    """Enhanced player projection with GPP metrics"""
-    player: str
-    projection: float
-    floor: float
-    ceiling: float
-    volatility: float
-    boom_probability: float  # New for GPP
-    bust_probability: float  # New for GPP
-
-# ============================================================================
-# CONFIGURATION VALIDATION AND MANAGEMENT
-# ============================================================================
-
-class ConfigValidator:
-    """Validates and adjusts configuration settings for consistency"""
+    confidence: float
+    enforcement_rules: List[Dict]  # Specific rules to enforce
+    narrative: str  # AI's narrative/reasoning
+    source_ai: AIStrategistType
     
-    @staticmethod
-    def validate_field_config(field_size: str, num_lineups: int) -> Dict[str, Any]:
-        """Ensure configuration makes sense for the field size"""
-        config = {}
-        
-        # Field-size specific validation
-        if field_size == 'milly_maker':
-            config['min_unique_captains'] = min(num_lineups, num_lineups)  # All unique
-            config['max_chalk_players'] = 0
-            config['min_leverage_players'] = 3
-            config['max_ownership_per_player'] = 10
-            config['min_total_ownership'] = 50
-            config['max_total_ownership'] = 80
-            
-        elif field_size == 'large_field':
-            config['min_unique_captains'] = min(num_lineups, max(5, num_lineups // 2))
-            config['max_chalk_players'] = 1
-            config['min_leverage_players'] = 2
-            config['max_ownership_per_player'] = 15
-            config['min_total_ownership'] = 60
-            config['max_total_ownership'] = 90
-            
-        elif field_size == 'medium_field':
-            config['min_unique_captains'] = min(num_lineups, max(3, num_lineups // 3))
-            config['max_chalk_players'] = 2
-            config['min_leverage_players'] = 1
-            config['max_ownership_per_player'] = 20
-            config['min_total_ownership'] = 70
-            config['max_total_ownership'] = 100
-            
-        else:  # small_field
-            config['min_unique_captains'] = min(num_lineups, max(2, num_lineups // 4))
-            config['max_chalk_players'] = 2
-            config['min_leverage_players'] = 1
-            config['max_ownership_per_player'] = 25
-            config['min_total_ownership'] = 80
-            config['max_total_ownership'] = 120
-        
-        # Ensure logical consistency
-        if config['min_leverage_players'] > 5:  # Can't have more than 5 FLEX spots
-            config['min_leverage_players'] = 5
-        
-        return config
+    # Optional fields for specific AI types
+    contrarian_angles: Optional[List[str]] = None
+    correlation_matrix: Optional[Dict] = None
+    ownership_leverage: Optional[Dict] = None
     
-    @staticmethod
-    def validate_optimization_params(params: Dict[str, Any]) -> Tuple[bool, List[str], Dict[str, Any]]:
-        """Validate optimization parameters and return corrected version"""
-        issues = []
-        corrected = params.copy()
-        
-        # Check lineup count
-        if params.get('num_lineups', 0) < 1:
-            issues.append("Number of lineups must be at least 1")
-            corrected['num_lineups'] = 1
-        elif params.get('num_lineups', 0) > 150:
-            issues.append("Number of lineups capped at 150 for performance")
-            corrected['num_lineups'] = 150
-        
-        # Check simulation count
-        if params.get('num_sims', 0) < 100:
-            issues.append("Simulations should be at least 100 for accuracy")
-            corrected['num_sims'] = 100
-        elif params.get('num_sims', 0) > 50000:
-            issues.append("Simulations capped at 50,000 for performance")
-            corrected['num_sims'] = 50000
-        
-        # Check ownership thresholds
-        min_own = params.get('min_captain_ownership', 0)
-        max_own = params.get('max_captain_ownership', 100)
-        
-        if min_own >= max_own:
-            issues.append("Min captain ownership must be less than max")
-            corrected['min_captain_ownership'] = 0
-            corrected['max_captain_ownership'] = 20
-        
-        # Check correlation settings
-        if params.get('correlation_weight', 0) < 0:
-            issues.append("Correlation weight cannot be negative")
-            corrected['correlation_weight'] = 0
-        elif params.get('correlation_weight', 0) > 1:
-            issues.append("Correlation weight cannot exceed 1.0")
-            corrected['correlation_weight'] = 1.0
-        
-        is_valid = len(issues) == 0
-        return is_valid, issues, corrected
+    def get_hard_constraints(self) -> List[str]:
+        """Get constraints that MUST be enforced"""
+        constraints = []
+        for rule in self.enforcement_rules:
+            if rule.get('type') == 'hard':
+                constraints.append(rule['constraint'])
+        return constraints
     
-    @staticmethod
-    def get_strategy_distribution(field_size: str, num_lineups: int) -> Dict[StrategyType, int]:
-        """Calculate optimal strategy distribution for field size"""
-        weights = OptimizerConfig.GPP_STRATEGY_WEIGHTS.get(
-            field_size, 
-            OptimizerConfig.GPP_STRATEGY_WEIGHTS['large_field']
-        )
-        
-        distribution = {}
-        allocated = 0
-        
-        # Map strategy names to StrategyType enum
-        strategy_enum_map = {
-            'leverage': StrategyType.LEVERAGE,
-            'contrarian': StrategyType.CONTRARIAN,
-            'super_contrarian': StrategyType.SUPER_CONTRARIAN,
-            'game_stack': StrategyType.GAME_STACK,
-            'stars_scrubs': StrategyType.STARS_SCRUBS,
-            'correlation': StrategyType.CORRELATION
-        }
-        
-        # Allocate lineups proportionally
-        for strategy_name, weight in weights.items():
-            if strategy_name in strategy_enum_map:
-                strategy = strategy_enum_map[strategy_name]
-                count = int(num_lineups * weight)
-                distribution[strategy] = count
-                allocated += count
-        
-        # Handle rounding - give extra to leverage
-        remaining = num_lineups - allocated
-        if remaining > 0:
-            distribution[StrategyType.LEVERAGE] = distribution.get(StrategyType.LEVERAGE, 0) + remaining
-        
-        return distribution
-    
-    @staticmethod
-    def validate_player_pool(df: pd.DataFrame, field_size: str) -> Dict[str, Any]:
-        """Validate player pool is suitable for optimization"""
-        validation_results = {
-            'is_valid': True,
-            'warnings': [],
-            'errors': [],
-            'suggestions': []
-        }
-        
-        # Check leverage play availability
-        leverage_players = df[df['Ownership'] < 10]
-        super_leverage = df[df['Ownership'] < 5]
-        
-        if field_size == 'milly_maker':
-            if len(super_leverage) < 10:
-                validation_results['errors'].append(
-                    f"Milly Maker requires at least 10 super-leverage (<5%) players, found {len(super_leverage)}"
-                )
-                validation_results['is_valid'] = False
-            
-        elif field_size == 'large_field':
-            if len(leverage_players) < 8:
-                validation_results['warnings'].append(
-                    f"Large field GPPs work best with 8+ leverage plays, found {len(leverage_players)}"
-                )
-        
-        # Check for minimum viable roster
-        positions_needed = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 1}
-        for pos, min_count in positions_needed.items():
-            actual_count = len(df[df['Position'] == pos])
-            if actual_count < min_count:
-                validation_results['errors'].append(
-                    f"Need at least {min_count} {pos}, found {actual_count}"
-                )
-                validation_results['is_valid'] = False
-        
-        # Check salary distribution
-        min_salary_players = df[df['Salary'] <= 3000]
-        if len(min_salary_players) < 3:
-            validation_results['suggestions'].append(
-                "Limited min-salary players may restrict stars & scrubs strategies"
-            )
-        
-        # Check for reasonable projections
-        if df['Projected_Points'].max() < 10:
-            validation_results['errors'].append(
-                "Maximum projection is too low - check your projections"
-            )
-            validation_results['is_valid'] = False
-        
-        return validation_results
-
-class OptimizationSettings:
-    """Centralized settings management with validation"""
-    
-    def __init__(self, field_size: str = 'large_field'):
-        self.field_size = field_size
-        self.settings = self._get_default_settings()
-    
-    def _get_default_settings(self) -> Dict[str, Any]:
-        """Get default settings for field size"""
-        defaults = {
-            'num_lineups': 20,
-            'force_unique_captains': True,
-            'num_sims': 5000,
-            'correlation_weight': 0.5,
-            'min_leverage_players': 2,
-            'max_chalk_players': 2,
-            'include_pivots': True,
-            'export_top_n': 20
-        }
-        
-        # Adjust defaults by field size
-        if self.field_size == 'milly_maker':
-            defaults['min_leverage_players'] = 3
-            defaults['max_chalk_players'] = 0
-            defaults['force_unique_captains'] = True
-            
-        elif self.field_size == 'large_field':
-            defaults['min_leverage_players'] = 2
-            defaults['max_chalk_players'] = 1
-            
-        return defaults
-    
-    def update(self, **kwargs) -> Tuple[bool, List[str]]:
-        """Update settings with validation"""
-        new_settings = self.settings.copy()
-        new_settings.update(kwargs)
-        
-        # Validate the new settings
-        is_valid, issues, corrected = ConfigValidator.validate_optimization_params(new_settings)
-        
-        if is_valid:
-            self.settings = new_settings
-        else:
-            self.settings = corrected
-            
-        return is_valid, issues
-    
-    def get(self, key: str, default=None):
-        """Get a setting value"""
-        return self.settings.get(key, default)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Export all settings as dictionary"""
-        return self.settings.copy()
-
-# ============================================================================
-# CLAUDE API MANAGER
-# ============================================================================
-
-class ClaudeAPIManager:
-    """Manages Claude API interactions with caching and error handling"""
-    
-    def __init__(self, api_key: str):
-        """Initialize with API key"""
-        self.api_key = api_key
-        self.client = None
-        self.cache = {}  # Cache API responses
-        self.request_count = 0
-        self.error_count = 0
-        logger = get_logger()
-        
-        if ANTHROPIC_AVAILABLE and api_key:
-            try:
-                self.client = anthropic.Anthropic(api_key=api_key)
-                st.success("✅ Claude API connected successfully")
-                logger.log("Claude API initialized successfully", "INFO")
-            except Exception as e:
-                st.error(f"Failed to initialize Claude API: {e}")
-                logger.log(f"Claude API initialization failed: {e}", "ERROR")
-                self.client = None
-    
-    def get_ai_response(self, prompt: str, system_prompt: str = None, use_cache: bool = True) -> str:
-        """Get response from Claude API with caching and error handling"""
-        logger = get_logger()
-        
-        if not self.client:
-            logger.log("API client not initialized", "WARNING")
-            return "{}"
-        
-        # Check cache first
-        prompt_hash = hashlib.md5(prompt.encode()).hexdigest()
-        if use_cache and prompt_hash in self.cache:
-            logger.log("Using cached API response", "DEBUG")
-            st.info("Using cached AI response")
-            return self.cache[prompt_hash]
-        
-        try:
-            self.request_count += 1
-            logger.log(f"Making API request #{self.request_count}", "DEBUG")
-            
-            messages = [{"role": "user", "content": prompt}]
-            
-            if system_prompt:
-                system = system_prompt
-            else:
-                system = """You are an expert DFS analyst specializing in GPP tournaments. 
-                           Provide strategic recommendations in valid JSON format only, no markdown or extra text.
-                           Focus on tournament-winning strategies with emphasis on ceiling and leverage."""
-            
-            response = self.client.messages.create(
-                model=OptimizerConfig.CLAUDE_MODEL,
-                max_tokens=OptimizerConfig.MAX_TOKENS,
-                temperature=OptimizerConfig.TEMPERATURE,
-                system=system,
-                messages=messages
-            )
-            
-            response_text = response.content[0].text.strip()
-            
-            # Clean JSON formatting
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-            
-            # Validate JSON
-            try:
-                json.loads(response_text)
-                logger.log("Valid JSON response received", "DEBUG")
-            except json.JSONDecodeError:
-                self.error_count += 1
-                logger.log("Invalid JSON from API", "WARNING")
-                st.warning("Invalid JSON from API, using fallback")
-                return "{}"
-            
-            # Cache the response
-            self.cache[prompt_hash] = response_text
-            return response_text
-            
-        except Exception as e:
-            self.error_count += 1
-            logger.log_exception(e, "API call")
-            st.error(f"API call failed: {e}")
-            return "{}"
-    
-    def get_stats(self) -> Dict[str, int]:
-        """Get API usage statistics"""
-        return {
-            'requests': self.request_count,
-            'errors': self.error_count,
-            'cache_size': len(self.cache)
-        }
-
-# ============================================================================
-# OWNERSHIP BUCKET MANAGER WITH GPP FOCUS
-# ============================================================================
-
-class OwnershipBucketManager:
-    """GPP-focused ownership bucketing and analysis"""
-    
-    @staticmethod
-    def get_bucket(ownership: float) -> str:
-        """Determine which bucket a player belongs to"""
-        for bucket_name, (min_own, max_own) in OptimizerConfig.OWNERSHIP_BUCKETS.items():
-            if min_own <= ownership < max_own:
-                return bucket_name
-        return 'super_leverage'
-    
-    @staticmethod
-    def categorize_players(df: pd.DataFrame) -> Dict[str, List[str]]:
-        """Categorize all players into ownership buckets"""
-        buckets = defaultdict(list)
-        for _, row in df.iterrows():
-            bucket = OwnershipBucketManager.get_bucket(row['Ownership'])
-            buckets[bucket].append(row['Player'])
-        return dict(buckets)
-    
-    @staticmethod
-    def validate_gpp_lineup(lineup_players: List[str], df: pd.DataFrame, 
-                           field_size: str = 'large_field') -> Tuple[bool, str]:
-        """Validate lineup meets GPP bucket constraints"""
-        ownership_dict = df.set_index('Player')['Ownership'].to_dict()
-        bucket_counts = defaultdict(int)
-        total_ownership = 0
-        
-        for player in lineup_players:
-            ownership = ownership_dict.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
-            bucket = OwnershipBucketManager.get_bucket(ownership)
-            bucket_counts[bucket] += 1
-            total_ownership += ownership
-        
-        # Get appropriate rules based on field size
-        if field_size == 'milly_maker':
-            rules = OptimizerConfig.BUCKET_RULES['super_contrarian']
-        elif field_size == 'large_field':
-            rules = OptimizerConfig.BUCKET_RULES['contrarian']
-        else:
-            rules = OptimizerConfig.BUCKET_RULES['gpp_balanced']
-        
-        violations = []
-        
-        # Check bucket constraints
-        for bucket_name, (min_count, max_count) in rules.items():
-            count = bucket_counts.get(bucket_name, 0)
-            if count < min_count:
-                violations.append(f"Need at least {min_count} {bucket_name}")
-            if count > max_count:
-                violations.append(f"Too many {bucket_name} ({count}/{max_count})")
-        
-        # Check total ownership for field size
-        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
-        if total_ownership < min_own:
-            violations.append(f"Total ownership too low ({total_ownership:.1f}% < {min_own}%)")
-        if total_ownership > max_own:
-            violations.append(f"Total ownership too high ({total_ownership:.1f}% > {max_own}%)")
-        
-        if violations:
-            return False, "; ".join(violations)
-        return True, "Valid GPP lineup"
-    
-    @staticmethod
-    def get_gpp_summary(lineup_players: List[str], df: pd.DataFrame, field_size: str) -> str:
-        """Get GPP-specific summary of lineup's ownership profile"""
-        ownership_dict = df.set_index('Player')['Ownership'].to_dict()
-        bucket_counts = defaultdict(int)
-        total_ownership = 0
-        
-        for player in lineup_players:
-            ownership = ownership_dict.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
-            bucket = OwnershipBucketManager.get_bucket(ownership)
-            bucket_counts[bucket] += 1
-            total_ownership += ownership
-        
-        # GPP-specific emoji indicators
-        bucket_emojis = {
-            'mega_chalk': '🔴',  # Bad for GPP
-            'chalk': '🟠',       # Caution
-            'pivot': '🟡',       # OK
-            'leverage': '🟢',    # Good
-            'super_leverage': '💎'  # Excellent
-        }
-        
-        # Determine GPP quality
-        gpp_quality = "💎 Elite" if total_ownership < 70 else "✅ Good" if total_ownership < 100 else "⚠️ Chalky"
-        
-        summary = f"Own: {total_ownership:.1f}% [{gpp_quality}] | "
-        summary += " ".join([f"{bucket_emojis.get(k, '')} {k}:{v}" 
-                           for k, v in bucket_counts.items() if v > 0])
-        return summary
-    
-    @staticmethod
-    def calculate_gpp_leverage(lineup_players: List[str], df: pd.DataFrame) -> float:
-        """Calculate GPP-specific leverage score"""
-        ownership_dict = df.set_index('Player')['Ownership'].to_dict()
-        leverage_score = 0
-        
-        for player in lineup_players:
-            ownership = ownership_dict.get(player, OptimizerConfig.DEFAULT_OWNERSHIP)
-            if ownership < 3:
-                leverage_score += 5  # Huge bonus for super low owned
-            elif ownership < 5:
-                leverage_score += 3
-            elif ownership < 10:
-                leverage_score += 2
-            elif ownership < 15:
-                leverage_score += 1
-            elif ownership > 35:
-                leverage_score -= 2  # Penalty for mega chalk
-            elif ownership > 25:
-                leverage_score -= 1
-        
-        return leverage_score
+    def get_soft_constraints(self) -> List[Tuple[str, float]]:
+        """Get constraints with weights for soft enforcement"""
+        constraints = []
+        for rule in self.enforcement_rules:
+            if rule.get('type') == 'soft':
+                constraints.append((rule['constraint'], rule.get('weight', 1.0)))
+        return constraints
 
 # NFL GPP DUAL-AI OPTIMIZER - PART 2: CORE COMPONENTS (CORRECTED)
 # Captain Pivots, Correlations, and Tournament Simulation
@@ -4061,7 +3693,3 @@ if 'field_size' in st.session_state:
     st.caption(f"GPP Optimizer last run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Field: {current_field} | Cache Status: Active")
 else:
     st.caption(f"GPP Optimizer ready: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | No active session")
-
-
-
-
