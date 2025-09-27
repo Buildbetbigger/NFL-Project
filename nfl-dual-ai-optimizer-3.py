@@ -1584,8 +1584,10 @@ if uploaded_file is not None:
     with tab3:
         st.markdown("### Lineup Analysis & Visualization")
         
-        # Any other code in tab3 should be at this indentation level
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        
+        # Team Distribution
+        ax1 = axes[0, 0]
             
             # 1. Strategy Distribution
             ax1 = axes[0, 0]
