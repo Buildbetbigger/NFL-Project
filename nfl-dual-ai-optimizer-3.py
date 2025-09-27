@@ -1581,7 +1581,7 @@ if uploaded_file is not None:
     else:
         st.info("Enable captain pivots in settings to generate variations")
     
-    with tab3:
+with tab3:
     st.markdown("### Lineup Analysis & Visualization")
     
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
