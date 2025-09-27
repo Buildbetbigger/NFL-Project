@@ -1916,10 +1916,78 @@ class GPPDualAIOptimizer:
                 gt_response = self.safe_api_call(gt_prompt, "Game Theory AI")
             
             with st.spinner("🔗 GPP Correlation AI analyzing..."):
+                corr_prompt = self.correlation_ai.generate_prom# NFL GPP DUAL-AI OPTIMIZER - PART 4: MAIN OPTIMIZER & LINEUP GENERATION (COMPLETE CORRECTED)
+
+# ============================================================================
+# GPP DUAL AI OPTIMIZER
+# ============================================================================
+
+class GPPDualAIOptimizer:
+    """Main GPP optimizer with dual AI strategy integration, configuration validation, and logging"""
+    
+    def __init__(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field', 
+                 api_manager: ClaudeAPIManager = None):
+        self.df = df
+        self.game_info = game_info
+        self.field_size = field_size
+        self.api_manager = api_manager
+        self.game_theory_ai = GPPGameTheoryStrategist(api_manager)
+        self.correlation_ai = GPPCorrelationStrategist(api_manager)
+        self.bucket_manager = OwnershipBucketManager()
+        self.pivot_generator = GPPCaptainPivotGenerator()
+        self.correlation_engine = GPPCorrelationEngine()
+        self.tournament_sim = GPPTournamentSimulator()
+        self.optimization_logger = []  # Track optimization issues
+        self.field_config = None  # Store field configuration
+        self.logger = get_logger()  # Get global logger
+        self.perf_monitor = get_performance_monitor()  # Get performance monitor
+    
+    def safe_api_call(self, prompt: str, strategist_name: str, fallback_response: str = '{}') -> str:
+        """Safely make API calls with fallback and logging"""
+        if not self.api_manager or not self.api_manager.client:
+            self.logger.log(f"{strategist_name}: No API client available", "WARNING")
+            return fallback_response
+        
+        try:
+            self.logger.log(f"{strategist_name}: Making API call", "DEBUG")
+            response = self.api_manager.get_ai_response(prompt)
+            
+            # Validate it's actual JSON
+            json.loads(response)
+            self.logger.log(f"{strategist_name}: Valid response received", "DEBUG")
+            return response
+            
+        except json.JSONDecodeError as e:
+            st.warning(f"{strategist_name}: Invalid JSON response. Using fallback strategy.")
+            self.logger.log(f"{strategist_name}: JSON decode error - {e}", "ERROR")
+            self.optimization_logger.append(f"JSON decode error: {e}")
+            return fallback_response
+        except Exception as e:
+            st.warning(f"{strategist_name}: API call failed. Using fallback strategy.")
+            self.logger.log_exception(e, f"{strategist_name} API call")
+            self.optimization_logger.append(f"API error: {e}")
+            return fallback_response
+    
+    def get_ai_strategies(self, use_api: bool = True) -> Tuple[AIRecommendation, AIRecommendation]:
+        """Get strategies from both GPP AIs with error handling and logging"""
+        self.logger.log("Getting AI strategies", "INFO")
+        
+        if use_api and self.api_manager and self.api_manager.client:
+            # API mode - automatic with safe calls
+            with st.spinner("🎯 GPP Game Theory AI analyzing..."):
+                self.perf_monitor.start_timer("game_theory_ai")
+                gt_prompt = self.game_theory_ai.generate_prompt(self.df, self.game_info, self.field_size)
+                gt_response = self.safe_api_call(gt_prompt, "Game Theory AI")
+                self.perf_monitor.stop_timer("game_theory_ai")
+            
+            with st.spinner("🔗 GPP Correlation AI analyzing..."):
+                self.perf_monitor.start_timer("correlation_ai")
                 corr_prompt = self.correlation_ai.generate_prompt(self.df, self.game_info, self.field_size)
                 corr_response = self.safe_api_call(corr_prompt, "Correlation AI")
+                self.perf_monitor.stop_timer("correlation_ai")
         else:
             # Manual mode
+            self.logger.log("Using manual AI input mode", "INFO")
             st.subheader("📝 Manual AI Strategy Input")
             
             tab1, tab2 = st.tabs(["🎯 Game Theory AI", "🔗 Correlation AI"])
@@ -1945,10 +2013,13 @@ class GPPDualAIOptimizer:
         rec1 = self.game_theory_ai.parse_response(gt_response, self.df, self.field_size)
         rec2 = self.correlation_ai.parse_response(corr_response, self.df, self.field_size)
         
+        self.logger.log(f"AI strategies parsed - GT confidence: {rec1.confidence:.0%}, Corr confidence: {rec2.confidence:.0%}", "INFO")
+        
         return rec1, rec2
     
     def combine_gpp_recommendations(self, rec1: AIRecommendation, rec2: AIRecommendation) -> Dict:
-        """Combine recommendations with GPP-specific weighting"""
+        """Combine recommendations with GPP-specific weighting and logging"""
+        self.logger.log("Combining AI recommendations", "DEBUG")
         
         total_confidence = rec1.confidence + rec2.confidence
         w1 = rec1.confidence / total_confidence if total_confidence > 0 else 0.5
@@ -1993,7 +2064,7 @@ class GPPDualAIOptimizer:
         if hasattr(rec2, 'gpp_specific_rules'):
             gpp_rules.update(rec2.gpp_specific_rules)
         
-        return {
+        combined = {
             'captain_scores': captain_scores,
             'strategy_weights': strategy_weights,
             'consensus_fades': list(set(rec1.fades) & set(rec2.fades)) if rec1.fades and rec2.fades else [],
@@ -2004,6 +2075,10 @@ class GPPDualAIOptimizer:
             'gpp_rules': gpp_rules,
             'field_size': self.field_size
         }
+        
+        self.logger.log(f"Recommendations combined - {len(captain_scores)} captains, {len(combined['combined_stacks'])} stacks", "DEBUG")
+        
+        return combined
     
     def validate_lineup_constraints(self, captain: str, flex_players: List[str], 
                                   salaries: Dict, ownership: Dict) -> Tuple[bool, str]:
@@ -2031,27 +2106,41 @@ class GPPDualAIOptimizer:
     
     def generate_gpp_lineups(self, num_lineups: int, rec1: AIRecommendation, 
                             rec2: AIRecommendation, force_unique_captains: bool = True) -> pd.DataFrame:
-        """Generate GPP-optimized lineups with improved constraint handling and configuration validation"""
+        """Generate GPP-optimized lineups with comprehensive logging and configuration validation"""
+        
+        # Start performance monitoring
+        self.perf_monitor.start_timer("total_optimization")
+        self.logger.log_optimization_start(num_lineups, self.field_size, {
+            'force_unique_captains': force_unique_captains,
+            'field_size': self.field_size
+        })
         
         # Validate configuration
+        self.logger.log("Validating configuration", "DEBUG")
         self.field_config = ConfigValidator.validate_field_config(self.field_size, num_lineups)
+        self.logger.log(f"Configuration validated: {self.field_config}", "DEBUG")
         
         # Validate player pool
+        self.logger.log("Validating player pool", "DEBUG")
         pool_validation = ConfigValidator.validate_player_pool(self.df, self.field_size)
+        
         if not pool_validation['is_valid']:
             for error in pool_validation['errors']:
+                self.logger.log(f"Player pool error: {error}", "ERROR")
                 st.error(f"Player pool issue: {error}")
             return pd.DataFrame()
         
-        # Show warnings if any
         for warning in pool_validation.get('warnings', []):
+            self.logger.log(f"Player pool warning: {warning}", "WARNING")
             st.warning(warning)
         
         # Log configuration being used
-        st.info(f"Optimization config for {self.field_size}: "
-               f"Max chalk={self.field_config['max_chalk_players']}, "
-               f"Min leverage={self.field_config['min_leverage_players']}, "
-               f"Target ownership={self.field_config['min_total_ownership']}-{self.field_config['max_total_ownership']}%")
+        config_msg = (f"Optimization config for {self.field_size}: "
+                     f"Max chalk={self.field_config['max_chalk_players']}, "
+                     f"Min leverage={self.field_config['min_leverage_players']}, "
+                     f"Target ownership={self.field_config['min_total_ownership']}-{self.field_config['max_total_ownership']}%")
+        st.info(config_msg)
+        self.logger.log(config_msg, "INFO")
         
         combined = self.combine_gpp_recommendations(rec1, rec2)
         
@@ -2065,6 +2154,7 @@ class GPPDualAIOptimizer:
         
         # Validate we have enough players
         if len(players) < 6:
+            self.logger.log(f"Not enough players ({len(players)}) to create lineups", "ERROR")
             st.error(f"Not enough players ({len(players)}) to create lineups")
             return pd.DataFrame()
         
@@ -2073,10 +2163,12 @@ class GPPDualAIOptimizer:
         for player in combined['consensus_fades']:
             if player in adjusted_points and ownership.get(player, 5) > 30:
                 adjusted_points[player] *= 0.70  # Heavy fade for GPP chalk
+                self.logger.log(f"Fading {player} (chalk)", "DEBUG")
         
         for player in combined['all_boosts']:
             if player in adjusted_points and ownership.get(player, 5) < 10:
                 adjusted_points[player] *= 1.25  # Strong boost for leverage
+                self.logger.log(f"Boosting {player} (leverage)", "DEBUG")
         
         # Get ownership buckets
         player_buckets = {}
@@ -2087,6 +2179,7 @@ class GPPDualAIOptimizer:
         
         # Get strategy distribution based on configuration
         strategy_distribution = ConfigValidator.get_strategy_distribution(self.field_size, num_lineups)
+        self.logger.log(f"Strategy distribution: {strategy_distribution}", "DEBUG")
         
         all_lineups = []
         used_captains = set()
@@ -2095,15 +2188,20 @@ class GPPDualAIOptimizer:
         max_failures = 50  # Prevent infinite loops
         
         for strategy, count in strategy_distribution.items():
+            self.logger.log(f"Generating {count} lineups for strategy: {strategy.value}", "INFO")
+            self.perf_monitor.start_timer(f"strategy_{strategy.value}")
+            
             strategy_attempts = 0
             strategy_max_attempts = count * 3  # Allow 3x attempts per lineup
             
             for i in range(count):
                 if strategy_attempts > strategy_max_attempts:
+                    self.logger.log(f"Max attempts reached for {strategy.value}", "WARNING")
                     self.optimization_logger.append(f"Max attempts reached for {strategy.value}")
                     break
-                    
+                
                 lineup_num += 1
+                self.perf_monitor.start_timer("single_lineup")
                 
                 model = pulp.LpProblem(f"GPP_Lineup_{lineup_num}_{strategy.value}", pulp.LpMaximize)
                 flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
@@ -2235,6 +2333,8 @@ class GPPDualAIOptimizer:
                 # Solve
                 model.solve(pulp.PULP_CBC_CMD(msg=0))  # Suppress solver output
                 
+                elapsed = self.perf_monitor.stop_timer("single_lineup")
+                
                 if pulp.LpStatus[model.status] == 'Optimal':
                     captain_pick = None
                     flex_picks = []
@@ -2299,35 +2399,59 @@ class GPPDualAIOptimizer:
                                 'AI1_Captain': captain_pick in rec1.captain_targets,
                                 'AI2_Captain': captain_pick in rec2.captain_targets
                             })
+                            
+                            self.logger.log_lineup_generation(strategy.value, lineup_num, "SUCCESS")
+                            self.perf_monitor.increment_counter("successful_lineups")
                         else:
+                            self.logger.log_lineup_generation(strategy.value, lineup_num, "FAILED", {'reason': reason})
+                            self.perf_monitor.increment_counter("failed_validations")
                             self.optimization_logger.append(f"Invalid lineup: {reason}")
                             strategy_attempts += 1
                     else:
+                        self.logger.log_lineup_generation(strategy.value, lineup_num, "INCOMPLETE")
+                        self.perf_monitor.increment_counter("incomplete_lineups")
                         strategy_attempts += 1
                         self.optimization_logger.append(f"Incomplete lineup for {strategy.value}")
                 else:
+                    self.logger.log_lineup_generation(strategy.value, lineup_num, "NO_SOLUTION")
+                    self.perf_monitor.increment_counter("no_solutions")
                     failed_attempts += 1
                     strategy_attempts += 1
                     self.optimization_logger.append(f"No solution for {strategy.value} lineup {i+1}")
                     
                     if failed_attempts > max_failures:
+                        self.logger.log(f"Max failures reached ({max_failures})", "WARNING")
                         st.warning(f"Optimization struggling. Generated {len(all_lineups)}/{num_lineups} lineups")
                         break
+            
+            self.perf_monitor.stop_timer(f"strategy_{strategy.value}")
+        
+        # End logging
+        total_time = self.perf_monitor.stop_timer("total_optimization")
+        self.logger.log_optimization_end(len(all_lineups), total_time)
         
         # Report generation results
         if len(all_lineups) < num_lineups:
             st.warning(f"Only generated {len(all_lineups)}/{num_lineups} valid lineups")
+            self.logger.log(f"Partial generation: {len(all_lineups)}/{num_lineups} lineups", "WARNING")
+            
             if self.optimization_logger:
                 with st.expander("Optimization Issues"):
                     for log in self.optimization_logger[-10:]:
                         st.write(f"- {log}")
         else:
             st.success(f"Successfully generated all {num_lineups} lineups!")
+            self.logger.log(f"Successfully generated all {num_lineups} lineups", "INFO")
         
         # Log API usage stats if available
         if self.api_manager:
             stats = self.api_manager.get_stats()
             st.caption(f"API Stats - Requests: {stats['requests']}, Errors: {stats['errors']}, Cache: {stats['cache_size']}")
+            self.logger.log(f"API Stats: {stats}", "DEBUG")
+        
+        # Display performance metrics
+        if st.checkbox("Show Performance Metrics", key="show_perf_metrics"):
+            self.perf_monitor.display_metrics()
         
         return pd.DataFrame(all_lineups)
 
