@@ -1566,7 +1566,7 @@ if uploaded_file is not None:
         with tab2:
             st.markdown("### Captain Pivot Variations")
             
-            if 'pivots_df' in st.session_state and not st.session_state['pivots_df'].empty:
+            if hasattr(st.session_state, 'pivots_df') and st.session_state.pivots_df is not None:
                 pivots_df = st.session_state['pivots_df']
                 
                 st.info(f"Generated {len(pivots_df)} captain pivot variations")
