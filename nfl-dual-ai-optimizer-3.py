@@ -3741,8 +3741,7 @@ if uploaded_file is not None:
                 gpp_export_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'FLEX', 
                                   'Projected', 'Salary', 'Total_Ownership', 'Leverage_Score',
                                   'Ceiling_95th', 'Ceiling_99th', 'Ceiling_99_9th',
-                                  'Ship_Rate', 'Elite_Rate', 'Boom_Rate',
-'GPP_Score', 'Tournament_EV', 'Has_Stack']
+                                  'Ship_Rate', 'Elite_Rate', 'Boom_Rate','GPP_Score', 'Tournament_EV', 'Has_Stack']
                 
                 gpp_export_cols = [col for col in gpp_export_cols if col in export_analysis.columns]
                 
