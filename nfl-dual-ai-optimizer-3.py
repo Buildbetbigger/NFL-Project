@@ -2455,17 +2455,125 @@ class GPPDualAIOptimizer:
         
         return pd.DataFrame(all_lineups)
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS (CORRECTED)
+# NFL GPP DUAL-AI OPTIMIZER - PART 5: MAIN UI AND HELPER FUNCTIONS (COMPLETE CORRECTED)
+# With Performance Optimizations and Caching
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import Dict, List, Tuple, Optional, Set, Any
+from collections import defaultdict, Counter
+from datetime import datetime
+import hashlib
+import pickle
+
+# ============================================================================
+# PERFORMANCE OPTIMIZATION - CACHING FUNCTIONS
+# ============================================================================
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def calculate_correlations_cached(df_json: str, game_info_json: str, field_size: str) -> Dict:
+    """Cache correlation calculations"""
+    df = pd.read_json(df_json)
+    game_info = json.loads(game_info_json)
+    
+    correlation_engine = GPPCorrelationEngine()
+    correlations = correlation_engine.calculate_gpp_correlations(df, game_info)
+    stacks = correlation_engine.identify_gpp_stacks(df, correlations, field_size)
+    
+    return {
+        'correlations': correlations,
+        'stacks': stacks
+    }
+
+@st.cache_data(ttl=1800)  # Cache for 30 minutes
+def run_simulations_cached(lineup_json: str, df_json: str, correlations_json: str, 
+                          n_sims: int, field_size: str) -> Dict:
+    """Cache simulation results"""
+    lineup = json.loads(lineup_json)
+    df = pd.read_json(df_json)
+    correlations = json.loads(correlations_json)
+    
+    # Convert correlation keys back to tuples
+    correlations_fixed = {}
+    for key, value in correlations.items():
+        if isinstance(key, str) and ',' in key:
+            players = key.strip('()').split(', ')
+            correlations_fixed[tuple(players)] = value
+        else:
+            correlations_fixed[key] = value
+    
+    simulator = GPPTournamentSimulator()
+    return simulator.simulate_gpp_tournament(lineup, df, correlations_fixed, n_sims, field_size)
+
+@st.cache_data(ttl=3600)
+def validate_player_pool_cached(df_json: str, field_size: str) -> Dict:
+    """Cache player pool validation results"""
+    df = pd.read_json(df_json)
+    return ConfigValidator.validate_player_pool(df, field_size)
+
+@st.cache_data(ttl=7200)  # Cache for 2 hours
+def analyze_ownership_distribution(df_json: str) -> Dict:
+    """Cache ownership distribution analysis"""
+    df = pd.read_json(df_json)
+    bucket_manager = OwnershipBucketManager()
+    buckets = bucket_manager.categorize_players(df)
+    
+    return {
+        'buckets': buckets,
+        'distribution': {k: len(v) for k, v in buckets.items()},
+        'total_players': len(df)
+    }
+
+# ============================================================================
+# SESSION STATE MANAGEMENT
+# ============================================================================
+
+def init_session_state():
+    """Initialize session state variables for persistence"""
+    if 'optimization_history' not in st.session_state:
+        st.session_state['optimization_history'] = []
+    if 'saved_lineups' not in st.session_state:
+        st.session_state['saved_lineups'] = []
+    if 'api_cache' not in st.session_state:
+        st.session_state['api_cache'] = {}
+    if 'performance_metrics' not in st.session_state:
+        st.session_state['performance_metrics'] = {}
+
+def save_optimization_session(lineups_df: pd.DataFrame, settings: Dict):
+    """Save optimization session to history"""
+    session = {
+        'timestamp': datetime.now(),
+        'lineups': lineups_df.to_dict('records'),
+        'settings': settings,
+        'field_size': st.session_state.get('field_size', 'large_field')
+    }
+    st.session_state['optimization_history'].append(session)
+    
+    # Limit history to last 10 sessions
+    if len(st.session_state['optimization_history']) > 10:
+        st.session_state['optimization_history'].pop(0)
 
 # ============================================================================
 # DATA VALIDATION AND INTEGRITY CHECKS
 # ============================================================================
 
 def validate_lineup_data(df: pd.DataFrame) -> Tuple[bool, List[str], Dict[str, Any]]:
-    """
-    Comprehensive data validation for lineup generation
-    Returns: (is_valid, issues_list, data_stats)
-    """
+    """Comprehensive data validation for lineup generation with performance optimization"""
+    
+    # Try to use cached validation if available
+    df_json = df.to_json()
+    df_hash = hashlib.md5(df_json.encode()).hexdigest()
+    
+    # Check if we've validated this data recently
+    cache_key = f"validation_{df_hash}"
+    if cache_key in st.session_state.get('api_cache', {}):
+        cached_result = st.session_state['api_cache'][cache_key]
+        if (datetime.now() - cached_result['timestamp']).seconds < 300:  # 5 minute cache
+            return cached_result['result']
+    
     issues = []
     warnings = []
     data_stats = {}
@@ -2537,15 +2645,13 @@ def validate_lineup_data(df: pd.DataFrame) -> Tuple[bool, List[str], Dict[str, A
         elif position_counts[pos] < 2:
             warnings.append(f"Warning: Only {position_counts[pos]} {pos} player(s)")
     
-    # Ownership validation (if present)
+    # Ownership validation
     if 'Ownership' in df.columns:
         ownership_sum = df['Ownership'].sum()
-        if ownership_sum > 0:  # Only check if ownership is provided
-            # Check if ownership sums to reasonable amount (should be ~600% for 6 players)
+        if ownership_sum > 0:
             if ownership_sum < 400 or ownership_sum > 800:
                 warnings.append(f"Warning: Total ownership sums to {ownership_sum:.1f}% (expected ~600%)")
             
-            # Check for unrealistic ownership values
             unrealistic_high = df[df['Ownership'] > 60]
             if len(unrealistic_high) > 0:
                 warnings.append(f"Warning: {len(unrealistic_high)} players with >60% ownership")
@@ -2568,42 +2674,53 @@ def validate_lineup_data(df: pd.DataFrame) -> Tuple[bool, List[str], Dict[str, A
     is_valid = len(issues) == 0
     all_messages = issues + warnings
     
-    return is_valid, all_messages, data_stats
+    # Cache the result
+    result = (is_valid, all_messages, data_stats)
+    if 'api_cache' not in st.session_state:
+        st.session_state['api_cache'] = {}
+    st.session_state['api_cache'][cache_key] = {
+        'result': result,
+        'timestamp': datetime.now()
+    }
+    
+    return result
 
 def auto_fix_common_issues(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Automatically fix common data issues where possible
-    """
+    """Automatically fix common data issues with performance optimization"""
+    logger = get_logger()
     df_fixed = df.copy()
     fixes_applied = []
     
-    # Remove duplicates (keep highest projection)
+    # Remove duplicates
     if df_fixed.duplicated(subset=['Player']).any():
         df_fixed = df_fixed.sort_values('Projected_Points', ascending=False).drop_duplicates(subset=['Player'])
         fixes_applied.append("Removed duplicate players (kept highest projection)")
+        logger.log("Fixed duplicate players", "INFO")
     
-    # Fill missing ownership with default
+    # Fill missing ownership
     if 'Ownership' in df_fixed.columns:
         missing_own = df_fixed['Ownership'].isna().sum()
         if missing_own > 0:
             df_fixed['Ownership'].fillna(OptimizerConfig.DEFAULT_OWNERSHIP, inplace=True)
             fixes_applied.append(f"Filled {missing_own} missing ownership values with {OptimizerConfig.DEFAULT_OWNERSHIP}%")
+            logger.log(f"Fixed {missing_own} missing ownership values", "INFO")
     
-    # Remove players with invalid salaries
+    # Remove invalid salaries
     before_count = len(df_fixed)
     df_fixed = df_fixed[df_fixed['Salary'] >= OptimizerConfig.MIN_SALARY]
     removed = before_count - len(df_fixed)
     if removed > 0:
         fixes_applied.append(f"Removed {removed} players with invalid salaries")
+        logger.log(f"Removed {removed} invalid salary players", "INFO")
     
-    # Remove players with missing critical data
+    # Remove missing critical data
     before_count = len(df_fixed)
     df_fixed = df_fixed.dropna(subset=['Player', 'Position', 'Team', 'Salary', 'Projected_Points'])
     removed = before_count - len(df_fixed)
     if removed > 0:
         fixes_applied.append(f"Removed {removed} players with missing critical data")
+        logger.log(f"Removed {removed} players with missing data", "INFO")
     
-    # Display fixes applied
     if fixes_applied:
         st.info("Data fixes applied automatically:")
         for fix in fixes_applied:
@@ -2612,15 +2729,16 @@ def auto_fix_common_issues(df: pd.DataFrame) -> pd.DataFrame:
     return df_fixed
 
 def display_data_validation_results(is_valid: bool, messages: List[str], stats: Dict[str, Any]):
-    """
-    Display validation results in a user-friendly format
-    """
+    """Display validation results with performance metrics"""
+    logger = get_logger()
+    
     if is_valid:
         st.success("✅ Data validation passed - ready to optimize!")
+        logger.log("Data validation passed", "INFO")
     else:
         st.error("❌ Data validation failed - issues must be resolved")
+        logger.log("Data validation failed", "ERROR")
     
-    # Show issues and warnings
     if messages:
         critical_issues = [msg for msg in messages if msg.startswith("Critical:")]
         warnings = [msg for msg in messages if msg.startswith("Warning:")]
@@ -2635,7 +2753,6 @@ def display_data_validation_results(is_valid: bool, messages: List[str], stats: 
                 for warning in warnings:
                     st.warning(warning.replace("Warning: ", ""))
     
-    # Display data statistics
     with st.expander("📊 Data Statistics", expanded=False):
         col1, col2, col3 = st.columns(3)
         
@@ -2664,7 +2781,13 @@ def display_data_validation_results(is_valid: bool, messages: List[str], stats: 
 # ============================================================================
 
 def load_and_validate_data(uploaded_file) -> pd.DataFrame:
-    """Load and validate CSV with comprehensive GPP-specific checks"""
+    """Load and validate CSV with comprehensive checks and caching"""
+    logger = get_logger()
+    perf = get_performance_monitor()
+    
+    perf.start_timer("data_loading")
+    logger.log("Starting data load and validation", "INFO")
+    
     df = pd.read_csv(uploaded_file)
     
     # Check required columns
@@ -2674,6 +2797,7 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
     if missing_cols:
         st.error(f"Missing required columns: {missing_cols}")
         st.info("Required columns: first_name, last_name, position, team, salary, ppg_projection")
+        logger.log(f"Missing columns: {missing_cols}", "ERROR")
         st.stop()
     
     # Create player names
@@ -2720,16 +2844,27 @@ def load_and_validate_data(uploaded_file) -> pd.DataFrame:
     # Stop if still invalid after auto-fix
     if not is_valid:
         st.error("Cannot proceed with optimization. Please fix the critical issues above.")
+        logger.log("Data validation failed after auto-fix attempts", "ERROR")
         st.stop()
+    
+    elapsed = perf.stop_timer("data_loading")
+    logger.log(f"Data loaded and validated in {elapsed:.2f}s", "INFO")
+    perf.increment_counter("successful_data_loads")
     
     return df
 
 def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, field_size: str):
-    """Display GPP-specific lineup analysis and visualizations"""
+    """Display GPP-specific lineup analysis with performance optimization"""
     
     if lineups_df.empty:
         st.warning("No lineups to analyze")
         return
+    
+    logger = get_logger()
+    perf = get_performance_monitor()
+    
+    perf.start_timer("lineup_analysis")
+    logger.log("Generating lineup analysis visualizations", "DEBUG")
     
     # Create GPP analysis visualizations
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -2763,9 +2898,6 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
         ax2.set_title(f'GPP Ownership vs Ceiling ({field_size})')
         ax2.legend()
         plt.colorbar(scatter, ax=ax2, label='GPP Score')
-    else:
-        ax2.text(0.5, 0.5, 'Insufficient Data', ha='center', va='center')
-        ax2.set_title('Ownership vs Ceiling')
     
     # 3. Captain Ownership Distribution
     ax3 = axes[0, 2]
@@ -2777,9 +2909,6 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
         ax3.set_ylabel('Number of Lineups')
         ax3.set_title('GPP Captain Ownership Distribution')
         ax3.legend()
-    else:
-        ax3.text(0.5, 0.5, 'No Captain Ownership Data', ha='center', va='center')
-        ax3.set_title('Captain Ownership')
     
     # 4. Leverage Score Distribution
     ax4 = axes[1, 0]
@@ -2791,9 +2920,6 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
         ax4.set_ylabel('Number of Lineups')
         ax4.set_title('Leverage Distribution')
         ax4.legend()
-    else:
-        ax4.text(0.5, 0.5, 'No Leverage Data', ha='center', va='center')
-        ax4.set_title('Leverage Distribution')
     
     # 5. Ship Equity vs Tournament EV
     ax5 = axes[1, 1]
@@ -2809,9 +2935,6 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
         ax5.set_xlabel('Total Ownership %')
         ax5.set_ylabel('GPP Score')
         ax5.set_title('GPP Score Distribution')
-    else:
-        ax5.text(0.5, 0.5, 'No Equity Data', ha='center', va='center')
-        ax5.set_title('Tournament Equity')
     
     # 6. Top Captains for GPP
     ax6 = axes[1, 2]
@@ -2819,7 +2942,6 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
         captain_counts = lineups_df['Captain'].value_counts().head(10)
         
         if 'Captain_Own%' in lineups_df.columns:
-            # Get ownership for each captain
             captain_ownership = lineups_df.groupby('Captain')['Captain_Own%'].first()
             colors = ['#FF6B6B' if captain_ownership.get(cap, 15) > 20 else 
                      '#4ECDC4' if captain_ownership.get(cap, 15) > 10 else '#45B7D1' 
@@ -2833,17 +2955,21 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
         ax6.set_yticklabels(captain_counts.index, fontsize=8)
         ax6.set_xlabel('Times Used as Captain')
         ax6.set_title('Top 10 GPP Captains')
-    else:
-        ax6.text(0.5, 0.5, 'No Captain Data', ha='center', va='center')
-        ax6.set_title('Top Captains')
     
     plt.tight_layout()
     st.pyplot(fig)
     
-    # Ownership Tier Distribution
+    elapsed = perf.stop_timer("lineup_analysis")
+    logger.log(f"Analysis visualizations generated in {elapsed:.2f}s", "DEBUG")
+    
+    # Ownership Tier Distribution with caching
     st.markdown("### 🎯 GPP Ownership Tier Analysis")
     
     if 'Captain' in lineups_df.columns and 'FLEX' in lineups_df.columns:
+        # Use cached ownership distribution if available
+        df_json = df.to_json()
+        ownership_dist = analyze_ownership_distribution(df_json)
+        
         tier_data = []
         for idx, row in lineups_df.head(20).iterrows():
             bucket_counts = {'mega_chalk': 0, 'chalk': 0, 'pivot': 0, 'leverage': 0, 'super_leverage': 0}
@@ -2860,7 +2986,6 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
         if tier_data:
             fig, ax = plt.subplots(figsize=(10, 8))
             
-            # Use GPP-optimized colormap (green for leverage, red for chalk)
             cmap = plt.cm.RdYlGn_r
             im = ax.imshow(tier_data, cmap=cmap, aspect='auto', vmin=0, vmax=6)
             
@@ -2873,7 +2998,7 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
             ax.set_xlabel('Ownership Tier')
             ax.set_ylabel('Lineup Rank')
             
-            # Add text annotations with color coding
+            # Add text annotations
             for i in range(len(tier_data)):
                 for j in range(5):
                     value = tier_data[i][j]
@@ -2887,21 +3012,53 @@ def display_gpp_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame, fiel
             
             plt.colorbar(im, ax=ax, label='Player Count')
             st.pyplot(fig)
-    else:
-        st.info("Ownership tier analysis requires lineup data with Captain and FLEX columns")
 
 # ============================================================================
 # MAIN STREAMLIT UI
 # ============================================================================
 
+# Initialize session state
+init_session_state()
+
 with st.sidebar:
     st.header("🏆 GPP Tournament Settings")
+    
+    # Debug panel
+    with st.expander("🐛 Debug & Logging"):
+        verbose_logging = st.checkbox("Verbose Logging", value=False)
+        log_to_file = st.checkbox("Log to File", value=False)
+        
+        # Update logger settings
+        logger = get_logger()
+        logger.verbose = verbose_logging
+        logger.log_to_file = log_to_file
+        
+        if st.button("Show Log Summary"):
+            logger.display_log_summary()
+        
+        if st.button("Show Performance Metrics"):
+            perf = get_performance_monitor()
+            perf.display_metrics()
+        
+        if st.button("Export Logs"):
+            log_text = logger.export_logs()
+            st.download_button(
+                "Download Logs",
+                data=log_text,
+                file_name=f"optimizer_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain"
+            )
+        
+        if st.button("Clear Cache"):
+            st.cache_data.clear()
+            st.session_state['api_cache'] = {}
+            st.success("Cache cleared!")
     
     st.markdown("### 🎯 Contest Type")
     contest_type = st.selectbox(
         "Select GPP Type",
         list(OptimizerConfig.FIELD_SIZES.keys()),
-        index=2,  # Default to 150-Max
+        index=2,
         help="Different GPP types require different strategies"
     )
     field_size = OptimizerConfig.FIELD_SIZES[contest_type]
@@ -3015,7 +3172,7 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    # Load and validate data with comprehensive checks
+    # Load and validate data with caching
     df = load_and_validate_data(uploaded_file)
     
     # Game Configuration
@@ -3056,7 +3213,7 @@ if uploaded_file is not None:
             help="Accurate ownership projections are essential for GPP success"
         )
         
-        # Parse ownership with GPP validation
+        # Parse ownership
         ownership_dict = {}
         for line in ownership_text.split('\n'):
             if ':' in line:
@@ -3070,7 +3227,7 @@ if uploaded_file is not None:
                     except:
                         pass
         
-        # Apply ownership with GPP default
+        # Apply ownership
         df['Ownership'] = df['Player'].map(ownership_dict).fillna(OptimizerConfig.DEFAULT_OWNERSHIP)
         
         # Show ownership distribution
@@ -3117,8 +3274,9 @@ if uploaded_file is not None:
     # Display GPP player pool
     st.markdown("### 💎 GPP Player Pool Analysis")
     
-    # Bucket distribution visualization
-    bucket_counts = df['Bucket'].value_counts()
+    # Use cached ownership distribution
+    df_json = df.to_json()
+    ownership_dist = analyze_ownership_distribution(df_json)
     
     col1, col2 = st.columns([1, 3])
     
@@ -3133,30 +3291,29 @@ if uploaded_file is not None:
         }
         
         for bucket in ['mega_chalk', 'chalk', 'pivot', 'leverage', 'super_leverage']:
-            count = bucket_counts.get(bucket, 0)
+            count = ownership_dist['distribution'].get(bucket, 0)
             emoji = tier_emojis.get(bucket, '')
-            percentage = (count / len(df) * 100) if len(df) > 0 else 0
+            percentage = (count / ownership_dist['total_players'] * 100) if ownership_dist['total_players'] > 0 else 0
             st.write(f"{emoji} {bucket}: {count} ({percentage:.0f}%)")
         
         # GPP recommendations
-        if bucket_counts.get('super_leverage', 0) < 5:
+        if ownership_dist['distribution'].get('super_leverage', 0) < 5:
             st.warning("⚠️ Limited super leverage plays available")
-        if bucket_counts.get('mega_chalk', 0) > 10:
+        if ownership_dist['distribution'].get('mega_chalk', 0) > 10:
             st.info("📊 Heavy chalk slate - focus on leverage")
     
     with col2:
-        # Show player pool with GPP metrics
+        # Show player pool
         display_cols = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points', 
                        'Ownership', 'Bucket', 'GPP_Value', 'Leverage_Score']
         
-        # Color code by ownership tier
         def highlight_gpp_rows(row):
             if row['Bucket'] == 'super_leverage':
-                return ['background-color: #90EE90'] * len(row)  # Light green
+                return ['background-color: #90EE90'] * len(row)
             elif row['Bucket'] == 'leverage':
-                return ['background-color: #98FB98'] * len(row)  # Pale green
+                return ['background-color: #98FB98'] * len(row)
             elif row['Bucket'] == 'mega_chalk':
-                return ['background-color: #FFB6C1'] * len(row)  # Light red
+                return ['background-color: #FFB6C1'] * len(row)
             return [''] * len(row)
         
         styled_df = df[display_cols].sort_values('GPP_Value', ascending=False).head(20).style.apply(
@@ -3191,8 +3348,19 @@ if uploaded_file is not None:
     
     with col3:
         if st.button("🎯 Generate GPP Lineups", type="primary", use_container_width=True):
+            logger = get_logger()
+            perf = get_performance_monitor()
             
-            # Initialize GPP optimizer
+            # Save current settings
+            current_settings = {
+                'num_lineups': num_lineups,
+                'field_size': field_size,
+                'force_unique_captains': force_unique_captains,
+                'num_sims': num_sims,
+                'correlation_emphasis': correlation_emphasis
+            }
+            
+            # Initialize optimizer
             optimizer = GPPDualAIOptimizer(df, game_info, field_size, api_manager)
             
             # Get AI strategies
@@ -3255,17 +3423,28 @@ if uploaded_file is not None:
             else:
                 st.success(f"✅ Generated {len(lineups_df)} GPP lineups!")
                 
-                # Calculate correlations
-                correlations = optimizer.correlation_engine.calculate_gpp_correlations(df, game_info)
+                # Calculate correlations with caching
+                df_json = df.to_json()
+                game_info_json = json.dumps(game_info)
+                correlation_data = calculate_correlations_cached(df_json, game_info_json, field_size)
+                correlations = correlation_data['correlations']
                 
-                # Run GPP simulations
+                # Run GPP simulations with caching
                 with st.spinner("Running GPP tournament simulations..."):
+                    perf.start_timer("simulations")
+                    
                     for idx, row in lineups_df.iterrows():
-                        sim_results = optimizer.tournament_sim.simulate_gpp_tournament(
-                            row.to_dict(), df, correlations, n_sims=num_sims, field_size=field_size
+                        lineup_json = json.dumps(row.to_dict())
+                        correlations_json = json.dumps({str(k): v for k, v in correlations.items()})
+                        
+                        sim_results = run_simulations_cached(
+                            lineup_json, df_json, correlations_json, num_sims, field_size
                         )
+                        
                         for key, value in sim_results.items():
                             lineups_df.loc[idx, key] = value
+                    
+                    perf.stop_timer("simulations")
                 
                 # Calculate GPP scores
                 lineups_df = calculate_gpp_scores(lineups_df, field_size)
@@ -3278,6 +3457,9 @@ if uploaded_file is not None:
                 st.session_state['df'] = df
                 st.session_state['correlations'] = correlations
                 st.session_state['field_size'] = field_size
+                
+                # Save optimization session
+                save_optimization_session(lineups_df, current_settings)
                 
                 # Generate captain pivots if enabled
                 if include_pivots:
@@ -3343,27 +3525,18 @@ if uploaded_file is not None:
                 min_leverage = st.number_input("Min Leverage", 0, 20, 5)
                 filtered_df = lineups_df[lineups_df['Leverage_Score'] >= min_leverage]
                 if len(filtered_df) == 0:
-                    filtered_df = lineups_df  # Fall back to all lineups if filter is too strict
+                    filtered_df = lineups_df
             
             if display_format == "GPP Summary":
                 display_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'Projected', 
                               'Ceiling_99th', 'Total_Ownership', 'Leverage_Score', 
                               'GPP_Score', 'Ship_Equity']
                 
-                # Remove columns that might not exist
                 display_cols = [col for col in display_cols if col in filtered_df.columns]
                 
                 st.dataframe(
                     filtered_df[display_cols].head(show_top_n),
-                    use_container_width=True,
-                    column_config={
-                        "Captain_Own%": st.column_config.NumberColumn(format="%.1f%%"),
-                        "Projected": st.column_config.NumberColumn(format="%.1f"),
-                        "Ceiling_99th": st.column_config.NumberColumn(format="%.1f"),
-                        "Total_Ownership": st.column_config.NumberColumn(format="%.1f%%"),
-                        "GPP_Score": st.column_config.NumberColumn(format="%.1f"),
-                        "Ship_Equity": st.column_config.NumberColumn(format="%.2f")
-                    }
+                    use_container_width=True
                 )
             
             elif display_format == "Detailed":
@@ -3425,7 +3598,6 @@ if uploaded_file is not None:
                 
                 st.info(f"Generated {len(pivots_df)} GPP captain pivot variations")
                 
-                # Display pivots
                 for i, pivot in enumerate(pivots_df[:10], 1):
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
@@ -3474,7 +3646,6 @@ if uploaded_file is not None:
                                 leverage_stacks.append(stack)
                 
                 if leverage_stacks:
-                    from collections import Counter
                     stack_counts = Counter(leverage_stacks)
                     for stack, count in stack_counts.most_common(10):
                         pct = count / len(lineups_df) * 100
@@ -3504,7 +3675,6 @@ if uploaded_file is not None:
         with tab5:
             st.markdown("### 📊 GPP Simulation Results")
             
-            # Simulation metrics comparison
             sim_cols = ['Lineup', 'Captain', 'Total_Ownership', 'Mean', 
                        'Ceiling_95th', 'Ceiling_99th', 'Ceiling_99_9th',
                        'Ship_Rate', 'Elite_Rate', 'Boom_Rate']
@@ -3514,16 +3684,9 @@ if uploaded_file is not None:
             if sim_cols:
                 st.dataframe(
                     lineups_df[sim_cols].head(20),
-                    use_container_width=True,
-                    column_config={
-                        "Total_Ownership": st.column_config.NumberColumn(format="%.1f%%"),
-                        "Ship_Rate": st.column_config.NumberColumn(format="%.3f%%"),
-                        "Elite_Rate": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Boom_Rate": st.column_config.NumberColumn(format="%.1f%%")
-                    }
+                    use_container_width=True
                 )
             
-            # Distribution chart
             if 'Ship_Rate' in lineups_df.columns:
                 fig, ax = plt.subplots(figsize=(10, 6))
                 ax.hist(lineups_df['Ship_Rate'], bins=20, alpha=0.7, color='purple', edgecolor='black')
@@ -3540,7 +3703,6 @@ if uploaded_file is not None:
             with col1:
                 st.markdown("#### DraftKings Upload Format")
                 
-                # Create DraftKings export
                 dk_lineups = []
                 export_df = lineups_df.head(export_top_n)
                 
@@ -3557,11 +3719,9 @@ if uploaded_file is not None:
                 
                 dk_df = pd.DataFrame(dk_lineups)
                 
-                # Preview
                 st.write(f"Preview (first 5 of {len(dk_df)}):")
                 st.dataframe(dk_df.head(), use_container_width=True)
                 
-                # Download button
                 csv = dk_df.to_csv(index=False)
                 st.download_button(
                     label=f"📥 Download DK CSV ({len(dk_df)} lineups)",
@@ -3573,29 +3733,24 @@ if uploaded_file is not None:
             with col2:
                 st.markdown("#### GPP Analysis Export")
                 
-                # Prepare GPP export
                 export_analysis = export_df.copy()
                 export_analysis['FLEX'] = export_analysis['FLEX'].apply(
                     lambda x: ', '.join(x) if isinstance(x, list) else str(x)
                 )
                 
-                # Select GPP-specific columns
                 gpp_export_cols = ['Lineup', 'Strategy', 'Captain', 'Captain_Own%', 'FLEX', 
                                   'Projected', 'Salary', 'Total_Ownership', 'Leverage_Score',
                                   'Ceiling_95th', 'Ceiling_99th', 'Ceiling_99_9th',
                                   'Ship_Rate', 'Elite_Rate', 'Boom_Rate',
-                                  'GPP_Score', 'Tournament_EV', 'Has_Stack']
+'GPP_Score', 'Tournament_EV', 'Has_Stack']
                 
-                # Filter to existing columns
                 gpp_export_cols = [col for col in gpp_export_cols if col in export_analysis.columns]
                 
                 final_export = export_analysis[gpp_export_cols]
                 
-                # Preview
                 st.write(f"Preview (first 5 of {len(final_export)}):")
                 st.dataframe(final_export.head(), use_container_width=True)
                 
-                # Download button
                 csv_full = final_export.to_csv(index=False)
                 st.download_button(
                     label=f"📊 Download GPP Analysis ({len(final_export)} lineups)",
@@ -3618,11 +3773,42 @@ if uploaded_file is not None:
                     file_name=f"captain_pivots_{field_size}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
                 )
+            
+            # Session history export
+            st.markdown("#### 📜 Session History")
+            if st.session_state.get('optimization_history'):
+                st.info(f"You have {len(st.session_state['optimization_history'])} saved sessions")
+                
+                if st.button("Export Session History"):
+                    history_data = []
+                    for session in st.session_state['optimization_history']:
+                        history_data.append({
+                            'Timestamp': session['timestamp'],
+                            'Field Size': session['field_size'],
+                            'Lineups Generated': len(session['lineups']),
+                            'Settings': str(session['settings'])
+                        })
+                    
+                    history_df = pd.DataFrame(history_data)
+                    csv_history = history_df.to_csv(index=False)
+                    
+                    st.download_button(
+                        label="📜 Download Session History",
+                        data=csv_history,
+                        file_name=f"session_history_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv"
+                    )
 
 # Footer with GPP-specific tips
 st.markdown("---")
 st.markdown("""
-### 🏆 NFL GPP Tournament Optimizer - Professional Edition
+### 🏆 NFL GPP Tournament Optimizer - Professional Edition v5.1
+
+**New Performance Features:**
+- ⚡ **Cached Calculations**: Correlations and simulations are cached for faster re-runs
+- 💾 **Session History**: Automatically saves your optimization sessions
+- 📊 **Performance Monitoring**: Track operation timings and bottlenecks
+- 🔄 **Smart Caching**: Reuses validation and analysis results when possible
 
 **GPP-Specific Features:**
 - 💎 **Super Leverage Detection**: Identifies <5% owned tournament winners
@@ -3645,14 +3831,39 @@ st.markdown("""
 - 🟠 Chalk (20-35%): Use sparingly
 - 🔴 Mega Chalk (35%+): Avoid in large field GPPs
 
-**Version:** 5.0 GPP Edition | **Focus:** Tournament Winning Upside
+**Performance Tips:**
+- Enable caching for repeated optimizations with same data
+- Use session history to track successful configurations
+- Check debug panel for performance metrics and bottlenecks
+- Clear cache if experiencing issues with stale data
 
-*Maximize your tournament equity!* 🚀
+**Version:** 5.1 GPP Edition | **Focus:** Tournament Winning Upside with Performance Optimization
+
+*Maximize your tournament equity with blazing fast optimization!* 🚀
 """)
 
-# Display current field size if available
+# Display performance summary if available
+if 'lineups_df' in st.session_state:
+    perf = get_performance_monitor()
+    metrics = perf.get_metrics()
+    
+    if metrics['timers']:
+        with st.expander("⚡ Performance Summary"):
+            total_time = sum(timer['total'] for timer in metrics['timers'].values())
+            st.write(f"**Total Time:** {total_time:.2f}s")
+            
+            for name, stats in metrics['timers'].items():
+                st.write(f"- {name}: {stats['average']:.3f}s avg ({stats['count']} operations)")
+            
+            if metrics['counters']:
+                st.write("**Operation Counts:**")
+                for name, count in metrics['counters'].items():
+                    st.write(f"- {name}: {count}")
+
+# Display current timestamp and field size
 if 'field_size' in st.session_state:
     current_field = st.session_state['field_size']
-    st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Field: {current_field}")
+    st.caption(f"GPP Optimizer last run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Field: {current_field} | Cache Status: Active")
 else:
-    st.caption(f"GPP Optimizer last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Field: Not Selected")
+    st.caption(f"GPP Optimizer ready: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | No active session")
+
