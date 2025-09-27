@@ -1298,384 +1298,849 @@ class AISynthesisEngine:
             'strong_stacks': len([s for s in latest['stacking_rules'] if s['strength'] == 'strong'])
         }
 
-# NFL GPP DUAL-AI OPTIMIZER - PART 3: AI STRATEGISTS
-# Game Theory and Correlation AI with GPP Focus
+# NFL GPP DUAL-AI OPTIMIZER - PART 3: AI STRATEGISTS (AI-AS-CHEF VERSION)
+# Version 6.0 - Triple AI System with Contrarian Narrative Strategist
+
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Tuple, Optional, Set, Any
+import json
+import streamlit as st
+
+# ============================================================================
+# BASE AI STRATEGIST CLASS
+# ============================================================================
+
+class BaseAIStrategist:
+    """Base class for all AI strategists with enforcement capabilities"""
+    
+    def __init__(self, api_manager=None, strategist_type: AIStrategistType = None):
+        self.api_manager = api_manager
+        self.strategist_type = strategist_type
+        self.logger = get_logger()
+        self.perf_monitor = get_performance_monitor()
+    
+    def get_recommendation(self, df: pd.DataFrame, game_info: Dict, 
+                          field_size: str, use_api: bool = True) -> AIRecommendation:
+        """Get AI recommendation with enforcement rules"""
+        
+        # Generate prompt
+        prompt = self.generate_prompt(df, game_info, field_size)
+        
+        # Get response
+        if use_api and self.api_manager and self.api_manager.client:
+            response = self._get_api_response(prompt)
+        else:
+            response = '{}'  # Empty response triggers enforcement-based fallback
+        
+        # Parse response into enforcement rules
+        recommendation = self.parse_response(response, df, field_size)
+        
+        # Add enforcement rules
+        recommendation.enforcement_rules = self.create_enforcement_rules(recommendation, df, field_size)
+        
+        return recommendation
+    
+    def _get_api_response(self, prompt: str) -> str:
+        """Get API response with performance tracking"""
+        self.perf_monitor.start_timer(f"ai_{self.strategist_type.value}_api")
+        
+        try:
+            response = self.api_manager.get_ai_response(prompt)
+            self.perf_monitor.increment_counter("ai_api_calls")
+            return response
+        except Exception as e:
+            self.logger.log(f"API error for {self.strategist_type.value}: {e}", "ERROR")
+            return '{}'
+        finally:
+            self.perf_monitor.stop_timer(f"ai_{self.strategist_type.value}_api")
+    
+    def create_enforcement_rules(self, recommendation: AIRecommendation, 
+                                df: pd.DataFrame, field_size: str) -> List[Dict]:
+        """Create specific enforcement rules from recommendation"""
+        rules = []
+        
+        # Captain enforcement
+        if recommendation.captain_targets:
+            if recommendation.confidence > 0.8:
+                # High confidence = hard constraint
+                rules.append({
+                    'type': 'hard',
+                    'constraint': f'captain_in_{recommendation.captain_targets}',
+                    'players': recommendation.captain_targets,
+                    'description': f'{self.strategist_type.value}: Must use one of these captains'
+                })
+            else:
+                # Lower confidence = soft constraint
+                rules.append({
+                    'type': 'soft',
+                    'constraint': f'prefer_captain_{recommendation.captain_targets}',
+                    'players': recommendation.captain_targets,
+                    'weight': recommendation.confidence,
+                    'description': f'{self.strategist_type.value}: Prefer these captains'
+                })
+        
+        # Must play enforcement
+        for player in recommendation.must_play[:3]:  # Limit to top 3
+            rules.append({
+                'type': 'hard' if recommendation.confidence > 0.7 else 'soft',
+                'constraint': f'must_include_{player}',
+                'player': player,
+                'weight': recommendation.confidence if recommendation.confidence <= 0.7 else 1.0,
+                'description': f'{self.strategist_type.value}: Include {player}'
+            })
+        
+        # Never play enforcement
+        for player in recommendation.never_play[:3]:  # Limit to top 3
+            rules.append({
+                'type': 'hard' if recommendation.confidence > 0.8 else 'soft',
+                'constraint': f'must_exclude_{player}',
+                'player': player,
+                'weight': recommendation.confidence if recommendation.confidence <= 0.8 else 1.0,
+                'description': f'{self.strategist_type.value}: Exclude {player}'
+            })
+        
+        return rules
+    
+    def generate_prompt(self, df: pd.DataFrame, game_info: Dict, field_size: str) -> str:
+        """Generate prompt - to be overridden by subclasses"""
+        raise NotImplementedError
+    
+    def parse_response(self, response: str, df: pd.DataFrame, field_size: str) -> AIRecommendation:
+        """Parse response - to be overridden by subclasses"""
+        raise NotImplementedError
 
 # ============================================================================
 # GPP GAME THEORY STRATEGIST
 # ============================================================================
 
-class GPPGameTheoryStrategist:
-    """AI Strategist 1: GPP Game Theory and ownership leverage"""
+class GPPGameTheoryStrategist(BaseAIStrategist):
+    """AI Strategist 1: Game Theory and Ownership Leverage"""
     
-    def __init__(self, api_manager: ClaudeAPIManager = None):
-        self.api_manager = api_manager
+    def __init__(self, api_manager=None):
+        super().__init__(api_manager, AIStrategistType.GAME_THEORY)
     
     def generate_prompt(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field') -> str:
-        """Generate GPP-focused game theory prompt"""
+        """Generate game theory focused prompt"""
         
-        bucket_manager = OwnershipBucketManager()
+        self.logger.log(f"Generating Game Theory prompt for {field_size}", "DEBUG")
+        
+        # Prepare data summaries
+        bucket_manager = AIOwnershipBucketManager()
         buckets = bucket_manager.categorize_players(df)
         
-        # Get ownership targets for field size
-        min_own, max_own = OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size]
+        # Get ownership distribution
+        ownership_summary = df.groupby(pd.cut(df['Ownership'], bins=[0, 5, 10, 20, 30, 100]))['Player'].count()
         
-        # Get key players by GPP categories
-        mega_chalk = df[df['Player'].isin(buckets.get('mega_chalk', []))].nlargest(5, 'Ownership')[
-            ['Player', 'Position', 'Team', 'Ownership', 'Projected_Points', 'Salary']]
-        
-        super_leverage = df[df['Player'].isin(buckets.get('super_leverage', []))].nlargest(
-            10, 'Projected_Points')[['Player', 'Position', 'Team', 'Ownership', 'Projected_Points', 'Salary']]
-        
-        leverage_plays = df[df['Player'].isin(buckets.get('leverage', []))].nlargest(
-            10, 'Projected_Points')[['Player', 'Position', 'Team', 'Ownership', 'Projected_Points', 'Salary']]
-        
-        # Calculate GPP value plays (high ceiling, low ownership)
-        df['GPP_Value'] = (df['Projected_Points'] / (df['Salary'] / 1000)) * (20 / (df['Ownership'] + 5))
-        top_gpp_values = df.nlargest(10, 'GPP_Value')[['Player', 'Position', 'GPP_Value', 'Ownership']]
-        
-        # Field size strategy
-        field_strategy = {
-            'small_field': "Focus on slightly contrarian plays with 80-120% cumulative ownership",
-            'medium_field': "Target 70-100% ownership with at least 2 leverage plays",
-            'large_field': "Maximize leverage with 60-90% ownership, fade mega chalk",
-            'milly_maker': "Ultra-contrarian with 50-80% ownership, zero chalk tolerance"
+        # Field-specific strategy
+        field_strategies = {
+            'small_field': "Focus on slight differentiation while maintaining optimal plays",
+            'medium_field': "Balance chalk with 2-3 strong leverage plays",
+            'large_field': "Aggressive leverage with <15% owned captains",
+            'milly_maker': "Maximum contrarian approach with <10% captains only"
         }
         
-        return f"""
-        As an expert GPP tournament strategist, analyze this NFL Showdown slate for {field_size.upper()} tournaments:
+        prompt = f"""
+        You are an expert DFS game theory strategist. Create an ENFORCEABLE lineup strategy for {field_size} GPP tournaments.
         
         GAME CONTEXT:
-        Teams: {game_info.get('teams', 'Unknown')}
-        Total: {game_info.get('total', 0)} | Spread: {game_info.get('spread', 0)}
-        Field Type: {field_size} ({field_strategy.get(field_size, 'Standard GPP')})
+        {game_info}
         
-        MEGA CHALK (35%+ ownership - AVOID IN GPP):
-        {mega_chalk.to_string() if not mega_chalk.empty else 'None'}
+        PLAYER POOL ANALYSIS:
+        Total players: {len(df)}
+        Ownership distribution: {ownership_summary.to_dict()}
         
-        SUPER LEVERAGE (<5% ownership - GPP GOLD):
-        {super_leverage.to_string() if not super_leverage.empty else 'None'}
+        HIGH LEVERAGE PLAYS (<10% ownership):
+        {df[df['Ownership'] < 10].nlargest(10, 'Projected_Points')[['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']].to_string()}
         
-        LEVERAGE PLAYS (5-10% ownership - GPP TARGETS):
-        {leverage_plays.to_string() if not leverage_plays.empty else 'None'}
+        FIELD STRATEGY:
+        {field_strategies.get(field_size, 'Standard GPP')}
         
-        TOP GPP VALUE PLAYS (Ceiling + Low Ownership):
-        {top_gpp_values.to_string()}
-        
-        OWNERSHIP DISTRIBUTION:
-        - Mega Chalk (35%+): {len(buckets.get('mega_chalk', []))} players
-        - Chalk (20-35%): {len(buckets.get('chalk', []))} players  
-        - Pivot (10-20%): {len(buckets.get('pivot', []))} players
-        - Leverage (5-10%): {len(buckets.get('leverage', []))} players
-        - Super Leverage (<5%): {len(buckets.get('super_leverage', []))} players
-        
-        GPP STRATEGY REQUIREMENTS:
-        - Target cumulative ownership: {min_own}-{max_own}%
-        - Prioritize ceiling over floor
-        - Identify tournament-winning leverage
-        
-        Provide GPP-specific recommendations:
-        1. Which chalk is actually bad chalk (low ceiling despite ownership)?
-        2. Which low-owned players have tournament-winning upside?
-        3. Optimal captain leverage plays (sub-15% ownership)?
-        4. How to differentiate lineups while maintaining projection?
-        5. Contrarian game theory for this specific field size?
-        
-        Return ONLY valid JSON:
+        PROVIDE SPECIFIC, ENFORCEABLE RULES IN JSON:
         {{
-            "gpp_captain_targets": ["leverage_captain1", "leverage_captain2", "leverage_captain3"],
-            "super_leverage_plays": ["gem1", "gem2", "gem3"],
-            "must_fade_chalk": ["overowned1", "overowned2"],
-            "tournament_winners": ["upside1", "upside2"],
-            "gpp_construction_rules": {{
-                "max_chalk_players": 1,
-                "min_sub10_ownership": 2,
-                "target_total_ownership": {{"min": {min_own}, "max": {max_own}}},
-                "required_leverage_captain": true
+            "captain_rules": {{
+                "must_be_one_of": ["player1", "player2", "player3"],
+                "ownership_ceiling": 15,
+                "reasoning": "Why these specific captains win"
             }},
-            "leverage_stacks": [
-                {{"player1": "low_own1", "player2": "low_own2", "combined_ownership": 15}}
-            ],
-            "differentiation_strategy": "specific approach for uniqueness",
-            "field_size_adjustments": "specific tweaks for {field_size}",
-            "gpp_insights": [
-                "Key tournament insight 1",
-                "Key tournament insight 2"
-            ],
-            "win_probability_boosters": ["factor1", "factor2"],
-            "confidence_score": 0.85
+            "lineup_rules": {{
+                "must_include": ["player_x"],
+                "never_include": ["player_y"],
+                "ownership_sum_range": [60, 90]
+            }},
+            "correlation_rules": {{
+                "required_stacks": [{{"player1": "name1", "player2": "name2"}}],
+                "banned_combinations": []
+            }},
+            "confidence": 0.85,
+            "key_insight": "The ONE thing that makes this lineup win tournaments"
         }}
+        
+        Be SPECIFIC with player names. Your rules will be ENFORCED as constraints.
         """
+        
+        return prompt
     
     def parse_response(self, response: str, df: pd.DataFrame, field_size: str) -> AIRecommendation:
-        """Parse and validate GPP game theory response"""
+        """Parse response into enforceable recommendation"""
+        
         try:
             data = json.loads(response) if response else {}
         except:
             data = {}
         
-        # Extract GPP construction rules
-        rules = data.get('gpp_construction_rules', {})
-        max_chalk = rules.get('max_chalk_players', 1)
-        min_leverage = rules.get('min_sub10_ownership', 2)
+        # Extract captain rules
+        captain_rules = data.get('captain_rules', {})
+        captain_targets = captain_rules.get('must_be_one_of', [])
         
-        # Determine GPP strategy weights based on field size
-        if field_size == 'milly_maker':
-            strategy_weights = {
-                StrategyType.SUPER_CONTRARIAN: 0.4,
-                StrategyType.LEVERAGE: 0.35,
-                StrategyType.CONTRARIAN: 0.2,
-                StrategyType.STARS_SCRUBS: 0.05,
-                StrategyType.CORRELATION: 0.0,
-                StrategyType.GAME_STACK: 0.0
-            }
-        elif field_size == 'large_field':
-            strategy_weights = {
-                StrategyType.LEVERAGE: 0.35,
-                StrategyType.CONTRARIAN: 0.25,
-                StrategyType.SUPER_CONTRARIAN: 0.15,
-                StrategyType.GAME_STACK: 0.15,
-                StrategyType.STARS_SCRUBS: 0.1,
-                StrategyType.CORRELATION: 0.0
-            }
-        else:
-            strategy_weights = {
-                StrategyType.LEVERAGE: 0.25,
-                StrategyType.CONTRARIAN: 0.15,
-                StrategyType.GAME_STACK: 0.25,
-                StrategyType.CORRELATION: 0.2,
-                StrategyType.STARS_SCRUBS: 0.15,
-                StrategyType.SUPER_CONTRARIAN: 0.0
-            }
+        # Validate captains exist in pool
+        valid_captains = [c for c in captain_targets if c in df['Player'].values]
         
-        # GPP-specific rules
-        gpp_rules = {
-            'max_chalk': max_chalk,
-            'min_leverage': min_leverage,
-            'force_leverage_captain': rules.get('required_leverage_captain', True),
-            'ownership_targets': rules.get('target_total_ownership', 
-                                         OptimizerConfig.GPP_OWNERSHIP_TARGETS[field_size])
-        }
+        # If no valid captains from AI, use game theory selection
+        if not valid_captains:
+            ownership_ceiling = captain_rules.get('ownership_ceiling', 15)
+            eligible = df[df['Ownership'] <= ownership_ceiling].nlargest(5, 'Projected_Points')
+            valid_captains = eligible['Player'].tolist()
+        
+        # Extract lineup rules
+        lineup_rules = data.get('lineup_rules', {})
+        must_include = [p for p in lineup_rules.get('must_include', []) if p in df['Player'].values]
+        never_include = [p for p in lineup_rules.get('never_include', []) if p in df['Player'].values]
+        
+        # Extract stacks
+        correlation_rules = data.get('correlation_rules', {})
+        stacks = correlation_rules.get('required_stacks', [])
+        
+        # Build enforcement rules
+        enforcement_rules = []
+        
+        # Captain constraint
+        if valid_captains:
+            enforcement_rules.append({
+                'type': 'hard',
+                'constraint': 'captain_selection',
+                'players': valid_captains[:5],  # Top 5
+                'description': 'Game theory optimal captains'
+            })
+        
+        # Ownership sum constraint
+        ownership_range = lineup_rules.get('ownership_sum_range', [60, 90])
+        enforcement_rules.append({
+            'type': 'hard',
+            'constraint': 'ownership_sum',
+            'min': ownership_range[0],
+            'max': ownership_range[1],
+            'description': f'Total ownership must be {ownership_range[0]}-{ownership_range[1]}%'
+        })
         
         return AIRecommendation(
-            strategist_name="GPP Game Theory AI",
-            confidence=data.get('confidence_score', 0.80),
-            captain_targets=data.get('gpp_captain_targets', []),
-            stacks=[{'player1': s.get('player1'), 'player2': s.get('player2')} 
-                   for s in data.get('leverage_stacks', []) if isinstance(s, dict)],
-            fades=data.get('must_fade_chalk', []),
-            boosts=data.get('super_leverage_plays', []) + data.get('tournament_winners', []),
-            strategy_weights=strategy_weights,
-            key_insights=data.get('gpp_insights', ["Using default GPP strategy"]),
-            gpp_specific_rules=gpp_rules
+            captain_targets=valid_captains[:5],
+            must_play=must_include,
+            never_play=never_include,
+            stacks=stacks,
+            key_insights=[data.get('key_insight', 'Leverage game theory for GPP edge')],
+            confidence=data.get('confidence', 0.7),
+            enforcement_rules=enforcement_rules,
+            narrative=data.get('key_insight', ''),
+            source_ai=AIStrategistType.GAME_THEORY,
+            ownership_leverage={'ownership_range': ownership_range}
         )
 
 # ============================================================================
 # GPP CORRELATION STRATEGIST
 # ============================================================================
 
-class GPPCorrelationStrategist:
-    """AI Strategist 2: GPP correlation and game stack specialist"""
+class GPPCorrelationStrategist(BaseAIStrategist):
+    """AI Strategist 2: Correlation and Stacking Patterns"""
     
-    def __init__(self, api_manager: ClaudeAPIManager = None):
-        self.api_manager = api_manager
+    def __init__(self, api_manager=None):
+        super().__init__(api_manager, AIStrategistType.CORRELATION)
     
     def generate_prompt(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field') -> str:
-        """Generate GPP correlation analysis prompt"""
+        """Generate correlation focused prompt"""
         
+        self.logger.log(f"Generating Correlation prompt for {field_size}", "DEBUG")
+        
+        # Team analysis
         teams = df['Team'].unique()[:2]
-        team_breakdown = {}
+        team1_df = df[df['Team'] == teams[0]] if len(teams) > 0 else pd.DataFrame()
+        team2_df = df[df['Team'] == teams[1]] if len(teams) > 1 else pd.DataFrame()
         
-        for team in teams:
-            team_df = df[df['Team'] == team]
-            
-            # Get players with ownership context for GPP
-            qbs = team_df[team_df['Position'] == 'QB'][
-                ['Player', 'Salary', 'Projected_Points', 'Ownership']].to_dict('records')
-            pass_catchers = team_df[team_df['Position'].isin(['WR', 'TE'])][
-                ['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']
-            ].sort_values('Ownership').to_dict('records')  # Sort by ownership for GPP
-            rbs = team_df[team_df['Position'] == 'RB'][
-                ['Player', 'Salary', 'Projected_Points', 'Ownership']].to_dict('records')
-            
-            team_breakdown[team] = {
-                'QB': qbs,
-                'Pass_Catchers': pass_catchers[:6],  # Include more for GPP variety
-                'RB': rbs[:3]
-            }
+        # Game environment
+        total = game_info.get('total', 45)
+        spread = game_info.get('spread', 0)
         
-        # Determine correlation strategy based on total
-        if game_info.get('total', 48) > 54:
-            correlation_focus = "SHOOTOUT: Prioritize game stacks with 4+ players from game"
-        elif game_info.get('total', 48) > 50:
-            correlation_focus = "MODERATE: Mix of game stacks and single team stacks"
-        else:
-            correlation_focus = "LOW TOTAL: Focus on single team stacks, leverage RBs"
+        prompt = f"""
+        You are an expert DFS correlation strategist. Create SPECIFIC stacking rules for {field_size} GPP.
         
-        return f"""
-        As an expert GPP Correlation strategist, identify tournament-winning stacks for {field_size} GPPs:
+        GAME ENVIRONMENT:
+        Total: {total} | Spread: {spread}
         
-        GAME CONTEXT:
-        Teams: {game_info.get('teams', 'Unknown')}
-        Total: {game_info.get('total', 0)} | Spread: {game_info.get('spread', 0)}
-        Correlation Strategy: {correlation_focus}
+        TEAM 1 - {teams[0] if len(teams) > 0 else 'Unknown'}:
+        {team1_df[['Player', 'Position', 'Projected_Points']].head(8).to_string() if not team1_df.empty else 'No data'}
         
-        TEAM ROSTERS WITH OWNERSHIP:
-        {json.dumps(team_breakdown, indent=2)}
+        TEAM 2 - {teams[1] if len(teams) > 1 else 'Unknown'}:
+        {team2_df[['Player', 'Position', 'Projected_Points']].head(8).to_string() if not team2_df.empty else 'No data'}
         
-        GPP CORRELATION PRIORITIES:
-        1. Leverage stacks (combined ownership < 30%)
-        2. Game stacks for ceiling in projected shootouts
-        3. Contrarian bring-backs (opposing team correlation)
-        4. Low-owned QB stacks (QB < 20% ownership)
-        5. Secondary stacks that differentiate lineups
-        6. Negative correlations to avoid (RB-RB, etc.)
-        
-        Field Size Considerations:
-        - Small field: Can use one higher-owned stack
-        - Large field: Need multiple low-owned correlations
-        - Milly Maker: Only super-leverage stacks
-        
-        Return ONLY valid JSON:
+        CREATE ENFORCEABLE CORRELATION RULES IN JSON:
         {{
-            "primary_leverage_stacks": [
-                {{"qb": "name", "receiver": "name", "correlation": 0.6, "combined_ownership": 20, "gpp_score": 85}}
+            "primary_stacks": [
+                {{"type": "QB_WR", "player1": "exact_name", "player2": "exact_name", "correlation": 0.7}},
+                {{"type": "QB_TE", "player1": "exact_name", "player2": "exact_name", "correlation": 0.6}}
             ],
             "game_stacks": [
-                {{"players": ["p1", "p2", "p3", "p4"], "scenario": "shootout", "total_ownership": 60, "ceiling_boost": "high"}}
+                {{"players": ["player1", "player2", "player3"], "narrative": "shootout correlation"}}
             ],
-            "super_leverage_stacks": [
-                {{"player1": "sub5own", "player2": "sub10own", "combined_ownership": 12, "tournament_equity": "elite"}}
+            "leverage_stacks": [
+                {{"type": "contrarian", "player1": "exact_name", "player2": "exact_name", "ownership_sum": 15}}
             ],
-            "contrarian_bringbacks": [
-                {{"primary": "team1_qb", "bringback": "team2_wr2", "leverage": "high"}}
+            "negative_correlation": [
+                {{"avoid_together": ["player_x", "player_y"], "reason": "competing for touches"}}
             ],
-            "avoid_correlations": [
-                {{"player1": "rb1", "player2": "rb2", "reason": "negative correlation"}}
-            ],
-            "gpp_game_script": {{
-                "most_likely": "scenario",
-                "leverage_scenario": "contrarian_scenario",
-                "boost_players": ["player1", "player2"],
-                "fade_players": ["chalk1", "chalk2"]
+            "captain_correlation": {{
+                "best_captains_for_stacking": ["player_name"],
+                "bring_back_rules": {{"if_captain": "player_x", "must_have_opponent": true}}
             }},
-            "field_specific_stacks": {{
-                "small_field": ["balanced_stack"],
-                "large_field": ["leverage_stack"],
-                "milly_maker": ["super_leverage_stack"]
-            }},
-            "correlation_insights": [
-                "GPP correlation insight 1",
-                "GPP correlation insight 2"
-            ],
-            "stack_differentiation": "how to make stacks unique",
-            "confidence": 0.85
+            "confidence": 0.8,
+            "stack_narrative": "WHY this correlation wins GPPs"
         }}
+        
+        Use EXACT player names from the data. Focus on correlations that create tournament-winning ceilings.
         """
+        
+        return prompt
     
     def parse_response(self, response: str, df: pd.DataFrame, field_size: str) -> AIRecommendation:
-        """Parse and validate GPP correlation response"""
+        """Parse correlation response into enforceable rules"""
+        
         try:
             data = json.loads(response) if response else {}
         except:
             data = {}
         
-        # Build comprehensive GPP stacks list
+        # Extract stacks
         all_stacks = []
         
-        # Primary leverage stacks
-        for stack in data.get('primary_leverage_stacks', []):
-            if isinstance(stack, dict):
+        # Primary stacks (highest priority)
+        for stack in data.get('primary_stacks', []):
+            if self._validate_stack(stack, df):
                 all_stacks.append({
-                    'player1': stack.get('qb'),
-                    'player2': stack.get('receiver'),
-                    'type': 'leverage_primary',
-                    'correlation': stack.get('correlation', 0.5),
-                    'gpp_score': stack.get('gpp_score', 50)
+                    **stack,
+                    'priority': 'high',
+                    'enforced': True
                 })
         
         # Game stacks
         for stack in data.get('game_stacks', []):
-            if isinstance(stack, dict):
-                players = stack.get('players', [])
-                if len(players) >= 2:
+            players = stack.get('players', [])
+            if len(players) >= 2:
+                valid_players = [p for p in players if p in df['Player'].values]
+                if len(valid_players) >= 2:
                     all_stacks.append({
-                        'player1': players[0],
-                        'player2': players[1],
+                        'player1': valid_players[0],
+                        'player2': valid_players[1],
                         'type': 'game_stack',
-                        'correlation': 0.35,
-                        'additional_players': players[2:] if len(players) > 2 else []
+                        'priority': 'medium',
+                        'narrative': stack.get('narrative', '')
                     })
         
-        # Super leverage stacks
-        for stack in data.get('super_leverage_stacks', []):
-            if isinstance(stack, dict):
+        # Leverage stacks
+        for stack in data.get('leverage_stacks', []):
+            if self._validate_stack(stack, df):
                 all_stacks.append({
-                    'player1': stack.get('player1'),
-                    'player2': stack.get('player2'),
-                    'type': 'super_leverage',
-                    'correlation': 0.3,
-                    'tournament_equity': stack.get('tournament_equity', 'high')
+                    **stack,
+                    'priority': 'high',
+                    'leverage': True
                 })
         
-        # Determine strategy weights based on game script and field size
-        game_script = data.get('gpp_game_script', {}).get('most_likely', 'balanced')
+        # Captain correlation
+        captain_rules = data.get('captain_correlation', {})
+        captain_targets = captain_rules.get('best_captains_for_stacking', [])
+        valid_captains = [c for c in captain_targets if c in df['Player'].values]
         
-        if field_size == 'milly_maker':
-            strategy_weights = {
-                StrategyType.SUPER_CONTRARIAN: 0.35,
-                StrategyType.LEVERAGE: 0.35,
-                StrategyType.GAME_STACK: 0.2 if game_script == 'shootout' else 0.1,
-                StrategyType.STARS_SCRUBS: 0.1,
-                StrategyType.CONTRARIAN: 0.0,
-                StrategyType.CORRELATION: 0.0
-            }
-        elif game_script == 'shootout':
-            strategy_weights = {
-                StrategyType.GAME_STACK: 0.35,
-                StrategyType.CORRELATION: 0.25,
-                StrategyType.LEVERAGE: 0.2,
-                StrategyType.CONTRARIAN: 0.15,
-                StrategyType.STARS_SCRUBS: 0.05,
-                StrategyType.SUPER_CONTRARIAN: 0.0
-            }
-        else:
-            strategy_weights = {
-                StrategyType.LEVERAGE: 0.3,
-                StrategyType.CONTRARIAN: 0.25,
-                StrategyType.CORRELATION: 0.2,
-                StrategyType.GAME_STACK: 0.15,
-                StrategyType.STARS_SCRUBS: 0.1,
-                StrategyType.SUPER_CONTRARIAN: 0.0
-            }
+        # If no valid captains, select based on correlation potential
+        if not valid_captains:
+            qbs = df[df['Position'] == 'QB']['Player'].tolist()
+            valid_captains = qbs[:2] if qbs else df.nlargest(3, 'Projected_Points')['Player'].tolist()
         
-        # Extract captain targets from low-owned QBs
-        captain_targets = []
-        for stack in data.get('primary_leverage_stacks', []):
-            if isinstance(stack, dict) and stack.get('qb'):
-                qb = stack['qb']
-                if qb in df['Player'].values:
-                    qb_own = df[df['Player'] == qb]['Ownership'].values[0]
-                    if qb_own < 20:  # Only low-owned QBs for GPP
-                        captain_targets.append(qb)
+        # Build enforcement rules
+        enforcement_rules = []
         
-        # GPP-specific rules
-        gpp_rules = {
-            'leverage_scenario': data.get('gpp_game_script', {}).get('leverage_scenario'),
-            'field_stacks': data.get('field_specific_stacks', {}).get(field_size, []),
-            'avoid_together': data.get('avoid_correlations', [])
-        }
+        # Enforce primary stacks
+        high_priority_stacks = [s for s in all_stacks if s.get('priority') == 'high']
+        for stack in high_priority_stacks[:2]:  # Top 2 stacks
+            enforcement_rules.append({
+                'type': 'hard',
+                'constraint': 'must_stack',
+                'players': [stack['player1'], stack['player2']],
+                'description': f"Required correlation: {stack.get('type', 'stack')}"
+            })
+        
+        # Enforce negative correlations
+        for neg_corr in data.get('negative_correlation', []):
+            players = neg_corr.get('avoid_together', [])
+            if len(players) == 2 and all(p in df['Player'].values for p in players):
+                enforcement_rules.append({
+                    'type': 'hard',
+                    'constraint': 'avoid_together',
+                    'players': players,
+                    'description': neg_corr.get('reason', 'Negative correlation')
+                })
+        
+        # Bring-back rules
+        bring_back = captain_rules.get('bring_back_rules', {})
+        if bring_back.get('must_have_opponent'):
+            enforcement_rules.append({
+                'type': 'soft',
+                'constraint': 'bring_back',
+                'weight': 0.7,
+                'description': 'Include opponent when stacking'
+            })
         
         return AIRecommendation(
-            strategist_name="GPP Correlation AI",
-            confidence=data.get('confidence', 0.80),
-            captain_targets=captain_targets,
-            stacks=all_stacks,
-            fades=data.get('gpp_game_script', {}).get('fade_players', []),
-            boosts=data.get('gpp_game_script', {}).get('boost_players', []),
-            strategy_weights=strategy_weights,
-            key_insights=data.get('correlation_insights', ["Using GPP correlation strategy"]),
-            gpp_specific_rules=gpp_rules
+            captain_targets=valid_captains[:5],
+            must_play=[],  # Filled by stacks
+            never_play=[],
+            stacks=all_stacks[:10],  # Top 10 stacks
+            key_insights=[data.get('stack_narrative', 'Correlation-based lineup construction')],
+            confidence=data.get('confidence', 0.75),
+            enforcement_rules=enforcement_rules,
+            narrative=data.get('stack_narrative', ''),
+            source_ai=AIStrategistType.CORRELATION,
+            correlation_matrix={s['type']: s for s in all_stacks[:5]}
+        )
+    
+    def _validate_stack(self, stack: Dict, df: pd.DataFrame) -> bool:
+        """Validate that stack players exist"""
+        player1 = stack.get('player1')
+        player2 = stack.get('player2')
+        
+        if not player1 or not player2:
+            return False
+        
+        return (player1 in df['Player'].values and 
+                player2 in df['Player'].values)
+
+# ============================================================================
+# GPP CONTRARIAN NARRATIVE STRATEGIST (NEW - 3RD AI)
+# ============================================================================
+
+class GPPContrarianNarrativeStrategist(BaseAIStrategist):
+    """AI Strategist 3: Contrarian Narratives and Hidden Angles"""
+    
+    def __init__(self, api_manager=None):
+        super().__init__(api_manager, AIStrategistType.CONTRARIAN_NARRATIVE)
+    
+    def generate_prompt(self, df: pd.DataFrame, game_info: Dict, field_size: str = 'large_field') -> str:
+        """Generate contrarian narrative focused prompt"""
+        
+        self.logger.log(f"Generating Contrarian Narrative prompt for {field_size}", "DEBUG")
+        
+        # Find potential narrative plays
+        low_owned_high_ceiling = df[df['Ownership'] < 10].nlargest(10, 'Projected_Points')
+        
+        # Find salary value plays
+        df['Value'] = df['Projected_Points'] / (df['Salary'] / 1000)
+        value_plays = df[df['Ownership'] < 15].nlargest(10, 'Value')
+        
+        # Team and game narrative
+        teams = df['Team'].unique()[:2]
+        total = game_info.get('total', 45)
+        spread = game_info.get('spread', 0)
+        weather = game_info.get('weather', 'Clear')
+        
+        prompt = f"""
+        You are a contrarian DFS strategist who finds the NON-OBVIOUS narratives that win GPP tournaments.
+        Your job is to identify the 1% scenarios that create massive scores while everyone else follows chalk.
+        
+        GAME SETUP:
+        {teams[0] if len(teams) > 0 else 'Team1'} vs {teams[1] if len(teams) > 1 else 'Team2'}
+        Total: {total} | Spread: {spread} | Weather: {weather}
+        
+        LOW-OWNED CEILING PLAYS (<10% owned):
+        {low_owned_high_ceiling[['Player', 'Position', 'Team', 'Projected_Points', 'Ownership']].to_string()}
+        
+        HIDDEN VALUE (High proj/$ but low owned):
+        {value_plays[['Player', 'Position', 'Salary', 'Value', 'Ownership']].head(7).to_string()}
+        
+        CREATE CONTRARIAN TOURNAMENT-WINNING NARRATIVES IN JSON:
+        {{
+            "primary_narrative": "The ONE scenario everyone is missing",
+            "contrarian_captains": [
+                {{"player": "exact_name", "narrative": "Why this 5% captain wins", "ceiling_scenario": "specific game flow"}}
+            ],
+            "hidden_correlations": [
+                {{"player1": "name1", "player2": "name2", "narrative": "Non-obvious connection"}}
+            ],
+            "fade_the_field": [
+                {{"player": "chalky_player", "fade_reason": "Why the field is wrong", "pivot_to": "alternative_player"}}
+            ],
+            "boom_scenarios": [
+                {{"players": ["player1", "player2"], "scenario": "What needs to happen", "probability": "low but possible"}}
+            ],
+            "contrarian_game_theory": {{
+                "what_field_expects": "Common narrative",
+                "why_field_is_wrong": "Your contrarian take",
+                "exploit_this": "Specific players/stacks to exploit the field's mistake"
+            }},
+            "tournament_winner": {{
+                "captain": "exact_name",
+                "core": ["player1", "player2"],
+                "narrative": "The story of how this lineup wins the million"
+            }},
+            "confidence": 0.7
+        }}
+        
+        Be SPECIFIC. Name exact players. Your narratives become ENFORCED constraints.
+        Find the story that makes a 2% owned player the optimal captain.
+        """
+        
+        return prompt
+    
+    def parse_response(self, response: str, df: pd.DataFrame, field_size: str) -> AIRecommendation:
+        """Parse contrarian narrative into enforceable rules"""
+        
+        try:
+            data = json.loads(response) if response else {}
+        except:
+            data = {}
+        
+        # Extract contrarian captains
+        contrarian_captains = []
+        captain_narratives = {}
+        
+        for captain_data in data.get('contrarian_captains', []):
+            player = captain_data.get('player')
+            if player and player in df['Player'].values:
+                contrarian_captains.append(player)
+                captain_narratives[player] = captain_data.get('narrative', '')
+        
+        # If no valid contrarian captains, find them algorithmically
+        if not contrarian_captains:
+            # Find low-owned players with high ceiling
+            low_owned = df[df['Ownership'] < 10]
+            if not low_owned.empty:
+                # Sort by projected points and take top ones
+                candidates = low_owned.nlargest(5, 'Projected_Points')
+                contrarian_captains = candidates['Player'].tolist()
+                
+                # Create narratives
+                for player in contrarian_captains:
+                    row = df[df['Player'] == player].iloc[0]
+                    captain_narratives[player] = f"Hidden ceiling at {row['Ownership']:.1f}% ownership"
+        
+        # Extract tournament winner lineup
+        tournament_winner = data.get('tournament_winner', {})
+        tw_captain = tournament_winner.get('captain')
+        tw_core = tournament_winner.get('core', [])
+        
+        # Validate and use tournament winner
+        must_play = []
+        if tw_captain and tw_captain in df['Player'].values:
+            if tw_captain not in contrarian_captains:
+                contrarian_captains.insert(0, tw_captain)  # Priority captain
+        
+        for player in tw_core:
+            if player in df['Player'].values:
+                must_play.append(player)
+        
+        # Extract fades and pivots
+        fades = []
+        pivots = {}
+        
+        for fade_data in data.get('fade_the_field', []):
+            fade_player = fade_data.get('player')
+            pivot_player = fade_data.get('pivot_to')
+            
+            if fade_player and fade_player in df['Player'].values:
+                fades.append(fade_player)
+                if pivot_player and pivot_player in df['Player'].values:
+                    pivots[fade_player] = pivot_player
+                    if pivot_player not in must_play:
+                        must_play.append(pivot_player)
+        
+        # Extract hidden correlations
+        hidden_stacks = []
+        for corr in data.get('hidden_correlations', []):
+            if self._validate_correlation(corr, df):
+                hidden_stacks.append({
+                    'player1': corr['player1'],
+                    'player2': corr['player2'],
+                    'type': 'hidden',
+                    'narrative': corr.get('narrative', 'Non-obvious correlation')
+                })
+        
+        # Build enforcement rules
+        enforcement_rules = []
+        
+        # Enforce contrarian captain
+        if contrarian_captains:
+            enforcement_rules.append({
+                'type': 'hard',
+                'constraint': 'contrarian_captain',
+                'players': contrarian_captains[:3],  # Top 3
+                'description': 'Must use contrarian captain for tournament upside'
+            })
+        
+        # Enforce tournament winner core
+        if must_play:
+            for player in must_play[:2]:  # Top 2 core plays
+                enforcement_rules.append({
+                    'type': 'hard',
+                    'constraint': f'tournament_core_{player}',
+                    'player': player,
+                    'description': f'Tournament winner core: {player}'
+                })
+        
+        # Enforce fades
+        for fade in fades[:2]:  # Top 2 fades
+            enforcement_rules.append({
+                'type': 'hard',
+                'constraint': f'fade_{fade}',
+                'player': fade,
+                'exclude': True,
+                'description': data.get('fade_the_field', [{}])[0].get('fade_reason', f'Fade {fade}')
+            })
+        
+        # Enforce hidden correlations
+        for stack in hidden_stacks[:1]:  # Top hidden stack
+            enforcement_rules.append({
+                'type': 'soft',
+                'constraint': 'hidden_correlation',
+                'players': [stack['player1'], stack['player2']],
+                'weight': 0.8,
+                'description': stack['narrative']
+            })
+        
+        # Extract insights
+        insights = []
+        insights.append(data.get('primary_narrative', 'Contrarian approach'))
+        
+        game_theory = data.get('contrarian_game_theory', {})
+        if game_theory.get('exploit_this'):
+            insights.append(f"Exploit: {game_theory['exploit_this']}")
+        
+        return AIRecommendation(
+            captain_targets=contrarian_captains[:5],
+            must_play=must_play[:5],
+            never_play=fades[:5],
+            stacks=hidden_stacks,
+            key_insights=insights,
+            confidence=data.get('confidence', 0.7),
+            enforcement_rules=enforcement_rules,
+            narrative=data.get('primary_narrative', 'Contrarian narrative'),
+            source_ai=AIStrategistType.CONTRARIAN_NARRATIVE,
+            contrarian_angles=list(captain_narratives.values())
+        )
+    
+    def _validate_correlation(self, correlation: Dict, df: pd.DataFrame) -> bool:
+        """Validate correlation players exist"""
+        player1 = correlation.get('player1')
+        player2 = correlation.get('player2')
+        
+        return (player1 and player2 and 
+                player1 in df['Player'].values and 
+                player2 in df['Player'].values)
+
+# ============================================================================
+# CLAUDE API MANAGER (Updated for Triple AI)
+# ============================================================================
+
+class ClaudeAPIManager:
+    """Manages Claude API interactions for all three AIs"""
+    
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.client = None
+        self.cache = {}
+        self.stats = {
+            'requests': 0,
+            'errors': 0,
+            'cache_hits': 0,
+            'cache_size': 0,
+            'by_ai': {
+                AIStrategistType.GAME_THEORY: {'requests': 0, 'errors': 0},
+                AIStrategistType.CORRELATION: {'requests': 0, 'errors': 0},
+                AIStrategistType.CONTRARIAN_NARRATIVE: {'requests': 0, 'errors': 0}
+            }
+        }
+        self.logger = get_logger()
+        self.initialize_client()
+    
+    def initialize_client(self):
+        """Initialize Claude client"""
+        try:
+            from anthropic import Anthropic
+            self.client = Anthropic(api_key=self.api_key)
+            self.logger.log("Claude API client initialized", "INFO")
+        except Exception as e:
+            self.logger.log(f"Failed to initialize Claude API: {e}", "ERROR")
+            self.client = None
+    
+    def get_ai_response(self, prompt: str, ai_type: Optional[AIStrategistType] = None) -> str:
+        """Get response from Claude API with caching"""
+        
+        # Check cache
+        prompt_hash = hash(prompt[:100])  # Use first 100 chars for hash
+        if prompt_hash in self.cache:
+            self.stats['cache_hits'] += 1
+            self.logger.log("Cache hit for AI response", "DEBUG")
+            return self.cache[prompt_hash]
+        
+        # Make API call
+        self.stats['requests'] += 1
+        if ai_type:
+            self.stats['by_ai'][ai_type]['requests'] += 1
+        
+        try:
+            if not self.client:
+                raise Exception("API client not initialized")
+            
+            message = self.client.messages.create(
+                model="claude-3-opus-20240229",
+                max_tokens=1500,
+                temperature=0.7,
+                system="You are an expert DFS optimizer creating specific, enforceable lineup rules.",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            response = message.content[0].text if message.content else "{}"
+            
+            # Cache response
+            self.cache[prompt_hash] = response
+            self.stats['cache_size'] = len(self.cache)
+            
+            self.logger.log(f"AI response received ({len(response)} chars)", "DEBUG")
+            return response
+            
+        except Exception as e:
+            self.stats['errors'] += 1
+            if ai_type:
+                self.stats['by_ai'][ai_type]['errors'] += 1
+            
+            self.logger.log(f"API error: {e}", "ERROR")
+            return "{}"
+    
+    def get_stats(self) -> Dict:
+        """Get API usage statistics"""
+        return self.stats
+    
+    def clear_cache(self):
+        """Clear response cache"""
+        self.cache.clear()
+        self.stats['cache_size'] = 0
+        self.logger.log("API cache cleared", "INFO")
+
+# ============================================================================
+# AI RESPONSE FALLBACK SYSTEM
+# ============================================================================
+
+class AIFallbackSystem:
+    """Provides enforcement-ready fallbacks when AI is unavailable"""
+    
+    @staticmethod
+    def get_game_theory_fallback(df: pd.DataFrame, field_size: str) -> AIRecommendation:
+        """Generate game theory rules without AI"""
+        
+        # Find leverage captains
+        low_owned = df[df['Ownership'] < 15]
+        captains = low_owned.nlargest(5, 'Projected_Points')['Player'].tolist()
+        
+        if not captains:
+            captains = df.nlargest(5, 'Projected_Points')['Player'].tolist()
+        
+        enforcement_rules = [
+            {
+                'type': 'hard',
+                'constraint': 'leverage_captain',
+                'players': captains[:3],
+                'description': 'Statistical leverage captains'
+            }
+        ]
+        
+        return AIRecommendation(
+            captain_targets=captains,
+            must_play=[],
+            never_play=df[df['Ownership'] > 35]['Player'].tolist()[:3],
+            stacks=[],
+            key_insights=['Using statistical game theory'],
+            confidence=0.5,
+            enforcement_rules=enforcement_rules,
+            narrative='Fallback game theory strategy',
+            source_ai=AIStrategistType.GAME_THEORY
+        )
+    
+    @staticmethod
+    def get_correlation_fallback(df: pd.DataFrame, field_size: str) -> AIRecommendation:
+        """Generate correlation rules without AI"""
+        
+        stacks = []
+        teams = df['Team'].unique()
+        
+        for team in teams[:2]:
+            team_df = df[df['Team'] == team]
+            qbs = team_df[team_df['Position'] == 'QB']['Player'].tolist()
+            pass_catchers = team_df[team_df['Position'].isin(['WR', 'TE'])].nlargest(3, 'Projected_Points')['Player'].tolist()
+            
+            for qb in qbs:
+                for pc in pass_catchers:
+                    stacks.append({
+                        'player1': qb,
+                        'player2': pc,
+                        'type': 'QB_stack'
+                    })
+        
+        enforcement_rules = []
+        if stacks:
+            enforcement_rules.append({
+                'type': 'soft',
+                'constraint': 'correlation_stack',
+                'players': [stacks[0]['player1'], stacks[0]['player2']],
+                'weight': 0.7,
+                'description': 'Primary correlation stack'
+            })
+        
+        return AIRecommendation(
+            captain_targets=df[df['Position'] == 'QB']['Player'].tolist()[:2],
+            must_play=[],
+            never_play=[],
+            stacks=stacks[:5],
+            key_insights=['Using statistical correlations'],
+            confidence=0.5,
+            enforcement_rules=enforcement_rules,
+            narrative='Fallback correlation strategy',
+            source_ai=AIStrategistType.CORRELATION
+        )
+    
+    @staticmethod
+    def get_contrarian_fallback(df: pd.DataFrame, field_size: str) -> AIRecommendation:
+        """Generate contrarian rules without AI"""
+        
+        # Find contrarian plays
+        df['Contrarian_Score'] = (df['Projected_Points'] / df['Projected_Points'].max()) / (df['Ownership'] / 100 + 0.1)
+        contrarian = df.nlargest(5, 'Contrarian_Score')
+        
+        captains = contrarian['Player'].tolist()
+        
+        enforcement_rules = [
+            {
+                'type': 'hard',
+                'constraint': 'contrarian_captain',
+                'players': captains[:3],
+                'description': 'Statistical contrarian captains'
+            }
+        ]
+        
+        return AIRecommendation(
+            captain_targets=captains,
+            must_play=df[df['Ownership'] < 5]['Player'].tolist()[:2],
+            never_play=df[df['Ownership'] > 30]['Player'].tolist()[:3],
+            stacks=[],
+            key_insights=['Using statistical contrarian analysis'],
+            confidence=0.5,
+            enforcement_rules=enforcement_rules,
+            narrative='Fallback contrarian strategy',
+            source_ai=AIStrategistType.CONTRARIAN_NARRATIVE
         )
 
 # NFL GPP DUAL-AI OPTIMIZER - PART 4: MAIN OPTIMIZER & LINEUP GENERATION (COMPLETE CORRECTED v5.4)
@@ -3876,5 +4341,4 @@ if 'field_size' in st.session_state:
     st.caption(f"GPP Optimizer last run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Field: {current_field} | Cache Status: Active")
 else:
     st.caption(f"GPP Optimizer ready: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | No active session")
-
 
