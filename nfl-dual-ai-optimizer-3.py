@@ -5490,7 +5490,7 @@ def main():
                 available_cols = [col for col in display_cols if col in df.columns]
                 st.dataframe(
                     df[available_cols].sort_values('Projected_Points', ascending=False),
-                    use_container_'width=stretch'
+                    use_container_width=stretch
                 )
             
             # Optimization section
