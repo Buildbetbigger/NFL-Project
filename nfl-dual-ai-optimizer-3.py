@@ -1,3 +1,4 @@
+#%%
 # NFL GPP DUAL-AI OPTIMIZER - CONSOLIDATED VERSION
 # Part 1: Configuration, Monitoring, and Base Classes
 # Version 6.4 - Single File Structure
@@ -5989,3 +5990,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"Critical error: {str(e)}")
         get_logger().log_exception(e, "main_entry", critical=True)
+
