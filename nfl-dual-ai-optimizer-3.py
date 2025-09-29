@@ -4250,21 +4250,21 @@ class AIChefGPPOptimizer:
         return all_lineups
 
     def _build_ai_enforced_lineup(self, lineup_num: int, strategy: str, players: List[str],
-                             salaries: Dict, points: Dict, ownership: Dict,
-                             positions: Dict, teams: Dict, enforcement_rules: Dict,
-                             synthesis: Dict, used_captains: Set[str]) -> Optional[Dict]:
-    """Build a single lineup enforcing AI rules with DK Showdown requirements"""
+                                  salaries: Dict, points: Dict, ownership: Dict,
+                                  positions: Dict, teams: Dict, enforcement_rules: Dict,
+                                  synthesis: Dict, used_captains: Set[str]) -> Optional[Dict]:
+        """Build a single lineup enforcing AI rules with DK Showdown requirements"""
     
-    max_attempts = 3
-    constraint_relaxation = [1.0, 0.8, 0.6]
+        max_attempts = 3
+        constraint_relaxation = [1.0, 0.8, 0.6]
     
-    for attempt in range(max_attempts):
-        try:
-            model = pulp.LpProblem(f"AI_Lineup_{lineup_num}_{strategy}_attempt{attempt}", pulp.LpMaximize)
+        for attempt in range(max_attempts):
+            try:
+                model = pulp.LpProblem(f"AI_Lineup_{lineup_num}_{strategy}_attempt{attempt}", pulp.LpMaximize)
             
-            # Decision variables
-            flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
-            captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
+                # Decision variables
+                flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
+                captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
             
             # AI-modified objective function
             player_weights = synthesis.get('player_rankings', {})
@@ -4370,7 +4370,7 @@ class AIChefGPPOptimizer:
             self.logger.log(f"Error in lineup {lineup_num} attempt {attempt + 1}: {str(e)}", "DEBUG")
             continue
     
-    return None
+        return None
 
 def _verify_dk_requirements(self, lineup: Dict, teams: Dict) -> bool:
     """Verify lineup meets DraftKings Showdown requirements"""
