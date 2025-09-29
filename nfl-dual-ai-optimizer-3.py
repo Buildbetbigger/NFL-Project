@@ -4623,32 +4623,32 @@ def _apply_hard_constraints_with_validation(self, model, flex, captain,
                         flex[p] + captain[p] for p in valid_stack
                     ]) >= 2
 
-    def _calculate_soft_penalties(self, flex, captain, enforcement_rules, players):
-        """Calculate penalties for soft constraints"""
+    def _calculate_soft_penalties(self, flex, captain, enforcement_rules, players, 
+                             weight_multiplier=1.0):
+    """Calculate penalties for soft constraints with adjustable weight"""
+    
+    penalties = []
+    
+    for constraint in enforcement_rules.get('soft_constraints', []):
+        base_weight = constraint.get('weight', 0.5)
+        adjusted_weight = base_weight * weight_multiplier
+        rule = constraint.get('rule')
         
-        penalties = []
-        
-        for constraint in enforcement_rules.get('soft_constraints', []):
-            weight = constraint.get('weight', 0.5)
-            rule = constraint.get('rule')
-            
-            if rule == 'should_include':
-                player = constraint.get('player')
-                if player and player in players:
-                    # Penalty for not including
-                    penalties.append(
-                        weight * 10 * (1 - flex[player] - captain[player])
-                    )
-                    
-            elif rule == 'should_exclude':
-                player = constraint.get('player')
-                if player and player in players:
-                    # Penalty for including
-                    penalties.append(
-                        weight * 10 * (flex[player] + captain[player])
-                    )
-        
-        return pulp.lpSum(penalties) if penalties else None
+        if rule == 'should_include':
+            player = constraint.get('player')
+            if player and player in players:
+                penalties.append(
+                    adjusted_weight * 10 * (1 - flex[player] - captain[player])
+                )
+                
+        elif rule == 'should_exclude':
+            player = constraint.get('player')
+            if player and player in players:
+                penalties.append(
+                    adjusted_weight * 10 * (flex[player] + captain[player])
+                )
+    
+    return pulp.lpSum(penalties) if penalties else None
 
     def _apply_strategy_constraints(self, model, flex, captain, strategy, synthesis,
                                    players, ownership, used_captains):
