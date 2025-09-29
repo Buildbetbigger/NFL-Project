@@ -4025,6 +4025,20 @@ class AIChefGPPOptimizer:
         
         # Show AI consensus
         self._display_ai_consensus(synthesis)
+
+        # Pre-generation validation
+        st.info(f"Attempting to generate {num_lineups} lineups with {field_size} settings...")
+
+        # Quick feasibility check
+        min_salary_lineup = df.nsmallest(6, 'Salary')['Salary'].sum()
+        max_salary_lineup = df.nlargest(6, 'Salary')['Salary'].sum()
+
+        if min_salary_lineup > 50000:
+            st.error("⚠️ Cannot create valid lineup - even cheapest 6 players exceed salary cap!")
+            st.stop()
+    
+        if max_salary_lineup < 30000:
+            st.warning("⚠️ Player pool has very low salaries - may limit lineup diversity")
         
         # Prepare data structures
         players = self.df['Player'].tolist()
@@ -4136,7 +4150,7 @@ class AIChefGPPOptimizer:
             # Update progress
             progress = (i + 1) / len(lineup_tasks)
             progress_bar.progress(progress)
-            status_text.text(f"Generating lineup {lineup_num} ({strategy_name})...")
+            status_text.text(f"Generating lineup {lineup_num} ({strategy_name}) - Success: {len(all_lineups)}/{lineup_num-1}")
             
             # Build lineup
             lineup = self._build_ai_enforced_lineup(
@@ -5349,6 +5363,15 @@ def main():
                 value=True,
                 help="Generate multiple lineups simultaneously"
             )
+            
+            show_diagnostics = st.checkbox(
+                "Show diagnostic information",
+                value=False,
+                help="Display detailed information about constraint violations"
+            )
+
+            # Store in session state
+            st.session_state['show_diagnostics'] = show_diagnostics
             
             st.markdown("### AI Weights")
             
