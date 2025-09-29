@@ -4253,85 +4253,205 @@ class AIChefGPPOptimizer:
                              salaries: Dict, points: Dict, ownership: Dict,
                              positions: Dict, teams: Dict, enforcement_rules: Dict,
                              synthesis: Dict, used_captains: Set[str]) -> Optional[Dict]:
-        """Build a single lineup enforcing AI rules"""
+    """Build a single lineup enforcing AI rules with DK Showdown requirements"""
     
+    max_attempts = 3
+    constraint_relaxation = [1.0, 0.8, 0.6]
+    
+    for attempt in range(max_attempts):
         try:
-            model = pulp.LpProblem(f"AI_Lineup_{lineup_num}_{strategy}", pulp.LpMaximize)
-        
+            model = pulp.LpProblem(f"AI_Lineup_{lineup_num}_{strategy}_attempt{attempt}", pulp.LpMaximize)
+            
             # Decision variables
             flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
             captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
-        
+            
             # AI-modified objective function
             player_weights = synthesis.get('player_rankings', {})
-        
+            
             objective = pulp.lpSum([
                 points[p] * player_weights.get(p, 1.0) * flex[p] +
                 1.5 * points[p] * player_weights.get(p, 1.0) * captain[p]
                 for p in players
             ])
-        
+            
             model += objective
-        
+            
             # Basic constraints
             model += pulp.lpSum(captain.values()) == 1
             model += pulp.lpSum(flex.values()) == 5
-        
+            
             # Player can't be both captain and flex
             for p in players:
                 model += flex[p] + captain[p] <= 1
-        
+            
             # Salary constraint
+            salary_cap = OptimizerConfig.SALARY_CAP
+            if attempt > 0:
+                salary_cap += 500 * attempt  # Allow slight overage on retries
+                
             model += pulp.lpSum([
                 salaries[p] * flex[p] + 1.5 * salaries[p] * captain[p]
                 for p in players
-            ]) <= OptimizerConfig.SALARY_CAP
-        
-            # Team constraint
-            for team in set(teams.values()):
-            team_players = [p for p in players if teams.get(p) == team]
-            if team_players:
-                model += pulp.lpSum([
-                    flex[p] + captain[p] for p in team_players
-                ]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM
-        
-            # Apply AI hard constraints
-            self._apply_hard_constraints(model, flex, captain, enforcement_rules, players)
-        
-            # Apply AI soft constraints as objective modifiers
+            ]) <= salary_cap
+            
+            # CRITICAL DK SHOWDOWN CONSTRAINTS
+            unique_teams = list(set(teams.values()))
+            
+            # 1. Must have at least 1 player from each team
+            for team in unique_teams:
+                team_players = [p for p in players if teams.get(p) == team]
+                if team_players:
+                    model += pulp.lpSum([
+                        flex[p] + captain[p] for p in team_players
+                    ]) >= 1
+            
+            # 2. Max players from one team (usually 5, but we'll use config)
+            max_from_team = OptimizerConfig.MAX_PLAYERS_PER_TEAM
+            if attempt > 1:
+                max_from_team = 5  # DK allows up to 5 from one team
+                
+            for team in unique_teams:
+                team_players = [p for p in players if teams.get(p) == team]
+                if team_players:
+                    model += pulp.lpSum([
+                        flex[p] + captain[p] for p in team_players
+                    ]) <= max_from_team
+            
+            # Apply AI constraints with relaxation
+            relaxation_factor = constraint_relaxation[attempt]
+            
+            # Captain constraints based on attempt
+            if attempt == 0:
+                self._apply_strict_captain_constraints(model, captain, enforcement_rules, 
+                                                      players, used_captains, synthesis, strategy)
+            elif attempt == 1:
+                self._apply_relaxed_captain_constraints(model, captain, enforcement_rules,
+                                                       players, used_captains, strategy)
+            else:
+                self._apply_minimal_captain_constraints(model, captain, players, 
+                                                       used_captains, ownership)
+            
+            # Apply other hard constraints with relaxation
+            if relaxation_factor >= 0.8:
+                self._apply_hard_constraints_with_validation(model, flex, captain, 
+                                                            enforcement_rules, players, teams)
+            
+            # Apply soft constraints
             soft_penalty = self._calculate_soft_penalties(
-                flex, captain, enforcement_rules, players
+                flex, captain, enforcement_rules, players, weight_multiplier=relaxation_factor
             )
-        
+            
             if soft_penalty:
-            model += objective - soft_penalty
-        
-            # Strategy-specific constraints
-            self._apply_strategy_constraints(
-                model, flex, captain, strategy, synthesis, players, ownership, used_captains
-            )
-        
-            # Unique captain constraint
-            if used_captains:
-                for prev_captain in used_captains:
-                    if prev_captain in players:
-                        model += captain[prev_captain] == 0
-        
+                model += objective - soft_penalty
+            
             # Solve
-            model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=5))
-        
+            timeout = 5 + (attempt * 5)
+            model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=timeout))
+            
             if pulp.LpStatus[model.status] == 'Optimal':
-                return self._extract_lineup_from_solution(
+                lineup = self._extract_lineup_from_solution(
                     flex, captain, players, salaries, points, ownership,
                     lineup_num, strategy, synthesis
                 )
+                
+                if lineup:
+                    # Verify DK requirements are met
+                    if self._verify_dk_requirements(lineup, teams):
+                        if attempt > 0:
+                            self.logger.log(f"Lineup {lineup_num} generated on attempt {attempt + 1}", "DEBUG")
+                        return lineup
+                    else:
+                        self.logger.log(f"Lineup {lineup_num} failed DK verification", "DEBUG")
             else:
-                 self.logger.log(f"No optimal solution for lineup {lineup_num}", "DEBUG")
-                 return None
-        
+                self.logger.log(f"No solution found for lineup {lineup_num} attempt {attempt + 1}", "DEBUG")
+                
         except Exception as e:
-            self.logger.log_exception(e, f"build_lineup_{lineup_num}")
-            return None
+            self.logger.log(f"Error in lineup {lineup_num} attempt {attempt + 1}: {str(e)}", "DEBUG")
+            continue
+    
+    return None
+
+def _verify_dk_requirements(self, lineup: Dict, teams: Dict) -> bool:
+    """Verify lineup meets DraftKings Showdown requirements"""
+    
+    captain = lineup.get('Captain')
+    flex_players = lineup.get('FLEX', [])
+    
+    if not captain or len(flex_players) != 5:
+        return False
+    
+    all_players = [captain] + flex_players
+    
+    # Check team representation
+    team_counts = {}
+    for player in all_players:
+        team = teams.get(player)
+        if team:
+            team_counts[team] = team_counts.get(team, 0) + 1
+    
+    # Must have at least 1 from each team
+    unique_teams = set(teams.values())
+    if len(team_counts) < len(unique_teams):
+        self.logger.log(f"Missing team representation: {team_counts}", "DEBUG")
+        return False
+    
+    # Check max from one team (5 for DK)
+    for team, count in team_counts.items():
+        if count > 5:
+            self.logger.log(f"Too many from {team}: {count}", "DEBUG")
+            return False
+    
+    return True
+
+def _apply_hard_constraints_with_validation(self, model, flex, captain, 
+                                           enforcement_rules, players, teams):
+    """Apply hard constraints while ensuring DK requirements can be met"""
+    
+    # Get unique teams
+    unique_teams = list(set(teams.values()))
+    
+    for constraint in enforcement_rules.get('hard_constraints', []):
+        rule = constraint.get('rule')
+        
+        if rule == 'must_include':
+            player = constraint.get('player')
+            if player and player in players:
+                # Check if forcing this player still allows team diversity
+                player_team = teams.get(player)
+                same_team_players = [p for p in players if teams.get(p) == player_team]
+                
+                # Only enforce if we have enough roster spots for other team
+                if len(same_team_players) <= 5:
+                    model += flex[player] + captain[player] >= 1
+                    
+        elif rule == 'must_exclude':
+            player = constraint.get('player')
+            if player and player in players:
+                # Check if excluding this player still allows minimum team requirements
+                player_team = teams.get(player)
+                same_team_players = [p for p in players if teams.get(p) == player_team and p != player]
+                
+                # Only exclude if team still has enough players
+                if len(same_team_players) >= 1:
+                    model += flex[player] + captain[player] == 0
+                    
+        elif rule == 'must_stack':
+            stack_players = constraint.get('players', [])
+            valid_stack = [p for p in stack_players if p in players]
+            
+            # Check stack doesn't violate team limits
+            stack_teams = [teams.get(p) for p in valid_stack]
+            if len(set(stack_teams)) > 0:  # Has valid team data
+                team_counts = {}
+                for t in stack_teams:
+                    team_counts[t] = team_counts.get(t, 0) + 1
+                
+                # Only enforce if doesn't exceed team limits
+                if all(count <= 4 for count in team_counts.values()):
+                    model += pulp.lpSum([
+                        flex[p] + captain[p] for p in valid_stack
+                    ]) >= len(valid_stack)
 
     def _apply_hard_constraints(self, model, flex, captain, enforcement_rules, players):
         """Apply hard AI constraints to the model"""
