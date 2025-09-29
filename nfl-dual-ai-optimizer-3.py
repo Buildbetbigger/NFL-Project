@@ -5517,7 +5517,7 @@ def main():
                 generate_button = st.button(
                     "Generate AI-Driven Lineups",
                     type="primary",
-                    use_container_'width=stretch'
+                    use_container_width=stretch
                 )
             
             if generate_button:
