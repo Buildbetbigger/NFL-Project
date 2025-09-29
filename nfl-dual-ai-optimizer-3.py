@@ -4027,10 +4027,10 @@ class AIChefGPPOptimizer:
         self._display_ai_consensus(synthesis)
 
         # Pre-generation validation
-        st.info(f"Attempting to generate {num_lineups} lineups with {field_size} settings...")
+        st.info(f"Attempting to generate {num_lineups} lineups with {self.field_size} settings...")
 
         # Quick feasibility check
-        min_salary_lineup = df.nsmallest(6, 'Salary')['Salary'].sum()
+        min_salary_lineup = self.df.nsmallest(6, 'Salary')['Salary'].sum()
         max_salary_lineup = df.nlargest(6, 'Salary')['Salary'].sum()
 
         if min_salary_lineup > 50000:
