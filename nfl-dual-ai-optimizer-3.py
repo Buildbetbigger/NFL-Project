@@ -4454,10 +4454,6 @@
                             flex[p] + captain[p] for p in valid_stack
                         ]) >= len(valid_stack)
 
-                        def _apply_strict_captain_constraints(self, model, captain, enforcement_rules,
-                                          players, used_captains, synthesis, strategy):
-        """Apply strict captain constraints for first attempt"""
-
         # Get valid captain candidates based on strategy
         valid_captains = []
 
@@ -4484,20 +4480,12 @@
         if valid_captains:
             model += pulp.lpSum([captain[c] for c in valid_captains]) == 1
 
-    def _apply_relaxed_captain_constraints(self, model, captain, enforcement_rules,
-                                          players, used_captains, strategy):
-        """Apply relaxed captain constraints for second attempt"""
-
         # Expand captain pool to include top projected players
         top_players = self.df.nlargest(10, 'Projected_Points')['Player'].tolist()
         valid_captains = [p for p in top_players if p in players and p not in used_captains]
 
         if valid_captains:
             model += pulp.lpSum([captain[c] for c in valid_captains]) == 1
-
-    def _apply_minimal_captain_constraints(self, model, captain, players,
-                                          used_captains, ownership):
-        """Apply minimal captain constraints for final attempt"""
 
         # Just avoid used captains and super high ownership
         available_captains = []
@@ -4509,9 +4497,6 @@
 
         if available_captains:
             model += pulp.lpSum([captain[c] for c in available_captains]) == 1
-
-    def _verify_dk_requirements(self, lineup: Dict, teams: Dict) -> bool:
-        """Verify lineup meets DraftKings Showdown requirements"""
 
         captain = lineup.get('Captain')
         flex_players = lineup.get('FLEX', [])
@@ -4541,10 +4526,6 @@
                         return False
 
                 return True
-
-            def _apply_hard_constraints_with_validation(self, model, flex, captain,
-                                                       enforcement_rules, players, teams):
-                """Apply hard constraints while ensuring DK requirements can be met"""
 
                 # Get unique teams
                 unique_teams = list(set(teams.values()))
