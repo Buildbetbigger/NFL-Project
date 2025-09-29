@@ -4092,6 +4092,29 @@ class AIChefGPPOptimizer:
         
         if len(all_lineups) < num_lineups:
             st.warning(f"Generated {len(all_lineups)}/{num_lineups} AI-compliant lineups")
+            
+            # Add detailed diagnostics
+            with st.expander("Why couldn't all lineups be generated?", expanded=True):
+                st.write("**Possible issues:**")
+        
+                # Check salary cap issues
+                avg_salary_used = sum([lineup['Salary'] for lineup in all_lineups]) / max(len(all_lineups), 1)
+                if avg_salary_used > 48000:
+                    st.write("• Salary cap is very tight - most lineups using $48k+")
+                # Check captain diversity
+                if len(all_lineups) > 0:
+                    unique_captains = len(set([lineup['Captain'] for lineup in all_lineups]))
+                    st.write(f"• Only {unique_captains} unique captains available")
+                    # Check AI constraints
+                if enforcement_rules.get('hard_constraints'):
+                    st.write(f"• {len(enforcement_rules['hard_constraints'])} hard AI constraints active")
+                    # Show which constraints are causing issues
+                    if hasattr(self, 'enforcement_engine'):
+                        summary = self.enforcement_engine.get_enforcement_summary()
+                        if summary['common_violations']:
+                            st.write("**Most common constraint violations:**")
+                            for violation, count in summary['common_violations'][:3]:
+                                st.write(f"  - {violation}: {count} times")
         else:
             st.success(f"Generated {len(all_lineups)} AI-driven lineups in {total_time:.1f}s!")
         
