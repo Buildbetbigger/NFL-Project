@@ -3449,7 +3449,7 @@ class ClaudeAPIManager:
             
             # Make API call with appropriate model
             message = self.client.messages.create(
-                model="claude-3-opus-20240229",  # Use most capable model
+                model="claude-3-sonnet-20241022",  # Use most capable model
                 max_tokens=2000,  # Increased for comprehensive responses
                 temperature=0.7,
                 system="""You are an expert DFS (Daily Fantasy Sports) optimizer specializing in NFL tournament strategy. 
