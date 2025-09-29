@@ -4031,7 +4031,7 @@ class AIChefGPPOptimizer:
 
         # Quick feasibility check
         min_salary_lineup = self.df.nsmallest(6, 'Salary')['Salary'].sum()
-        max_salary_lineup = df.nlargest(6, 'Salary')['Salary'].sum()
+        max_salary_lineup = self.df.nlargest(6, 'Salary')['Salary'].sum()
 
         if min_salary_lineup > 50000:
             st.error("⚠️ Cannot create valid lineup - even cheapest 6 players exceed salary cap!")
