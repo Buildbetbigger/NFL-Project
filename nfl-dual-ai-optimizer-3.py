@@ -4453,6 +4453,143 @@ def _apply_hard_constraints_with_validation(self, model, flex, captain,
                         flex[p] + captain[p] for p in valid_stack
                     ]) >= len(valid_stack)
 
+                    def _apply_strict_captain_constraints(self, model, captain, enforcement_rules, 
+                                      players, used_captains, synthesis, strategy):
+    """Apply strict captain constraints for first attempt"""
+    
+    # Get valid captain candidates based on strategy
+    valid_captains = []
+    
+    # First check AI enforcement rules
+    for constraint in enforcement_rules.get('hard_constraints', []):
+        if constraint.get('rule') in ['captain_selection', 'captain_from_list']:
+            rule_captains = [p for p in constraint.get('players', []) if p in players]
+            valid_captains.extend(rule_captains)
+    
+    # Then check synthesis captain strategy
+    if not valid_captains and synthesis:
+        captain_strategy = synthesis.get('captain_strategy', {})
+        if strategy in ['ai_consensus', 'AI_CONSENSUS']:
+            valid_captains = [c for c, level in captain_strategy.items() 
+                            if level == 'consensus' and c in players]
+        elif strategy in ['ai_majority', 'AI_MAJORITY']:
+            valid_captains = [c for c, level in captain_strategy.items() 
+                            if level in ['consensus', 'majority'] and c in players]
+    
+    # Remove already used captains
+    valid_captains = [c for c in valid_captains if c not in used_captains]
+    
+    # Apply constraint if we have valid captains
+    if valid_captains:
+        model += pulp.lpSum([captain[c] for c in valid_captains]) == 1
+
+def _apply_relaxed_captain_constraints(self, model, captain, enforcement_rules,
+                                      players, used_captains, strategy):
+    """Apply relaxed captain constraints for second attempt"""
+    
+    # Expand captain pool to include top projected players
+    top_players = self.df.nlargest(10, 'Projected_Points')['Player'].tolist()
+    valid_captains = [p for p in top_players if p in players and p not in used_captains]
+    
+    if valid_captains:
+        model += pulp.lpSum([captain[c] for c in valid_captains]) == 1
+
+def _apply_minimal_captain_constraints(self, model, captain, players, 
+                                      used_captains, ownership):
+    """Apply minimal captain constraints for final attempt"""
+    
+    # Just avoid used captains and super high ownership
+    available_captains = []
+    for p in players:
+        if p not in used_captains:
+            player_own = ownership.get(p, 10)
+            if player_own < 50:  # Avoid only extreme chalk
+                available_captains.append(p)
+    
+    if available_captains:
+        model += pulp.lpSum([captain[c] for c in available_captains]) == 1
+
+def _verify_dk_requirements(self, lineup: Dict, teams: Dict) -> bool:
+    """Verify lineup meets DraftKings Showdown requirements"""
+    
+    captain = lineup.get('Captain')
+    flex_players = lineup.get('FLEX', [])
+    
+    if not captain or len(flex_players) != 5:
+        return False
+    
+    all_players = [captain] + flex_players
+    
+    # Check team representation
+    team_counts = {}
+    for player in all_players:
+        team = teams.get(player)
+        if team:
+            team_counts[team] = team_counts.get(team, 0) + 1
+    
+    # Must have at least 1 from each team
+    unique_teams = set(teams.values())
+    if len(team_counts) < len(unique_teams):
+        self.logger.log(f"Missing team representation: {team_counts}", "DEBUG")
+        return False
+    
+    # Check max from one team (5 for DK)
+    for team, count in team_counts.items():
+        if count > 5:
+            self.logger.log(f"Too many from {team}: {count}", "DEBUG")
+            return False
+    
+    return True
+
+def _apply_hard_constraints_with_validation(self, model, flex, captain, 
+                                           enforcement_rules, players, teams):
+    """Apply hard constraints while ensuring DK requirements can be met"""
+    
+    # Get unique teams
+    unique_teams = list(set(teams.values()))
+    
+    for constraint in enforcement_rules.get('hard_constraints', []):
+        rule = constraint.get('rule')
+        
+        if rule == 'must_include':
+            player = constraint.get('player')
+            if player and player in players:
+                # Check if forcing this player still allows team diversity
+                player_team = teams.get(player)
+                same_team_players = [p for p in players if teams.get(p) == player_team]
+                
+                # Only enforce if we have enough roster spots for other team
+                if len(same_team_players) <= 5:
+                    model += flex[player] + captain[player] >= 1
+                    
+        elif rule == 'must_exclude':
+            player = constraint.get('player')
+            if player and player in players:
+                # Check if excluding this player still allows minimum team requirements
+                player_team = teams.get(player)
+                same_team_players = [p for p in players if teams.get(p) == player_team and p != player]
+                
+                # Only exclude if team still has enough players
+                if len(same_team_players) >= 1:
+                    model += flex[player] + captain[player] == 0
+                    
+        elif rule == 'must_stack':
+            stack_players = constraint.get('players', [])
+            valid_stack = [p for p in stack_players if p in players]
+            
+            # Check stack doesn't violate team limits
+            stack_teams = [teams.get(p) for p in valid_stack]
+            if len(set(stack_teams)) > 0:  # Has valid team data
+                team_counts = {}
+                for t in stack_teams:
+                    team_counts[t] = team_counts.get(t, 0) + 1
+                
+                # Only enforce if doesn't exceed team limits
+                if all(count <= 4 for count in team_counts.values()):
+                    model += pulp.lpSum([
+                        flex[p] + captain[p] for p in valid_stack
+                    ]) >= len(valid_stack)
+
     def _apply_hard_constraints(self, model, flex, captain, enforcement_rules, players):
         """Apply hard AI constraints to the model"""
         
