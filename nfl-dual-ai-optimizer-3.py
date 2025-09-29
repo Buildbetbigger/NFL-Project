@@ -4250,85 +4250,85 @@ class AIChefGPPOptimizer:
         return all_lineups
 
     def _build_ai_enforced_lineup(self, lineup_num: int, strategy: str, players: List[str],
-                                 salaries: Dict, points: Dict, ownership: Dict,
-                                 positions: Dict, teams: Dict, enforcement_rules: Dict,
-                                 synthesis: Dict, used_captains: Set[str]) -> Optional[Dict]:
+                             salaries: Dict, points: Dict, ownership: Dict,
+                             positions: Dict, teams: Dict, enforcement_rules: Dict,
+                             synthesis: Dict, used_captains: Set[str]) -> Optional[Dict]:
         """Build a single lineup enforcing AI rules"""
-        
+    
         try:
             model = pulp.LpProblem(f"AI_Lineup_{lineup_num}_{strategy}", pulp.LpMaximize)
-            
+        
             # Decision variables
             flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
             captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
-            
+        
             # AI-modified objective function
             player_weights = synthesis.get('player_rankings', {})
-            
+        
             objective = pulp.lpSum([
                 points[p] * player_weights.get(p, 1.0) * flex[p] +
                 1.5 * points[p] * player_weights.get(p, 1.0) * captain[p]
                 for p in players
             ])
-            
+        
             model += objective
-            
+        
             # Basic constraints
             model += pulp.lpSum(captain.values()) == 1
             model += pulp.lpSum(flex.values()) == 5
-            
+        
             # Player can't be both captain and flex
             for p in players:
                 model += flex[p] + captain[p] <= 1
-            
+        
             # Salary constraint
             model += pulp.lpSum([
                 salaries[p] * flex[p] + 1.5 * salaries[p] * captain[p]
                 for p in players
             ]) <= OptimizerConfig.SALARY_CAP
-            
+        
             # Team constraint
             for team in set(teams.values()):
-                team_players = [p for p in players if teams.get(p) == team]
-                if team_players:
-                    model += pulp.lpSum([
-                        flex[p] + captain[p] for p in team_players
-                    ]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM
-            
+            team_players = [p for p in players if teams.get(p) == team]
+            if team_players:
+                model += pulp.lpSum([
+                    flex[p] + captain[p] for p in team_players
+                ]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM
+        
             # Apply AI hard constraints
             self._apply_hard_constraints(model, flex, captain, enforcement_rules, players)
-            
+        
             # Apply AI soft constraints as objective modifiers
             soft_penalty = self._calculate_soft_penalties(
                 flex, captain, enforcement_rules, players
             )
-            
+        
             if soft_penalty:
-                model += objective - soft_penalty
-            
+            model += objective - soft_penalty
+        
             # Strategy-specific constraints
             self._apply_strategy_constraints(
                 model, flex, captain, strategy, synthesis, players, ownership, used_captains
             )
-            
+        
             # Unique captain constraint
             if used_captains:
                 for prev_captain in used_captains:
                     if prev_captain in players:
                         model += captain[prev_captain] == 0
-            
+        
             # Solve
             model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=5))
-            
+        
             if pulp.LpStatus[model.status] == 'Optimal':
                 return self._extract_lineup_from_solution(
                     flex, captain, players, salaries, points, ownership,
                     lineup_num, strategy, synthesis
                 )
             else:
-                self.logger.log(f"No optimal solution for lineup {lineup_num}", "DEBUG")
-                return None
-            
+                 self.logger.log(f"No optimal solution for lineup {lineup_num}", "DEBUG")
+                 return None
+        
         except Exception as e:
             self.logger.log_exception(e, f"build_lineup_{lineup_num}")
             return None
