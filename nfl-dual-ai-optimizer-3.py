@@ -1,6 +1,4 @@
 
-# -*- coding: utf-8 -*-
-"""
 NFL DFS AI-Driven Optimizer with ML Enhancements
 Enhanced Version - No Historical Data Required
 """
@@ -489,46 +487,65 @@ class PerformanceMetrics:
         }
 
 # ============================================================================
-# PART 2: SINGLETON UTILITIES, LOGGING & ML SIMULATION ENGINES
+# PART 2: SINGLETON UTILITIES, LOGGING & ML ENGINES (STREAMLIT-COMPATIBLE)
 # ============================================================================
 
 import re
 
 # ============================================================================
-# GLOBAL SINGLETONS - Proper Singleton Implementation
+# STREAMLIT-COMPATIBLE GLOBAL SINGLETONS
 # ============================================================================
 
-_global_logger = None
-_performance_monitor = None
-_ai_tracker = None
-_singleton_lock = threading.Lock()
-
 def get_logger():
-    """Thread-safe singleton logger"""
-    global _global_logger
-    if _global_logger is None:
-        with _singleton_lock:
-            if _global_logger is None:
-                _global_logger = GlobalLogger()
-    return _global_logger
+    """
+    Streamlit-compatible singleton logger
+
+    Uses st.session_state when in Streamlit, falls back to instance attribute otherwise
+    """
+    try:
+        import streamlit as st
+        if 'logger' not in st.session_state:
+            st.session_state.logger = GlobalLogger()
+        return st.session_state.logger
+    except (ImportError, RuntimeError):
+        # Fallback for non-Streamlit usage (CLI, testing, Jupyter)
+        if not hasattr(get_logger, '_instance'):
+            get_logger._instance = GlobalLogger()
+        return get_logger._instance
 
 def get_performance_monitor():
-    """Thread-safe singleton performance monitor"""
-    global _performance_monitor
-    if _performance_monitor is None:
-        with _singleton_lock:
-            if _performance_monitor is None:
-                _performance_monitor = PerformanceMonitor()
-    return _performance_monitor
+    """
+    Streamlit-compatible singleton performance monitor
+
+    Uses st.session_state when in Streamlit, falls back to instance attribute otherwise
+    """
+    try:
+        import streamlit as st
+        if 'perf_monitor' not in st.session_state:
+            st.session_state.perf_monitor = PerformanceMonitor()
+        return st.session_state.perf_monitor
+    except (ImportError, RuntimeError):
+        # Fallback for non-Streamlit usage
+        if not hasattr(get_performance_monitor, '_instance'):
+            get_performance_monitor._instance = PerformanceMonitor()
+        return get_performance_monitor._instance
 
 def get_ai_tracker():
-    """Thread-safe singleton AI decision tracker"""
-    global _ai_tracker
-    if _ai_tracker is None:
-        with _singleton_lock:
-            if _ai_tracker is None:
-                _ai_tracker = AIDecisionTracker()
-    return _ai_tracker
+    """
+    Streamlit-compatible singleton AI decision tracker
+
+    Uses st.session_state when in Streamlit, falls back to instance attribute otherwise
+    """
+    try:
+        import streamlit as st
+        if 'ai_tracker' not in st.session_state:
+            st.session_state.ai_tracker = AIDecisionTracker()
+        return st.session_state.ai_tracker
+    except (ImportError, RuntimeError):
+        # Fallback for non-Streamlit usage
+        if not hasattr(get_ai_tracker, '_instance'):
+            get_ai_tracker._instance = AIDecisionTracker()
+        return get_ai_tracker._instance
 
 # ============================================================================
 # GLOBAL LOGGER WITH ENHANCED ERROR TRACKING
@@ -1177,7 +1194,7 @@ class AIDecisionTracker:
         return df_adjusted
 
 # ============================================================================
-# MONTE CARLO SIMULATION ENGINE (NEW)
+# MONTE CARLO SIMULATION ENGINE
 # ============================================================================
 
 class MonteCarloSimulationEngine:
@@ -1431,7 +1448,7 @@ class MonteCarloSimulationEngine:
         return df.sort_values(metric, ascending=False)
 
 # ============================================================================
-# GENETIC ALGORITHM OPTIMIZER (NEW)
+# GENETIC ALGORITHM OPTIMIZER
 # ============================================================================
 
 @dataclass
@@ -5116,12 +5133,12 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
         return data
 
 # ============================================================================
-# PART 6: MAIN OPTIMIZER ENGINE
+# PART 6: MAIN OPTIMIZER ENGINE (WITH STREAMLIT PROGRESS SUPPORT)
 # ============================================================================
 
 class ShowdownOptimizer:
     """
-    Enhanced main optimizer with ML integration, GA support, and simulation capabilities
+    Enhanced main optimizer with ML integration, GA support, simulation capabilities, and Streamlit progress support
 
     DFS Value: CRITICAL - Core engine that generates tournament-winning lineups
     """
@@ -5166,9 +5183,10 @@ class ShowdownOptimizer:
                 use_api: bool = True,
                 randomness: float = 0.15,
                 use_genetic: bool = False,
-                use_simulation: bool = True) -> pd.DataFrame:
+                use_simulation: bool = True,
+                progress_callback: Optional[callable] = None) -> pd.DataFrame:
         """
-        Main optimization method with comprehensive workflow
+        Main optimization method with comprehensive workflow and progress tracking
 
         DFS Value: CRITICAL - Orchestrates entire optimization process
 
@@ -5182,12 +5200,17 @@ class ShowdownOptimizer:
             randomness: Randomness factor for diversity
             use_genetic: Force genetic algorithm usage
             use_simulation: Use Monte Carlo simulation
+            progress_callback: Optional callback function(progress: float, message: str)
 
         Returns:
             DataFrame of optimized lineups
         """
         try:
             self.perf_monitor.start_timer("total_optimization")
+
+            # Progress: Starting
+            if progress_callback:
+                progress_callback(0.0, "Initializing optimization...")
 
             # Phase 1: Data validation and preparation
             self.logger.log(
@@ -5196,20 +5219,31 @@ class ShowdownOptimizer:
                 "INFO"
             )
 
+            if progress_callback:
+                progress_callback(0.05, "Validating player data...")
+
             df = self._validate_and_prepare_data(df)
             self.df = df
             self.game_info = game_info
 
             # Phase 2: Initialize ML engines if requested
             if use_simulation:
+                if progress_callback:
+                    progress_callback(0.15, "Initializing ML engines...")
                 self._initialize_ml_engines(df, game_info)
 
             # Phase 3: Get AI recommendations
+            if progress_callback:
+                progress_callback(0.25, "Getting AI recommendations...")
+
             recommendations = self._get_ai_recommendations(
                 df, game_info, field_size, use_api
             )
 
             # Phase 4: Create enforcement rules
+            if progress_callback:
+                progress_callback(0.40, "Creating enforcement rules...")
+
             enforcement_rules = self._create_enforcement_rules(
                 recommendations, ai_enforcement_level
             )
@@ -5219,23 +5253,35 @@ class ShowdownOptimizer:
             use_genetic = use_genetic or field_config.get('use_genetic', False)
 
             # Phase 6: Generate lineups
+            if progress_callback:
+                if use_genetic:
+                    progress_callback(0.50, "Running genetic algorithm...")
+                else:
+                    progress_callback(0.50, "Running linear programming...")
+
             if use_genetic:
                 lineups = self._optimize_with_genetic_algorithm(
                     df, game_info, num_lineups, field_size,
-                    enforcement_rules, recommendations
+                    enforcement_rules, recommendations, progress_callback
                 )
             else:
                 lineups = self._optimize_with_linear_programming(
                     df, game_info, num_lineups, field_size,
-                    enforcement_rules, randomness, recommendations
+                    enforcement_rules, randomness, recommendations, progress_callback
                 )
 
             # Phase 7: Post-process and enhance
+            if progress_callback:
+                progress_callback(0.85, "Post-processing lineups...")
+
             lineups_df = self._post_process_lineups(
                 lineups, df, recommendations, use_simulation
             )
 
             # Phase 8: Store results
+            if progress_callback:
+                progress_callback(0.95, "Finalizing results...")
+
             self.lineups_generated = lineups
             self._store_optimization_metadata(
                 num_lineups, field_size, ai_enforcement_level,
@@ -5243,6 +5289,10 @@ class ShowdownOptimizer:
             )
 
             elapsed = self.perf_monitor.stop_timer("total_optimization")
+
+            # Complete
+            if progress_callback:
+                progress_callback(1.0, f"Complete! Generated {len(lineups_df)} lineups in {elapsed:.1f}s")
 
             self.logger.log(
                 f"Optimization complete: {len(lineups_df)} lineups in {elapsed:.2f}s",
@@ -5253,6 +5303,8 @@ class ShowdownOptimizer:
 
         except Exception as e:
             self.logger.log_exception(e, "optimize")
+            if progress_callback:
+                progress_callback(1.0, f"Error: {str(e)}")
             return pd.DataFrame()
 
     def _validate_and_prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -5402,8 +5454,9 @@ class ShowdownOptimizer:
     def _optimize_with_genetic_algorithm(self, df: pd.DataFrame, game_info: Dict,
                                         num_lineups: int, field_size: str,
                                         enforcement_rules: Dict,
-                                        recommendations: Dict) -> List[Dict]:
-        """Optimize using genetic algorithm"""
+                                        recommendations: Dict,
+                                        progress_callback: Optional[callable] = None) -> List[Dict]:
+        """Optimize using genetic algorithm with progress tracking"""
         self.logger.log("Using Genetic Algorithm optimization", "INFO")
 
         try:
@@ -5421,8 +5474,12 @@ class ShowdownOptimizer:
                 df, game_info, self.mc_engine, ga_config
             )
 
-            # Determine fitness mode based on field size
+            # Determine fitness mode
             fitness_mode = self._determine_fitness_mode(field_size)
+
+            # Progress updates during GA
+            if progress_callback:
+                progress_callback(0.55, "Evolving population...")
 
             # Run optimization
             ga_results = self.ga_optimizer.optimize(
@@ -5430,6 +5487,9 @@ class ShowdownOptimizer:
                 fitness_mode=fitness_mode,
                 verbose=True
             )
+
+            if progress_callback:
+                progress_callback(0.80, "GA complete, finalizing lineups...")
 
             # Convert GA results to lineup format
             lineups = []
@@ -5450,9 +5510,11 @@ class ShowdownOptimizer:
             self.logger.log_exception(e, "genetic_algorithm_optimization")
             # Fallback to LP
             self.logger.log("Falling back to Linear Programming", "WARNING")
+            if progress_callback:
+                progress_callback(0.55, "GA failed, falling back to LP...")
             return self._optimize_with_linear_programming(
                 df, game_info, num_lineups, field_size,
-                enforcement_rules, 0.15, recommendations
+                enforcement_rules, 0.15, recommendations, progress_callback
             )
 
     def _determine_fitness_mode(self, field_size: str) -> FitnessMode:
@@ -5470,8 +5532,9 @@ class ShowdownOptimizer:
     def _optimize_with_linear_programming(self, df: pd.DataFrame, game_info: Dict,
                                          num_lineups: int, field_size: str,
                                          enforcement_rules: Dict, randomness: float,
-                                         recommendations: Dict) -> List[Dict]:
-        """Optimize using Linear Programming with three-tier relaxation"""
+                                         recommendations: Dict,
+                                         progress_callback: Optional[callable] = None) -> List[Dict]:
+        """Optimize using Linear Programming with three-tier relaxation and progress tracking"""
         self.logger.log("Using Linear Programming optimization", "INFO")
 
         lineups = []
@@ -5479,10 +5542,13 @@ class ShowdownOptimizer:
 
         # Three-tier attempt structure
         max_attempts_per_tier = [
-            num_lineups // 2,      # Tier 1: Strict constraints
-            num_lineups // 3,      # Tier 2: Relaxed AI constraints
-            num_lineups - (num_lineups // 2 + num_lineups // 3)  # Tier 3: Minimal constraints
+            num_lineups // 2,
+            num_lineups // 3,
+            num_lineups - (num_lineups // 2 + num_lineups // 3)
         ]
+
+        total_target = sum(max_attempts_per_tier)
+        lineups_so_far = 0
 
         for tier in range(3):
             tier_target = max_attempts_per_tier[tier]
@@ -5506,12 +5572,21 @@ class ShowdownOptimizer:
                 if lineup:
                     lineups.append(lineup)
                     tier_generated += 1
+                    lineups_so_far += 1
+
+                    # Progress update
+                    if progress_callback:
+                        progress_pct = 0.50 + (lineups_so_far / total_target) * 0.30
+                        progress_callback(
+                            progress_pct,
+                            f"Generated {lineups_so_far}/{num_lineups} lineups (Tier {tier+1})..."
+                        )
 
                     # Track used players for diversity
                     lineup_players = [lineup['Captain']] + lineup['FLEX']
                     used_players.update(lineup_players)
 
-                # Decay randomness for more diversity in later attempts
+                # Decay randomness for more diversity
                 if tier_attempts % 5 == 0:
                     randomness = min(0.25, randomness * 1.1)
 
@@ -5672,15 +5747,6 @@ class ShowdownOptimizer:
         """Add diversity constraints based on previously generated lineups"""
         if not used_players or tier >= 2:
             return
-
-        # Penalize overused players
-        overused_threshold = 3 if tier == 0 else 5
-
-        for player in used_players:
-            if player in player_vars:
-                # Soft constraint: reduce likelihood of reuse
-                # This is done through modified objective rather than hard constraint
-                pass
 
     def _extract_lineup_from_solution(self, df: pd.DataFrame,
                                      player_vars: Dict,
