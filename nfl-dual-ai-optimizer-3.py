@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 """
 DFS Showdown Optimizer - Configuration, Data Models, and Core Infrastructure
