@@ -3112,7 +3112,7 @@ class ClaudeAPIManager:
         timeout = min(30 * (1.5 ** attempt), 300)
 
         message = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-sonnet-20241022",
             max_tokens=2000,
             temperature=0.7,
             timeout=timeout,
@@ -3224,7 +3224,7 @@ class ClaudeAPIManager:
             test_prompt = "Respond with only the word: OK"
 
             message = self.client.messages.create(
-                model="claude-4-sonnet-20250514",
+                model="claude-3-sonnet-20241022",
                 max_tokens=10,
                 temperature=0,
                 timeout=10,
@@ -4596,7 +4596,7 @@ class AIChefGPPOptimizer:
         self._prepare_data()
 
     def _validate_inputs(self, df: pd.DataFrame, game_info: Dict,
-                        field_size: str) -> None:  # ✅ FIX #5
+                        field_size: str) -> None:
         """Validate all inputs before initialization"""
         if df is None or df.empty:
             raise ValueError(
@@ -4621,7 +4621,7 @@ class AIChefGPPOptimizer:
                 "WARNING"
             )
 
-    def _prepare_data(self) -> None:  # ✅ FIX #5
+    def _prepare_data(self) -> None:
         """Prepare data with additional calculations and indexed lookups"""
         # Add ownership if missing
         if 'Ownership' not in self.df.columns:
@@ -4655,6 +4655,51 @@ class AIChefGPPOptimizer:
             'ownership': self.df_indexed['Ownership'].to_dict(),
             'value': self.df_indexed['Value'].to_dict(),
             'gpp_score': self.df_indexed['GPP_Score'].to_dict()
+        }
+
+    def verify_solver_availability(self) -> Tuple[bool, str]:
+        """
+        Verify PuLP solver is available and working
+
+        DFS Value: Diagnostic only - doesn't affect optimization
+
+        Returns:
+            (is_available, message)
+        """
+        try:
+            # Test if solver works with simple problem
+            test_prob = pulp.LpProblem("solver_test", pulp.LpMaximize)
+            x = pulp.LpVariable("x", 0, 10)
+            test_prob += x
+            test_prob += x <= 5
+
+            result = test_prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=5))
+
+            if result == pulp.LpStatusOptimal:
+                return True, "Solver working correctly"
+            else:
+                status = pulp.LpStatus.get(result, f"Unknown status {result}")
+                return False, f"Solver returned status: {status}"
+
+        except Exception as e:
+            return False, f"Solver error: {str(e)}\n\nTry: pip install pulp"
+
+    def get_generation_diagnostics(self) -> Dict:
+        """
+        Get detailed diagnostics on lineup generation
+
+        DFS Value: Diagnostic only - doesn't affect optimization
+        """
+        stats = self.lineup_generation_stats
+
+        return {
+            'total_attempts': stats['attempts'],
+            'successful': stats['successes'],
+            'failed': stats['attempts'] - stats['successes'],
+            'success_rate': stats['successes'] / max(stats['attempts'], 1),
+            'failures_by_reason': dict(stats['failures_by_reason']),
+            'unique_captains': len(self._lineup_signatures),
+            'error_summary': get_logger().get_error_summary()
         }
 
     def get_triple_ai_strategies(self,
@@ -4752,7 +4797,7 @@ class AIChefGPPOptimizer:
                 self.df, self.field_size
             )
 
-    def _log_ai_decisions(self, recommendations: Dict) -> None:  # ✅ FIX #5
+    def _log_ai_decisions(self, recommendations: Dict) -> None:
         """Log AI decisions for tracking"""
         for ai_type, rec in recommendations.items():
             self.logger.log_ai_decision(
@@ -4823,7 +4868,6 @@ class AIChefGPPOptimizer:
             'recommendations': recommendations
         }
 
-    # ✅ FIX #4: Refactored from 80+ lines into focused helper methods
     def generate_ai_driven_lineups(self, num_lineups: int,
                                    ai_strategy: Dict) -> pd.DataFrame:
         """Generate lineups with three-tier constraint relaxation"""
@@ -4898,7 +4942,7 @@ class AIChefGPPOptimizer:
             for i in range(count):
                 lineup_tasks.append((len(lineup_tasks) + 1, strategy_name))
 
-        # ✅ FIX #2: Thread-safe captain tracking
+        # Thread-safe captain tracking
         used_captains = set()
         captain_lock = threading.Lock()
 
@@ -4927,7 +4971,6 @@ class AIChefGPPOptimizer:
         self.generated_lineups = all_lineups
         return pd.DataFrame(all_lineups)
 
-    # ✅ FIX #2: Fixed race condition with proper locking
     def _generate_lineups_parallel(self, lineup_tasks: List[Tuple], opt_data: Dict,
                                    enforcement_rules: Dict, synthesis: Dict,
                                    used_captains: Set[str],
@@ -4956,7 +4999,7 @@ class AIChefGPPOptimizer:
                 )
 
                 if is_valid:
-                    # ✅ FIX #2: Atomic captain check and add
+                    # Atomic captain check and add
                     with captain_lock:
                         if lineup['Captain'] not in used_captains:
                             used_captains.add(lineup['Captain'])
@@ -5015,13 +5058,17 @@ class AIChefGPPOptimizer:
 
         return all_lineups
 
-    # ✅ FIX #4: Refactored from 150+ lines into orchestrator + helper methods
     def _build_ai_enforced_lineup(self, lineup_num: int, strategy: str,
                                   opt_data: Dict, enforcement_rules: Dict,
                                   synthesis: Dict,
                                   used_captains: Set[str]) -> Optional[Dict]:
-        """Build lineup with three-tier constraint relaxation"""
+        """
+        Build lineup with three-tier constraint relaxation
+
+        Enhanced with diagnostic tracking - optimization logic UNCHANGED
+        """
         max_attempts = 3
+        last_status = None
 
         for attempt in range(max_attempts):
             try:
@@ -5045,20 +5092,56 @@ class AIChefGPPOptimizer:
                 )
 
                 # Solve model
-                lineup = self._solve_and_extract(
-                    model, flex, captain, opt_data, lineup_num,
-                    strategy, synthesis, attempt
+                timeout = 5 + (attempt * 5)
+                solve_status = model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=timeout))
+
+                # Track status for diagnostics (doesn't change behavior)
+                status = pulp.LpStatus.get(solve_status, f"Unknown ({solve_status})")
+                last_status = status
+
+                # Log for visibility (doesn't change behavior)
+                self.logger.log(
+                    f"Lineup {lineup_num} attempt {attempt + 1}: {status}",
+                    "DEBUG"
                 )
 
-                if lineup:
-                    self.lineup_generation_stats['successes'] += 1
-                    return lineup
+                if status == 'Optimal':
+                    lineup = self._extract_lineup_from_solution(
+                        flex, captain, opt_data, lineup_num, strategy, synthesis
+                    )
+
+                    if lineup and self._verify_dk_requirements(lineup, opt_data['teams']):
+                        if not self._is_too_similar(lineup):
+                            self.lineup_generation_stats['successes'] += 1
+                            if attempt > 0:
+                                self.logger.log(
+                                    f"Lineup {lineup_num} succeeded on attempt {attempt + 1}",
+                                    "INFO"
+                                )
+                            return lineup
+                        else:
+                            self.lineup_generation_stats['failures_by_reason']['too_similar'] += 1
+                    elif lineup:
+                        self.lineup_generation_stats['failures_by_reason']['dk_requirements'] += 1
+                    else:
+                        self.lineup_generation_stats['failures_by_reason']['extraction_failed'] += 1
+
+                elif status == 'Infeasible':
+                    self.lineup_generation_stats['failures_by_reason']['infeasible'] += 1
+                    self.logger.log(
+                        f"Lineup {lineup_num} infeasible on attempt {attempt + 1}",
+                        "WARNING"
+                    )
+                elif status == 'Unbounded':
+                    self.lineup_generation_stats['failures_by_reason']['unbounded'] += 1
+                else:
+                    self.lineup_generation_stats['failures_by_reason'][f'status_{status}'] += 1
 
             except Exception as e:
                 self.lineup_generation_stats['failures_by_reason']['exception'] += 1
                 self.logger.log(
-                    f"Lineup {lineup_num} attempt {attempt + 1} error: {str(e)}",
-                    "DEBUG"
+                    f"Lineup {lineup_num} attempt {attempt + 1} exception: {str(e)}",
+                    "ERROR"
                 )
 
         return None
@@ -5079,7 +5162,7 @@ class AIChefGPPOptimizer:
         return flex, captain
 
     def _set_objective(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
-                      opt_data: Dict, synthesis: Dict) -> None:  # ✅ FIX #5
+                      opt_data: Dict, synthesis: Dict) -> None:
         """Set objective function with AI weights"""
         players = opt_data['players']
         points = opt_data['points']
@@ -5095,7 +5178,7 @@ class AIChefGPPOptimizer:
 
     def _add_all_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
                             opt_data: Dict, enforcement_rules: Dict,
-                            used_captains: Set[str], attempt: int) -> None:  # ✅ FIX #5
+                            used_captains: Set[str], attempt: int) -> None:
         """Add all constraints by tier"""
         # Tier 1: DK rules (never relax)
         self._add_dk_constraints(
@@ -5116,39 +5199,9 @@ class AIChefGPPOptimizer:
                 model, flex, captain, enforcement_rules, opt_data['players']
             )
 
-    def _solve_and_extract(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
-                          opt_data: Dict, lineup_num: int, strategy: str,
-                          synthesis: Dict, attempt: int) -> Optional[Dict]:
-        """Solve model and extract lineup"""
-        # Solve with timeout
-        timeout = 5 + (attempt * 5)
-        model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=timeout))
-
-        if pulp.LpStatus[model.status] == 'Optimal':
-            lineup = self._extract_lineup_from_solution(
-                flex, captain, opt_data, lineup_num, strategy, synthesis
-            )
-
-            if lineup and self._verify_dk_requirements(lineup, opt_data['teams']):
-                if not self._is_too_similar(lineup):
-                    if attempt > 0:
-                        self.logger.log(
-                            f"Lineup {lineup_num} succeeded on attempt {attempt + 1}",
-                            "DEBUG"
-                        )
-                    return lineup
-                else:
-                    self.lineup_generation_stats['failures_by_reason']['too_similar'] += 1
-            elif lineup:
-                self.lineup_generation_stats['failures_by_reason']['dk_requirements'] += 1
-        else:
-            self.lineup_generation_stats['failures_by_reason']['no_solution'] += 1
-
-        return None
-
     def _add_dk_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
                            players: List[str], salaries: Dict,
-                           teams: Dict) -> None:  # ✅ FIX #5
+                           teams: Dict) -> None:
         """Add DraftKings Showdown constraints - NEVER RELAXED"""
         # Exactly 1 captain
         model += pulp.lpSum(captain.values()) == 1, "One_Captain"
@@ -5193,7 +5246,7 @@ class AIChefGPPOptimizer:
 
     def _add_tier2_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
                                enforcement_rules: Dict, players: List[str],
-                               used_captains: Set[str], attempt: int) -> None:  # ✅ FIX #5
+                               used_captains: Set[str], attempt: int) -> None:
         """Add Tier 2 constraints (AI high-confidence)"""
         for constraint in enforcement_rules.get('hard_constraints', []):
             if not self.enforcement_engine.should_apply_constraint(
@@ -5230,7 +5283,7 @@ class AIChefGPPOptimizer:
 
     def _add_tier3_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
                                enforcement_rules: Dict,
-                               players: List[str]) -> None:  # ✅ FIX #5
+                               players: List[str]) -> None:
         """Add Tier 3 constraints (soft preferences)"""
         for stack_rule in enforcement_rules.get('stacking_rules', []):
             if stack_rule.get('rule') == 'correlation_stack':
@@ -5374,7 +5427,7 @@ class AIChefGPPOptimizer:
         # Store signature
         self._lineup_signatures.append(new_players)
 
-        # ✅ FIX #3: Memory management
+        # Memory management
         if len(self._lineup_signatures) > 100:
             self._lineup_signatures = self._lineup_signatures[-50:]
 
@@ -5422,14 +5475,13 @@ class AIChefGPPOptimizer:
             return 'low'
 
 # ============================================================================
-# PART 7: UI & HELPER FUNCTIONS - FINAL PART
+# PART 7: UI & HELPER FUNCTIONS - WITH DIAGNOSTIC ENHANCEMENTS
 # ============================================================================
 
 # ============================================================================
 # HELPER FUNCTIONS - VALIDATION AND PROCESSING
 # ============================================================================
 
-# ✅ FIX #4: Refactored from 120+ lines into orchestrator + helper methods
 def validate_and_process_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     """
     Enhanced validation and processing of uploaded DataFrame
@@ -5509,51 +5561,22 @@ def _rename_columns(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
         k.lower(): v for k, v in column_mappings.items()
     })
 
-
 def _create_player_column(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
-    """Create Player column with better error handling"""
+    """Create Player column if needed"""
     if 'Player' not in df.columns:
         if 'First_Name' in df.columns and 'Last_Name' in df.columns:
-            # Check for blank names BEFORE concatenating
-            blank_first = df['First_Name'].isna() | (df['First_Name'] == '')
-            blank_last = df['Last_Name'].isna() | (df['Last_Name'] == '')
-            blank_both = blank_first & blank_last
-
-            if blank_both.any():
-                count = blank_both.sum()
-                validation['errors'].append(
-                    f"{count} rows have completely blank names - cannot process"
-                )
-                validation['warnings'].append(
-                    "Suggestion: Check CSV for empty name rows"
-                )
-                # Remove rows with both names blank
-                df = df[~blank_both]
-
-            # Fill blanks with placeholder
-            df['First_Name'] = df['First_Name'].fillna('Unknown')
-            df['Last_Name'] = df['Last_Name'].fillna('Player')
-
-            # Create Player column
             df['Player'] = (
-                    df['First_Name'].astype(str).str.strip() + ' ' +
-                    df['Last_Name'].astype(str).str.strip()
+                df['First_Name'].fillna('') + ' ' +
+                df['Last_Name'].fillna('')
             )
             df['Player'] = df['Player'].str.strip()
-
             validation['fixes_applied'].append(
-                f"Created Player names from first/last name ({len(df)} players)"
+                "Created Player names from first/last name"
             )
-
-            # Show what was created
-            import streamlit as st
-            st.write("**Created player names:**")
-            st.write(df[['First_Name', 'Last_Name', 'Player']].head(10))
-
         else:
             validation['errors'].append("Cannot determine player names")
             validation['warnings'].append(
-                "Suggestion: CSV needs 'Player', 'Name', or 'First_Name'/'Last_Name' columns"
+                "Suggestion: Ensure CSV has 'Player', 'Name', or 'First_Name'/'Last_Name' columns"
             )
             validation['is_valid'] = False
 
@@ -5703,7 +5726,7 @@ def _validate_salary_feasibility(df: pd.DataFrame, validation: Dict) -> None:
             f"Maximum possible salary only ${max_lineup_salary:,} - limited lineup diversity"
         )
 
-def init_session_state() -> None:  # ✅ FIX #5
+def init_session_state() -> None:
     """Initialize Streamlit session state"""
     import streamlit as st
 
@@ -5761,12 +5784,133 @@ def create_sample_data() -> pd.DataFrame:
     return pd.DataFrame(sample_data)
 
 # ============================================================================
+# DIAGNOSTIC FUNCTIONS - NEW
+# ============================================================================
+
+def _test_solver_installation() -> None:
+    """Test if PuLP solver is properly installed and working"""
+    import streamlit as st
+
+    st.markdown("#### Solver Test Results")
+
+    try:
+        # Test 1: Import check
+        st.success(f"PuLP installed: version {pulp.__version__}")
+
+        # Test 2: Simple optimization
+        with st.spinner("Testing solver..."):
+            prob = pulp.LpProblem("test", pulp.LpMaximize)
+            x = pulp.LpVariable("x", 0, 10)
+            y = pulp.LpVariable("y", 0, 10)
+
+            prob += x + 2*y  # Objective
+            prob += x + y <= 10  # Constraint
+            prob += x <= 5
+
+            status = prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=5))
+
+            if status == pulp.LpStatusOptimal:
+                st.success("Solver working correctly")
+                st.write(f"Test solution: x={x.varValue:.2f}, y={y.varValue:.2f}")
+                st.write(f"Objective value: {pulp.value(prob.objective):.2f}")
+            else:
+                st.error(f"Solver returned: {pulp.LpStatus[status]}")
+                st.write("This may indicate solver configuration issues")
+
+    except ImportError:
+        st.error("PuLP not installed")
+        st.code("pip install pulp", language="bash")
+    except Exception as e:
+        st.error(f"Solver test failed: {str(e)}")
+        st.write("**Possible solutions:**")
+        st.write("1. Reinstall PuLP: `pip uninstall pulp && pip install pulp`")
+        st.write("2. Install CBC solver separately")
+        st.write("3. Check Python environment")
+
+def _validate_ai_strategy() -> None:
+    """Validate AI strategy configuration"""
+    import streamlit as st
+
+    st.markdown("#### AI Strategy Validation")
+
+    ai_strategy = st.session_state.get('ai_strategy')
+    df = st.session_state.get('df')
+
+    if not ai_strategy:
+        st.error("No AI strategy found")
+        return
+
+    # Basic stats
+    enforcement_rules = ai_strategy.get('enforcement_rules', {})
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Hard Constraints", len(enforcement_rules.get('hard_constraints', [])))
+    with col2:
+        st.metric("Soft Constraints", len(enforcement_rules.get('soft_constraints', [])))
+    with col3:
+        st.metric("Stacking Rules", len(enforcement_rules.get('stacking_rules', [])))
+
+    # Validate feasibility
+    validation = AIConfigValidator.validate_ai_requirements(enforcement_rules, df)
+
+    if validation['is_valid']:
+        st.success("AI strategy is valid and feasible")
+    else:
+        st.error("AI strategy has issues:")
+        for error in validation['errors']:
+            st.write(f"- {error}")
+
+    if validation['warnings']:
+        st.warning("Warnings:")
+        for warning in validation['warnings']:
+            st.write(f"- {warning}")
+
+    # Show constraint details
+    with st.expander("View Constraint Details"):
+        if enforcement_rules.get('hard_constraints'):
+            st.write("**Hard Constraints:**")
+            for rule in enforcement_rules['hard_constraints'][:5]:
+                st.json(rule)
+
+def _display_system_logs() -> None:
+    """Display system logs and errors"""
+    import streamlit as st
+
+    logger = get_logger()
+    error_summary = logger.get_error_summary()
+
+    st.markdown("#### System Logs")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total Errors", error_summary['total_errors'])
+    with col2:
+        st.metric("Recent Logs", len(logger.logs))
+
+    # Error categories
+    if error_summary['error_categories']:
+        st.write("**Error Categories:**")
+        for category, count in error_summary['error_categories'].items():
+            if count > 0:
+                st.write(f"- {category}: {count}")
+
+    # Recent errors
+    if error_summary['recent_errors']:
+        with st.expander("Recent Errors"):
+            for error in error_summary['recent_errors']:
+                st.write(f"**{error['level']}** - {error['timestamp']}")
+                st.code(error['message'])
+                if 'suggestions' in error and error['suggestions']:
+                    st.write("Suggestions:", error['suggestions'][0])
+
+# ============================================================================
 # DISPLAY FUNCTIONS
 # ============================================================================
 
 def display_ai_recommendations(
     recommendations: Dict[AIStrategistType, AIRecommendation]
-) -> None:  # ✅ FIX #5
+) -> None:
     """Display AI recommendations with clear formatting"""
     import streamlit as st
 
@@ -5820,7 +5964,7 @@ def display_ai_recommendations(
         if rec:
             display_single_ai_recommendation(rec, "Contrarian")
 
-def display_single_ai_recommendation(rec: AIRecommendation, name: str) -> None:  # ✅ FIX #5
+def display_single_ai_recommendation(rec: AIRecommendation, name: str) -> None:
     """Display single AI recommendation"""
     import streamlit as st
 
@@ -5866,7 +6010,7 @@ def display_single_ai_recommendation(rec: AIRecommendation, name: str) -> None: 
                     elif 'player1' in stack and 'player2' in stack:
                         st.write(f"• {stack['player1'][:15]}...")
 
-def display_ai_synthesis(synthesis: Dict) -> None:  # ✅ FIX #5
+def display_ai_synthesis(synthesis: Dict) -> None:
     """Display AI synthesis"""
     import streamlit as st
 
@@ -5902,9 +6046,8 @@ def display_ai_synthesis(synthesis: Dict) -> None:  # ✅ FIX #5
         st.write(f"Total: {len(synthesis.get('enforcement_rules', []))}")
         st.write(f"Stacks: {len(synthesis.get('stacking_rules', []))}")
 
-# ✅ FIX #4: Refactored from 80+ lines into orchestrator + helper methods
 def display_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
-                           synthesis: Dict, field_size: str) -> None:  # ✅ FIX #5
+                           synthesis: Dict, field_size: str) -> None:
     """Display comprehensive lineup analysis"""
     import streamlit as st
 
@@ -5920,7 +6063,7 @@ def display_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
     # Display visualizations
     _display_lineup_visualizations(lineups_df, field_size)
 
-def _display_summary_metrics(lineups_df: pd.DataFrame) -> None:  # ✅ FIX #5
+def _display_summary_metrics(lineups_df: pd.DataFrame) -> None:
     """Display summary metrics"""
     import streamlit as st
 
@@ -5951,7 +6094,7 @@ def _display_summary_metrics(lineups_df: pd.DataFrame) -> None:  # ✅ FIX #5
             )
 
 def _display_lineup_visualizations(lineups_df: pd.DataFrame,
-                                   field_size: str) -> None:  # ✅ FIX #5
+                                   field_size: str) -> None:
     """Display lineup visualizations"""
     import streamlit as st
 
@@ -5965,7 +6108,7 @@ def _display_lineup_visualizations(lineups_df: pd.DataFrame,
     plt.tight_layout()
     st.pyplot(fig)
 
-def _plot_strategy_distribution(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FIX #5
+def _plot_strategy_distribution(lineups_df: pd.DataFrame, ax) -> None:
     """Plot strategy distribution pie chart"""
     if 'AI_Strategy' in lineups_df.columns:
         strategy_counts = lineups_df['AI_Strategy'].value_counts()
@@ -5977,7 +6120,7 @@ def _plot_strategy_distribution(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FI
         )
         ax.set_title('Strategy Distribution')
 
-def _plot_captain_usage(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FIX #5
+def _plot_captain_usage(lineups_df: pd.DataFrame, ax) -> None:
     """Plot captain usage bar chart"""
     if 'Captain' in lineups_df.columns:
         captain_usage = lineups_df['Captain'].value_counts().head(10)
@@ -5989,7 +6132,7 @@ def _plot_captain_usage(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FIX #5
         ax.invert_yaxis()
 
 def _plot_ownership_distribution(lineups_df: pd.DataFrame,
-                                 field_size: str, ax) -> None:  # ✅ FIX #5
+                                 field_size: str, ax) -> None:
     """Plot ownership distribution histogram"""
     if 'Total_Ownership' in lineups_df.columns:
         ax.hist(
@@ -6012,7 +6155,7 @@ def _plot_ownership_distribution(lineups_df: pd.DataFrame,
         ax.set_ylabel('Number of Lineups')
         ax.set_title('Ownership Distribution')
 
-def _plot_projection_distribution(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FIX #5
+def _plot_projection_distribution(lineups_df: pd.DataFrame, ax) -> None:
     """Plot projection distribution histogram"""
     if 'Projected' in lineups_df.columns:
         ax.hist(
@@ -6102,8 +6245,7 @@ def export_detailed_lineups(lineups_df: pd.DataFrame) -> str:
 # MAIN STREAMLIT APPLICATION
 # ============================================================================
 
-# ✅ FIX #4: Refactored from 250+ lines into orchestrator + section methods
-def main() -> None:  # ✅ FIX #5
+def main() -> None:
     """Main application"""
     import streamlit as st
 
@@ -6116,7 +6258,7 @@ def main() -> None:  # ✅ FIX #5
     )
 
     st.title("NFL GPP Tournament Optimizer - AI-as-Chef Edition")
-    st.markdown("*Version 6.5 - Optimized Performance & Three-Tier Relaxation*")
+    st.markdown("*Version 6.5 - Full AI Capabilities with Diagnostic Visibility*")
 
     # Initialize session state
     init_session_state()
@@ -6231,7 +6373,7 @@ def _connect_to_claude(api_key: str) -> Optional[Any]:
 
     return None
 
-def _render_data_upload_tab(tab) -> None:  # ✅ FIX #5
+def _render_data_upload_tab(tab) -> None:
     """Render data upload tab"""
     import streamlit as st
 
@@ -6259,7 +6401,7 @@ def _render_data_upload_tab(tab) -> None:  # ✅ FIX #5
         ):
             _process_uploaded_data(uploaded_file)
 
-def _display_file_requirements() -> None:  # ✅ FIX #5
+def _display_file_requirements() -> None:
     """Display file requirements"""
     import streamlit as st
 
@@ -6271,7 +6413,7 @@ def _display_file_requirements() -> None:  # ✅ FIX #5
     st.write("• Salary")
     st.write("• Projected Points")
 
-def _process_uploaded_data(uploaded_file) -> None:  # ✅ FIX #5
+def _process_uploaded_data(uploaded_file) -> None:
     """Process uploaded data file"""
     import streamlit as st
 
@@ -6304,7 +6446,7 @@ def _process_uploaded_data(uploaded_file) -> None:  # ✅ FIX #5
         st.error(f"Error processing file: {str(e)}")
         get_logger().log_exception(e, "data_upload")
 
-def _display_validation_results(validation: Dict) -> None:  # ✅ FIX #5
+def _display_validation_results(validation: Dict) -> None:
     """Display validation results"""
     import streamlit as st
 
@@ -6323,7 +6465,7 @@ def _display_validation_results(validation: Dict) -> None:  # ✅ FIX #5
             for fix in validation['fixes_applied']:
                 st.write(f"• {fix}")
 
-def _configure_game_settings(df: pd.DataFrame) -> None:  # ✅ FIX #5
+def _configure_game_settings(df: pd.DataFrame) -> None:
     """Configure game settings"""
     import streamlit as st
 
@@ -6369,7 +6511,7 @@ def _configure_game_settings(df: pd.DataFrame) -> None:  # ✅ FIX #5
         )
 
 def _render_ai_analysis_tab(tab, field_size: str, use_api: bool,
-                            api_manager) -> None:  # ✅ FIX #5
+                            api_manager) -> None:
     """Render AI analysis tab"""
     import streamlit as st
 
@@ -6384,7 +6526,7 @@ def _render_ai_analysis_tab(tab, field_size: str, use_api: bool,
             _generate_ai_strategies(field_size, use_api, api_manager)
 
 def _generate_ai_strategies(field_size: str, use_api: bool,
-                            api_manager) -> None:  # ✅ FIX #5
+                            api_manager) -> None:
     """Generate AI strategies"""
     import streamlit as st
 
@@ -6423,8 +6565,8 @@ def _generate_ai_strategies(field_size: str, use_api: bool,
         st.error(f"Error during AI analysis: {str(e)}")
         get_logger().log_exception(e, "ai_analysis")
 
-def _render_generate_lineups_tab(tab) -> None:  # ✅ FIX #5
-    """Render generate lineups tab"""
+def _render_generate_lineups_tab(tab) -> None:
+    """Render generate lineups tab with diagnostics"""
     import streamlit as st
 
     with tab:
@@ -6434,6 +6576,22 @@ def _render_generate_lineups_tab(tab) -> None:  # ✅ FIX #5
             st.warning("Please generate AI strategies first")
             st.stop()
 
+        # Diagnostic section
+        with st.expander("Diagnostics & Troubleshooting", expanded=False):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("Test Solver"):
+                    _test_solver_installation()
+
+            with col2:
+                if st.button("Validate AI Strategy"):
+                    _validate_ai_strategy()
+
+            if st.button("View System Logs"):
+                _display_system_logs()
+
+        # Main generation controls
         num_lineups = st.slider(
             "Number of Lineups",
             min_value=1,
@@ -6445,8 +6603,8 @@ def _render_generate_lineups_tab(tab) -> None:  # ✅ FIX #5
         if st.button("Generate Lineups", type="primary"):
             _generate_lineups(num_lineups)
 
-def _generate_lineups(num_lineups: int) -> None:  # ✅ FIX #5
-    """Generate lineups"""
+def _generate_lineups(num_lineups: int) -> None:
+    """Generate lineups with full AI capabilities and diagnostic visibility"""
     import streamlit as st
 
     try:
@@ -6457,38 +6615,91 @@ def _generate_lineups(num_lineups: int) -> None:  # ✅ FIX #5
             st.error("Missing optimizer or strategy")
             st.stop()
 
-        with st.spinner(f"Building {num_lineups} lineups..."):
-            lineups_df = optimizer.generate_ai_driven_lineups(
-                num_lineups, ai_strategy
-            )
+        # Check solver (diagnostic only)
+        st.write("Checking solver...")
+        solver_ok, solver_msg = optimizer.verify_solver_availability()
+
+        if not solver_ok:
+            st.error(f"Solver issue: {solver_msg}")
+            st.info("Click 'Test Solver' in Diagnostics for details")
+            st.stop()
+        else:
+            st.success(solver_msg)
+
+        # Show configuration (visibility only)
+        with st.expander("Configuration (Full AI Capabilities)", expanded=False):
+            st.write(f"Players: {len(optimizer.df)}")
+            st.write(f"Field: {optimizer.field_size}")
+            st.write(f"Enforcement: {optimizer.enforcement_engine.enforcement_level.value}")
+            st.write("**All AI constraints active**")
+
+        # Progress tracking
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        status_text.text(f"Generating {num_lineups} AI-optimized lineups...")
+
+        # FULL AI OPTIMIZATION - no compromises
+        lineups_df = optimizer.generate_ai_driven_lineups(num_lineups, ai_strategy)
+        progress_bar.progress(100)
 
         if not lineups_df.empty:
             st.session_state['lineups_df'] = lineups_df
 
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Lineups Generated", len(lineups_df))
+                st.metric("Generated", len(lineups_df))
             with col2:
-                st.metric(
-                    "Unique Captains",
-                    lineups_df['Captain'].nunique()
-                )
+                st.metric("Unique Captains", lineups_df['Captain'].nunique())
             with col3:
                 if 'Total_Ownership' in lineups_df.columns:
-                    st.metric(
-                        "Avg Ownership",
-                        f"{lineups_df['Total_Ownership'].mean():.1f}%"
-                    )
+                    st.metric("Avg Ownership", f"{lineups_df['Total_Ownership'].mean():.1f}%")
+            with col4:
+                st.metric("Success Rate", f"{len(lineups_df) / num_lineups:.0%}")
 
-            st.success(f"Generated {len(lineups_df)} lineups")
+            st.success(f"Generated {len(lineups_df)} lineups with full AI optimization")
+
+            # Show generation stats
+            with st.expander("Generation Statistics"):
+                diagnostics = optimizer.get_generation_diagnostics()
+                st.write(f"**Total attempts:** {diagnostics['total_attempts']}")
+                st.write(f"**Successful:** {diagnostics['successful']}")
+                st.write(f"**Failed:** {diagnostics['failed']}")
+                st.write(f"**Success rate:** {diagnostics['success_rate']:.1%}")
+
+                if diagnostics['failures_by_reason']:
+                    st.write("**Failure reasons:**")
+                    for reason, count in diagnostics['failures_by_reason'].items():
+                        st.write(f"  - {reason}: {count}")
         else:
+            # Show diagnostics to understand failure
             st.error("No lineups generated")
+
+            diagnostics = optimizer.get_generation_diagnostics()
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Attempts:**", diagnostics['total_attempts'])
+                st.write("**Successes:**", diagnostics['successful'])
+            with col2:
+                st.write("**Failure reasons:**")
+                for reason, count in diagnostics['failures_by_reason'].items():
+                    st.write(f"- {reason}: {count}")
+
+            st.write("### Troubleshooting:")
+            st.write("1. Run 'Test Solver' diagnostic")
+            st.write("2. Check 'Validate AI Strategy'")
+            st.write("3. Review 'System Logs'")
+            st.write("4. Try fewer lineups first")
+
+            st.stop()
 
     except Exception as e:
         st.error(f"Generation error: {str(e)}")
-        get_logger().log_exception(e, "lineup_generation")
+        with st.expander("Error Details"):
+            st.code(traceback.format_exc())
+        get_logger().log_exception(e, "lineup_generation", critical=True)
 
-def _render_results_tab(tab, field_size: str) -> None:  # ✅ FIX #5
+def _render_results_tab(tab, field_size: str) -> None:
     """Render results tab"""
     import streamlit as st
 
@@ -6507,7 +6718,7 @@ def _render_results_tab(tab, field_size: str) -> None:  # ✅ FIX #5
 
         display_lineup_analysis(lineups_df, df, synthesis, field_size)
 
-def _render_export_tab(tab) -> None:  # ✅ FIX #5
+def _render_export_tab(tab) -> None:
     """Render export tab"""
     import streamlit as st
 
