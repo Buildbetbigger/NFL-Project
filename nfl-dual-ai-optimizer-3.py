@@ -3224,7 +3224,7 @@ class ClaudeAPIManager:
             test_prompt = "Respond with only the word: OK"
 
             message = self.client.messages.create(
-                model="claude-4-sonnet-202505",
+                model="claude-4-sonnet-20250514",
                 max_tokens=10,
                 temperature=0,
                 timeout=10,
