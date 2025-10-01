@@ -5169,17 +5169,24 @@ class AIChefGPPOptimizer:
     def _generate_lineups_sequential(self, lineup_tasks: List[Tuple], opt_data: Dict,
                                     enforcement_rules: Dict, synthesis: Dict,
                                     used_captains: Set[str]) -> List[Dict]:
-        """Sequential lineup generation"""
+        """Sequential lineup generation with captain reuse"""
         all_lineups = []
+        captain_reuse_threshold = 8  # Allow captain reuse after 8 unique lineups
 
         for lineup_num, strategy_name in lineup_tasks:
+            # Allow captain reuse if we have enough unique lineups
+            effective_used_captains = (
+                used_captains if len(all_lineups) < captain_reuse_threshold
+                else set()
+            )
+
             lineup = self._build_ai_enforced_lineup(
                 lineup_num=lineup_num,
                 strategy=strategy_name,
                 opt_data=opt_data,
                 enforcement_rules=enforcement_rules,
                 synthesis=synthesis,
-                used_captains=used_captains
+                used_captains=effective_used_captains
             )
 
             if lineup:
@@ -5191,7 +5198,9 @@ class AIChefGPPOptimizer:
 
                 if is_valid or len(all_lineups) < len(lineup_tasks) * 0.5:
                     all_lineups.append(lineup)
-                    used_captains.add(lineup['Captain'])
+                    # Only track unique captains for first N lineups
+                    if len(all_lineups) < captain_reuse_threshold:
+                        used_captains.add(lineup['Captain'])
 
         return all_lineups
 
@@ -5202,7 +5211,7 @@ class AIChefGPPOptimizer:
         """
         Build lineup with three-tier constraint relaxation
 
-        Enhanced with diagnostic tracking - optimization logic UNCHANGED
+        Enhanced with diagnostic tracking and randomization for diversity
         """
         max_attempts = 3
         last_status = None
@@ -5219,8 +5228,8 @@ class AIChefGPPOptimizer:
                 # Add decision variables
                 flex, captain = self._add_decision_variables(model, opt_data['players'])
 
-                # Set objective
-                self._set_objective(model, flex, captain, opt_data, synthesis)
+                # Set objective WITH lineup_num for randomization
+                self._set_objective(model, flex, captain, opt_data, synthesis, lineup_num)
 
                 # Add constraints by tier
                 self._add_all_constraints(
@@ -5232,11 +5241,11 @@ class AIChefGPPOptimizer:
                 timeout = 5 + (attempt * 5)
                 solve_status = model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=timeout))
 
-                # Track status for diagnostics (doesn't change behavior)
+                # Track status for diagnostics
                 status = pulp.LpStatus.get(solve_status, f"Unknown ({solve_status})")
                 last_status = status
 
-                # Log for visibility (doesn't change behavior)
+                # Log for visibility
                 self.logger.log(
                     f"Lineup {lineup_num} attempt {attempt + 1}: {status}",
                     "DEBUG"
@@ -5258,6 +5267,10 @@ class AIChefGPPOptimizer:
                             return lineup
                         else:
                             self.lineup_generation_stats['failures_by_reason']['too_similar'] += 1
+                            self.logger.log(
+                                f"Lineup {lineup_num} rejected as too similar",
+                                "DEBUG"
+                            )
                     elif lineup:
                         self.lineup_generation_stats['failures_by_reason']['dk_requirements'] += 1
                     else:
@@ -5298,11 +5311,42 @@ class AIChefGPPOptimizer:
         captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
         return flex, captain
 
+    def _add_randomization_to_objective(self, opt_data: Dict, lineup_num: int) -> Dict:
+        """
+        Add randomization to projections for lineup diversity
+
+        DFS Value: Creates unique lineups while respecting player value
+        """
+        import random
+
+        # Set seed based on lineup number for reproducibility
+        random.seed(42 + lineup_num)
+
+        randomized_points = {}
+
+        # Randomization increases slightly for each lineup
+        base_factor = 0.03  # 3% base
+        lineup_factor = min(lineup_num * 0.002, 0.05)  # Up to 5% additional
+        total_factor = base_factor + lineup_factor
+
+        for player, points in opt_data['points'].items():
+            # Random adjustment between -total_factor and +total_factor
+            adjustment = 1.0 + random.uniform(-total_factor, total_factor)
+            randomized_points[player] = points * adjustment
+
+        return randomized_points
+
     def _set_objective(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
-                      opt_data: Dict, synthesis: Dict) -> None:
-        """Set objective function with AI weights"""
+                      opt_data: Dict, synthesis: Dict, lineup_num: int = 1) -> None:
+        """Set objective function with AI weights and randomization for diversity"""
         players = opt_data['players']
-        points = opt_data['points']
+
+        # Apply randomization for diversity (except first lineup)
+        if lineup_num > 1:
+            points = self._add_randomization_to_objective(opt_data, lineup_num)
+        else:
+            points = opt_data['points']
+
         player_weights = synthesis.get('player_rankings', {})
 
         objective = pulp.lpSum([
@@ -5393,9 +5437,7 @@ class AIChefGPPOptimizer:
 
             rule = constraint.get('rule')
 
-            if rule in ['captain_from_list', 'captain_selection',
-                       'game_theory_captain', 'correlation_captain',
-                       'ultra_contrarian_captain']:
+            if rule in ['captain_from_list', 'captain_selection', 'consensus_captain_list']:
                 valid_captains = [
                     p for p in constraint.get('players', [])
                     if p in players and p not in used_captains
@@ -5536,10 +5578,21 @@ class AIChefGPPOptimizer:
         return True
 
     def _is_too_similar(self, new_lineup: Dict) -> bool:
-        """Check if lineup is too similar using frozensets"""
-        # Emergency bypass for first few lineups
-        if len(self._lineup_signatures) < 3:
+        """
+        Check if lineup is too similar - RELAXED for better diversity
+
+        DFS Value: Allows more lineups while maintaining differentiation
+        """
+        # First 10 lineups get very relaxed checking
+        if len(self._lineup_signatures) < 10:
             new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
+
+            # Only reject if nearly identical (5+ of 6 players same)
+            for existing_sig in self._lineup_signatures:
+                intersection = len(new_players & existing_sig)
+                if intersection >= 5:  # 5 or 6 same players
+                    return True
+
             self._lineup_signatures.append(new_players)
             return False
 
@@ -5548,19 +5601,26 @@ class AIChefGPPOptimizer:
             OptimizerConfig.FIELD_SIZE_CONFIGS['large_field']
         )
 
-        threshold = field_config.get('similarity_threshold', 0.67)
+        # Use more permissive threshold - allow up to 80% similarity
+        base_threshold = field_config.get('similarity_threshold', 0.67)
+        threshold = min(base_threshold * 1.3, 0.80)  # Increased from 0.67 to 0.80
+
         new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
 
-        # Only check last N lineups
-        check_count = min(20, len(self._lineup_signatures))
+        # Only check last 10 lineups (not all 20+)
+        check_count = min(10, len(self._lineup_signatures))
         recent_signatures = self._lineup_signatures[-check_count:]
 
+        similar_count = 0
         for existing_sig in recent_signatures:
             intersection = len(new_players & existing_sig)
             union = len(new_players | existing_sig)
 
             if union > 0 and (intersection / union) > threshold:
-                return True
+                similar_count += 1
+                # Only reject if similar to multiple recent lineups
+                if similar_count >= 2:
+                    return True
 
         # Store signature
         self._lineup_signatures.append(new_players)
