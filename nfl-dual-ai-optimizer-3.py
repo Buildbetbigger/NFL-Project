@@ -5211,7 +5211,7 @@ class AIChefGPPOptimizer:
         """
         Build lineup with three-tier constraint relaxation
 
-        Enhanced with diagnostic tracking and randomization for diversity
+        Enhanced with diagnostic tracking and maximum randomization for diversity
         """
         max_attempts = 3
         last_status = None
@@ -5313,9 +5313,9 @@ class AIChefGPPOptimizer:
 
     def _add_randomization_to_objective(self, opt_data: Dict, lineup_num: int) -> Dict:
         """
-        Add randomization to projections for lineup diversity
+        Add STRONG randomization to projections for lineup diversity
 
-        DFS Value: Creates unique lineups while respecting player value
+        DFS Value: Creates unique lineups through significant projection variance
         """
         import random
 
@@ -5324,9 +5324,9 @@ class AIChefGPPOptimizer:
 
         randomized_points = {}
 
-        # Randomization increases slightly for each lineup
-        base_factor = 0.03  # 3% base
-        lineup_factor = min(lineup_num * 0.002, 0.05)  # Up to 5% additional
+        # INCREASED randomization - 5% base, up to 12% total
+        base_factor = 0.05  # 5% base (was 3%)
+        lineup_factor = min(lineup_num * 0.003, 0.07)  # Up to 7% additional (was 5%)
         total_factor = base_factor + lineup_factor
 
         for player, points in opt_data['points'].items():
@@ -5336,22 +5336,60 @@ class AIChefGPPOptimizer:
 
         return randomized_points
 
+    def _add_ownership_variance(self, opt_data: Dict, lineup_num: int) -> Dict:
+        """
+        Add ownership-based variance to encourage contrarian plays
+
+        DFS Value: Pushes optimizer toward different ownership profiles
+        """
+        import random
+
+        random.seed(100 + lineup_num)
+
+        adjusted_points = opt_data['points'].copy()
+        ownership = opt_data['ownership']
+
+        # Every 3rd lineup, boost low-owned players
+        if lineup_num % 3 == 0:
+            for player, points in adjusted_points.items():
+                own = ownership.get(player, 10)
+                if own < 10:  # Low owned
+                    boost = 1.0 + random.uniform(0.05, 0.15)  # 5-15% boost
+                    adjusted_points[player] = points * boost
+
+        # Every 4th lineup, slightly penalize high-owned
+        elif lineup_num % 4 == 0:
+            for player, points in adjusted_points.items():
+                own = ownership.get(player, 10)
+                if own > 20:  # High owned
+                    penalty = 1.0 - random.uniform(0.02, 0.08)  # 2-8% penalty
+                    adjusted_points[player] = points * penalty
+
+        return adjusted_points
+
     def _set_objective(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
                       opt_data: Dict, synthesis: Dict, lineup_num: int = 1) -> None:
-        """Set objective function with AI weights and randomization for diversity"""
+        """Set objective function with AI weights and STRONG randomization for diversity"""
         players = opt_data['players']
 
-        # Apply randomization for diversity (except first lineup)
+        # Apply BOTH randomization methods for maximum diversity
         if lineup_num > 1:
+            # First apply projection randomization
             points = self._add_randomization_to_objective(opt_data, lineup_num)
+
+            # Then apply ownership-based variance
+            temp_opt_data = opt_data.copy()
+            temp_opt_data['points'] = points
+            points_dict = self._add_ownership_variance(temp_opt_data, lineup_num)
         else:
-            points = opt_data['points']
+            # First lineup uses base projections
+            points_dict = opt_data['points']
 
         player_weights = synthesis.get('player_rankings', {})
 
         objective = pulp.lpSum([
-            points[p] * player_weights.get(p, 1.0) * flex[p] +
-            1.5 * points[p] * player_weights.get(p, 1.0) * captain[p]
+            points_dict[p] * player_weights.get(p, 1.0) * flex[p] +
+            1.5 * points_dict[p] * player_weights.get(p, 1.0) * captain[p]
             for p in players
         ])
 
@@ -5579,48 +5617,40 @@ class AIChefGPPOptimizer:
 
     def _is_too_similar(self, new_lineup: Dict) -> bool:
         """
-        Check if lineup is too similar - RELAXED for better diversity
+        Check if lineup is too similar - MAXIMUM PERMISSIVENESS
 
-        DFS Value: Allows more lineups while maintaining differentiation
+        DFS Value: Prioritizes generating lineups over strict uniqueness
         """
-        # First 10 lineups get very relaxed checking
-        if len(self._lineup_signatures) < 10:
-            new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
+        new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
 
-            # Only reject if nearly identical (5+ of 6 players same)
+        # For first 15 lineups, be extremely permissive
+        if len(self._lineup_signatures) < 15:
+            # Only reject if completely identical (all 6 players same)
             for existing_sig in self._lineup_signatures:
-                intersection = len(new_players & existing_sig)
-                if intersection >= 5:  # 5 or 6 same players
+                if new_players == existing_sig:  # Exact match only
                     return True
 
             self._lineup_signatures.append(new_players)
             return False
 
-        field_config = OptimizerConfig.FIELD_SIZE_CONFIGS.get(
-            self.field_size,
-            OptimizerConfig.FIELD_SIZE_CONFIGS['large_field']
-        )
+        # After 15 lineups, allow up to 90% similarity
+        threshold = 0.90  # Very permissive - reject only if 5+ of 6 players same
 
-        # Use more permissive threshold - allow up to 80% similarity
-        base_threshold = field_config.get('similarity_threshold', 0.67)
-        threshold = min(base_threshold * 1.3, 0.80)  # Increased from 0.67 to 0.80
-
-        new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
-
-        # Only check last 10 lineups (not all 20+)
-        check_count = min(10, len(self._lineup_signatures))
+        # Only check last 5 lineups
+        check_count = min(5, len(self._lineup_signatures))
         recent_signatures = self._lineup_signatures[-check_count:]
 
-        similar_count = 0
         for existing_sig in recent_signatures:
             intersection = len(new_players & existing_sig)
             union = len(new_players | existing_sig)
 
+            # 6 players in a lineup, so:
+            # intersection=6 means identical (100%)
+            # intersection=5 means 83% similar (1 diff)
+            # intersection=4 means 67% similar (2 diff)
+
             if union > 0 and (intersection / union) > threshold:
-                similar_count += 1
-                # Only reject if similar to multiple recent lineups
-                if similar_count >= 2:
-                    return True
+                return True
 
         # Store signature
         self._lineup_signatures.append(new_players)
