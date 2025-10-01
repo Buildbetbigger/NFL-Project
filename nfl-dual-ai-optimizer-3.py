@@ -3112,7 +3112,7 @@ class ClaudeAPIManager:
         timeout = min(30 * (1.5 ** attempt), 300)
 
         message = self.client.messages.create(
-            model="claude-3-sonnet-20241022",
+            model="claude-4-sonnet-20250514",
             max_tokens=2000,
             temperature=0.7,
             timeout=timeout,
@@ -3224,7 +3224,7 @@ class ClaudeAPIManager:
             test_prompt = "Respond with only the word: OK"
 
             message = self.client.messages.create(
-                model="claude-3-sonnet-20241022",
+                model="claude-4-sonnet-20250514",
                 max_tokens=10,
                 temperature=0,
                 timeout=10,
