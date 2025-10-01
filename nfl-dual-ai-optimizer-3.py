@@ -3112,7 +3112,7 @@ class ClaudeAPIManager:
         timeout = min(30 * (1.5 ** attempt), 300)
 
         message = self.client.messages.create(
-            model="claude-4-sonnet-20250514",
+            model="claude-3-sonnet-20241022",
             max_tokens=2000,
             temperature=0.7,
             timeout=timeout,
@@ -3224,7 +3224,7 @@ class ClaudeAPIManager:
             test_prompt = "Respond with only the word: OK"
 
             message = self.client.messages.create(
-                model="claude-4-sonnet-20250514",
+                model="claude-3-sonnet-20241022",
                 max_tokens=10,
                 temperature=0,
                 timeout=10,
@@ -4684,6 +4684,119 @@ class AIChefGPPOptimizer:
         except Exception as e:
             return False, f"Solver error: {str(e)}\n\nTry: pip install pulp"
 
+    def test_constraint_feasibility(self) -> Dict:
+        """
+        Test which constraint tiers are causing infeasibility
+
+        DFS Value: Diagnostic to identify constraint conflicts
+
+        Returns detailed test results for each constraint level
+        """
+        import streamlit as st
+
+        results = {
+            'dk_only': False,
+            'dk_plus_tier2': False,
+            'dk_plus_tier2_tier3': False,
+            'details': {},
+            'messages': []
+        }
+
+        # Get current optimization data
+        synthesis = st.session_state.get('ai_synthesis', {})
+        ai_strategy = st.session_state.get('ai_strategy', {})
+
+        opt_data = self._prepare_optimization_data(synthesis)
+        enforcement_rules = ai_strategy.get('enforcement_rules', {})
+
+        # Test 1: DK constraints only (should always work)
+        self.logger.log("Testing DK constraints only...", "DEBUG")
+        model1 = pulp.LpProblem("test_dk_only", pulp.LpMaximize)
+        flex1, captain1 = self._add_decision_variables(model1, opt_data['players'])
+        self._set_objective(model1, flex1, captain1, opt_data, {})
+        self._add_dk_constraints(model1, flex1, captain1, opt_data['players'],
+                                opt_data['salaries'], opt_data['teams'])
+
+        status1 = model1.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=10))
+        results['dk_only'] = (status1 == pulp.LpStatusOptimal)
+        results['details']['dk_only_status'] = pulp.LpStatus.get(status1, "Unknown")
+
+        if not results['dk_only']:
+            results['messages'].append("CRITICAL: Basic DK rules can't be satisfied!")
+            results['messages'].append("Check: Do you have players from both teams?")
+            teams = list(set(opt_data['teams'].values()))
+            results['messages'].append(f"Teams in pool: {teams}")
+            results['messages'].append(f"Total players: {len(opt_data['players'])}")
+            return results
+
+        results['messages'].append("DK constraints: OK")
+
+        # Test 2: DK + Tier 2 (AI hard constraints)
+        self.logger.log("Testing DK + Tier 2 constraints...", "DEBUG")
+        model2 = pulp.LpProblem("test_tier2", pulp.LpMaximize)
+        flex2, captain2 = self._add_decision_variables(model2, opt_data['players'])
+        self._set_objective(model2, flex2, captain2, opt_data, {})
+        self._add_dk_constraints(model2, flex2, captain2, opt_data['players'],
+                                opt_data['salaries'], opt_data['teams'])
+        self._add_tier2_constraints(model2, flex2, captain2, enforcement_rules,
+                                   opt_data['players'], set(), 0)
+
+        status2 = model2.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=10))
+        results['dk_plus_tier2'] = (status2 == pulp.LpStatusOptimal)
+        results['details']['tier2_status'] = pulp.LpStatus.get(status2, "Unknown")
+
+        if not results['dk_plus_tier2']:
+            results['messages'].append("PROBLEM: AI hard constraints are too restrictive")
+            results['messages'].append("Issues likely in:")
+
+            # Check specific constraint types
+            hard_constraints = enforcement_rules.get('hard_constraints', [])
+            captain_constraints = [c for c in hard_constraints if 'captain' in c.get('rule', '').lower()]
+            must_include = [c for c in hard_constraints if c.get('rule') == 'must_include']
+            must_exclude = [c for c in hard_constraints if c.get('rule') == 'must_exclude']
+
+            results['messages'].append(f"- Captain constraints: {len(captain_constraints)}")
+            results['messages'].append(f"- Must include: {len(must_include)}")
+            results['messages'].append(f"- Must exclude: {len(must_exclude)}")
+
+            if captain_constraints:
+                for c in captain_constraints[:2]:
+                    players = c.get('players', [])
+                    if players:
+                        results['messages'].append(f"  Captain rule requires: {players[0]}")
+
+            if must_include:
+                results['messages'].append(f"  Must include: {[c.get('player') for c in must_include[:3]]}")
+
+            if must_exclude:
+                results['messages'].append(f"  Must exclude: {[c.get('player') for c in must_exclude[:3]]}")
+
+            return results
+
+        results['messages'].append("DK + Tier 2 constraints: OK")
+
+        # Test 3: All constraints
+        self.logger.log("Testing all constraints...", "DEBUG")
+        model3 = pulp.LpProblem("test_all", pulp.LpMaximize)
+        flex3, captain3 = self._add_decision_variables(model3, opt_data['players'])
+        self._set_objective(model3, flex3, captain3, opt_data, {})
+        self._add_all_constraints(model3, flex3, captain3, opt_data,
+                                 enforcement_rules, set(), 0)
+
+        status3 = model3.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=10))
+        results['dk_plus_tier2_tier3'] = (status3 == pulp.LpStatusOptimal)
+        results['details']['all_constraints_status'] = pulp.LpStatus.get(status3, "Unknown")
+
+        if results['dk_plus_tier2_tier3']:
+            results['messages'].append("All constraints: OK")
+            results['messages'].append("Constraints are feasible - lineup generation should work")
+        else:
+            results['messages'].append("Tier 3 (stacking) constraints cause infeasibility on attempt 1")
+            results['messages'].append("This is NORMAL - these relax after first attempt")
+            results['messages'].append("If lineups still fail, check similarity threshold or captain pool")
+
+        return results
+
     def get_generation_diagnostics(self) -> Dict:
         """
         Get detailed diagnostics on lineup generation
@@ -5400,7 +5513,8 @@ class AIChefGPPOptimizer:
 
     def _is_too_similar(self, new_lineup: Dict) -> bool:
         """Check if lineup is too similar using frozensets"""
-        if not self._lineup_signatures:
+        # Emergency bypass for first few lineups
+        if len(self._lineup_signatures) < 3:
             new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
             self._lineup_signatures.append(new_players)
             return False
@@ -5784,7 +5898,7 @@ def create_sample_data() -> pd.DataFrame:
     return pd.DataFrame(sample_data)
 
 # ============================================================================
-# DIAGNOSTIC FUNCTIONS - NEW
+# DIAGNOSTIC FUNCTIONS
 # ============================================================================
 
 def _test_solver_installation() -> None:
@@ -5872,6 +5986,36 @@ def _validate_ai_strategy() -> None:
             st.write("**Hard Constraints:**")
             for rule in enforcement_rules['hard_constraints'][:5]:
                 st.json(rule)
+
+def _test_constraint_feasibility() -> None:
+    """Test which constraint tiers are causing problems"""
+    import streamlit as st
+
+    st.markdown("#### Constraint Feasibility Analysis")
+
+    optimizer = st.session_state.get('optimizer')
+    if not optimizer:
+        st.error("No optimizer found - generate AI strategies first")
+        return
+
+    with st.spinner("Testing constraint combinations..."):
+        results = optimizer.test_constraint_feasibility()
+
+    # Display results
+    for msg in results['messages']:
+        if msg.startswith('CRITICAL') or msg.startswith('PROBLEM'):
+            st.error(msg)
+        elif 'OK' in msg or msg.startswith('DK') or msg.startswith('All'):
+            if 'OK' in msg:
+                st.success(msg)
+            else:
+                st.info(msg)
+        else:
+            st.write(msg)
+
+    # Show detailed status
+    with st.expander("Technical Details"):
+        st.json(results['details'])
 
 def _display_system_logs() -> None:
     """Display system logs and errors"""
@@ -5994,21 +6138,21 @@ def display_single_ai_recommendation(rec: AIRecommendation, name: str) -> None:
         if rec.must_play:
             st.markdown("**Must Play:**")
             for player in rec.must_play[:4]:
-                st.write(f"• {player}")
+                st.write(f"- {player}")
 
         if rec.never_play:
             st.markdown("**Fade:**")
             for player in rec.never_play[:3]:
-                st.write(f"• {player}")
+                st.write(f"- {player}")
 
         if rec.stacks:
             st.markdown("**Stacks:**")
             for stack in rec.stacks[:2]:
                 if isinstance(stack, dict):
                     if 'players' in stack and len(stack['players']) > 2:
-                        st.write(f"• {len(stack['players'])}-player stack")
+                        st.write(f"- {len(stack['players'])}-player stack")
                     elif 'player1' in stack and 'player2' in stack:
-                        st.write(f"• {stack['player1'][:15]}...")
+                        st.write(f"- {stack['player1'][:15]}...")
 
 def display_ai_synthesis(synthesis: Dict) -> None:
     """Display AI synthesis"""
@@ -6407,11 +6551,11 @@ def _display_file_requirements() -> None:
 
     st.markdown("### File Requirements")
     st.write("Required columns:")
-    st.write("• Player names")
-    st.write("• Position")
-    st.write("• Team")
-    st.write("• Salary")
-    st.write("• Projected Points")
+    st.write("- Player names")
+    st.write("- Position")
+    st.write("- Team")
+    st.write("- Salary")
+    st.write("- Projected Points")
 
 def _process_uploaded_data(uploaded_file) -> None:
     """Process uploaded data file"""
@@ -6453,17 +6597,17 @@ def _display_validation_results(validation: Dict) -> None:
     if validation['errors']:
         st.error("Validation Errors:")
         for error in validation['errors']:
-            st.write(f"  • {error}")
+            st.write(f"  - {error}")
 
     if validation['warnings']:
         st.warning("Warnings:")
         for warning in validation['warnings']:
-            st.write(f"  • {warning}")
+            st.write(f"  - {warning}")
 
     if validation.get('fixes_applied'):
         with st.expander("Automatic Fixes Applied", expanded=False):
             for fix in validation['fixes_applied']:
-                st.write(f"• {fix}")
+                st.write(f"- {fix}")
 
 def _configure_game_settings(df: pd.DataFrame) -> None:
     """Configure game settings"""
@@ -6578,7 +6722,7 @@ def _render_generate_lineups_tab(tab) -> None:
 
         # Diagnostic section
         with st.expander("Diagnostics & Troubleshooting", expanded=False):
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
 
             with col1:
                 if st.button("Test Solver"):
@@ -6587,6 +6731,10 @@ def _render_generate_lineups_tab(tab) -> None:
             with col2:
                 if st.button("Validate AI Strategy"):
                     _validate_ai_strategy()
+
+            with col3:
+                if st.button("Test Constraints"):
+                    _test_constraint_feasibility()
 
             if st.button("View System Logs"):
                 _display_system_logs()
@@ -6615,7 +6763,10 @@ def _generate_lineups(num_lineups: int) -> None:
             st.error("Missing optimizer or strategy")
             st.stop()
 
-        # Check solver (diagnostic only)
+        # Clear previous lineup signatures
+        optimizer._lineup_signatures = []
+
+        # Check solver
         st.write("Checking solver...")
         solver_ok, solver_msg = optimizer.verify_solver_availability()
 
@@ -6626,19 +6777,19 @@ def _generate_lineups(num_lineups: int) -> None:
         else:
             st.success(solver_msg)
 
-        # Show configuration (visibility only)
-        with st.expander("Configuration (Full AI Capabilities)", expanded=False):
+        # Show configuration
+        with st.expander("Configuration", expanded=False):
             st.write(f"Players: {len(optimizer.df)}")
             st.write(f"Field: {optimizer.field_size}")
             st.write(f"Enforcement: {optimizer.enforcement_engine.enforcement_level.value}")
-            st.write("**All AI constraints active**")
+            st.write("All AI constraints active")
 
         # Progress tracking
         progress_bar = st.progress(0)
         status_text = st.empty()
         status_text.text(f"Generating {num_lineups} AI-optimized lineups...")
 
-        # FULL AI OPTIMIZATION - no compromises
+        # FULL AI OPTIMIZATION
         lineups_df = optimizer.generate_ai_driven_lineups(num_lineups, ai_strategy)
         progress_bar.progress(100)
 
@@ -6656,7 +6807,7 @@ def _generate_lineups(num_lineups: int) -> None:
             with col4:
                 st.metric("Success Rate", f"{len(lineups_df) / num_lineups:.0%}")
 
-            st.success(f"Generated {len(lineups_df)} lineups with full AI optimization")
+            st.success(f"Generated {len(lineups_df)} lineups")
 
             # Show generation stats
             with st.expander("Generation Statistics"):
@@ -6671,7 +6822,6 @@ def _generate_lineups(num_lineups: int) -> None:
                     for reason, count in diagnostics['failures_by_reason'].items():
                         st.write(f"  - {reason}: {count}")
         else:
-            # Show diagnostics to understand failure
             st.error("No lineups generated")
 
             diagnostics = optimizer.get_generation_diagnostics()
@@ -6685,11 +6835,11 @@ def _generate_lineups(num_lineups: int) -> None:
                 for reason, count in diagnostics['failures_by_reason'].items():
                     st.write(f"- {reason}: {count}")
 
-            st.write("### Troubleshooting:")
-            st.write("1. Run 'Test Solver' diagnostic")
+            st.write("### Next Steps:")
+            st.write("1. Click 'Test Constraints' button above")
             st.write("2. Check 'Validate AI Strategy'")
             st.write("3. Review 'System Logs'")
-            st.write("4. Try fewer lineups first")
+            st.write("4. Try with fewer lineups (e.g., 5)")
 
             st.stop()
 
