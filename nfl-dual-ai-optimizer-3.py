@@ -5509,22 +5509,51 @@ def _rename_columns(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
         k.lower(): v for k, v in column_mappings.items()
     })
 
+
 def _create_player_column(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
-    """Create Player column if needed"""
+    """Create Player column with better error handling"""
     if 'Player' not in df.columns:
         if 'First_Name' in df.columns and 'Last_Name' in df.columns:
+            # Check for blank names BEFORE concatenating
+            blank_first = df['First_Name'].isna() | (df['First_Name'] == '')
+            blank_last = df['Last_Name'].isna() | (df['Last_Name'] == '')
+            blank_both = blank_first & blank_last
+
+            if blank_both.any():
+                count = blank_both.sum()
+                validation['errors'].append(
+                    f"{count} rows have completely blank names - cannot process"
+                )
+                validation['warnings'].append(
+                    "Suggestion: Check CSV for empty name rows"
+                )
+                # Remove rows with both names blank
+                df = df[~blank_both]
+
+            # Fill blanks with placeholder
+            df['First_Name'] = df['First_Name'].fillna('Unknown')
+            df['Last_Name'] = df['Last_Name'].fillna('Player')
+
+            # Create Player column
             df['Player'] = (
-                df['First_Name'].fillna('') + ' ' +
-                df['Last_Name'].fillna('')
+                    df['First_Name'].astype(str).str.strip() + ' ' +
+                    df['Last_Name'].astype(str).str.strip()
             )
             df['Player'] = df['Player'].str.strip()
+
             validation['fixes_applied'].append(
-                "Created Player names from first/last name"
+                f"Created Player names from first/last name ({len(df)} players)"
             )
+
+            # Show what was created
+            import streamlit as st
+            st.write("**Created player names:**")
+            st.write(df[['First_Name', 'Last_Name', 'Player']].head(10))
+
         else:
             validation['errors'].append("Cannot determine player names")
             validation['warnings'].append(
-                "Suggestion: Ensure CSV has 'Player', 'Name', or 'First_Name'/'Last_Name' columns"
+                "Suggestion: CSV needs 'Player', 'Name', or 'First_Name'/'Last_Name' columns"
             )
             validation['is_valid'] = False
 
