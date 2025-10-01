@@ -1,41 +1,254 @@
-# Python
-*.pyc
+# DFS Showdown Optimizer .gitignore
+
+# ============================================================================
+# PYTHON
+# ============================================================================
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Environment variables (SENSITIVE!)
-.env
-.streamlit/secrets.toml
+# C extensions
+*.so
 
-# Virtual environments
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+test-results/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Virtual Environments
 venv/
 env/
 ENV/
+env.bak/
 venv.bak/
+.venv/
 
-# OS files
-.DS_Store
-Thumbs.db
+# ============================================================================
+# PROJECT SPECIFIC
+# ============================================================================
 
-# Data files (usually large/personal)
-*.csv
-*.xlsx
-*.json
+# Sensitive Data - NEVER COMMIT THESE!
+.env
+*.env
+.env.local
+.env.*.local
+api_keys.txt
+secrets.json
+config_private.py
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# API Keys (backup protection)
+**/anthropic_key.txt
+**/openai_key.txt
+**/*_api_key*
+**/*_secret*
+
+# User Data
+data/raw/*
+data/processed/*
+data/uploads/*
+!data/.gitkeep
+
+# Generated Lineups
+lineups/*.csv
+lineups/*.xlsx
+lineups/*.json
+!lineups/.gitkeep
 
 # Logs
+logs/
 *.log
+log_*.txt
+optimizer_*.log
 
-# Jupyter Notebooks
-.ipynb_checkpoints/
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
 
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
+# Exports
+exports/
+output/
+results/
+
+# Database files (if any)
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================================================
+# IDE / EDITOR
+# ============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw[a-z]
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ============================================================================
+# OPERATING SYSTEM
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================================
+# STREAMLIT
+# ============================================================================
+
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# ============================================================================
+# DOCUMENTATION
+# ============================================================================
+
+# Sphinx
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# ============================================================================
+# MISC
+# ============================================================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+*_backup
+*_old
+
+# Compressed files (usually)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Large data files (consider Git LFS)
+*.csv.gz
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# Cache
+.cache/
+*.cache
+
+# Local configuration
+local_config.py
+config_local.py
+
+# ============================================================================
+# EXCEPTIONS (files to include despite patterns above)
+# ============================================================================
+
+# Keep example/template files
+!.env.example
+!.env.template
+!config.example.py
+!data/example.csv
+
+# Keep directory structure
+!*/.gitkeep
