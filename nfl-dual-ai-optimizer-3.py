@@ -1282,7 +1282,6 @@ class AIEnforcementEngine:
         # Track which rules are most effective
         self.rule_effectiveness = defaultdict(lambda: {'applied': 0, 'success': 0})
 
-    # ✅ FIX #4: Refactored from 80+ lines to orchestrator + helper methods
     def create_enforcement_rules(self,
                                  recommendations: Dict[AIStrategistType, AIRecommendation]) -> Dict:
         """
@@ -1327,7 +1326,7 @@ class AIEnforcementEngine:
 
         return rules
 
-    def _sort_rules_by_priority(self, rules: Dict) -> None:  # ✅ FIX #5: Added return type
+    def _sort_rules_by_priority(self, rules: Dict) -> None:
         """Sort rules by priority in-place"""
         for rule_type in rules:
             if isinstance(rules[rule_type], list):
@@ -1336,7 +1335,6 @@ class AIEnforcementEngine:
                     reverse=True
                 )
 
-    # ✅ FIX #4: Refactored from 60+ lines, extracted rule creation logic
     def _create_mandatory_rules(self, recommendations: Dict) -> Dict:
         """
         Create mandatory enforcement rules (all AI decisions enforced as hard constraints)
@@ -1401,6 +1399,9 @@ class AIEnforcementEngine:
         """
         Create moderate enforcement rules (balanced approach)
 
+        FIXED: Creates single constraint with list of consensus captains
+        instead of multiple mutually exclusive constraints
+
         DFS Value: Enforces consensus, suggests individual recommendations
         """
         rules = self._initialize_rule_dict()
@@ -1408,17 +1409,38 @@ class AIEnforcementEngine:
         # Find consensus recommendations
         consensus = self._find_consensus_recommendations(recommendations)
 
-        # Enforce consensus as hard constraints
-        for captain, count in consensus['captains'].items():
-            if count >= 2:
-                rules['hard_constraints'].append({
-                    'rule': 'consensus_captain',
-                    'player': captain,
-                    'agreement': count,
-                    'priority': ConstraintPriority.AI_CONSENSUS.value + (count * 5),
-                    'type': 'hard',
-                    'relaxation_tier': 2
-                })
+        # FIXED: Collect all consensus captains into ONE constraint
+        consensus_captains = [
+            captain for captain, count in consensus['captains'].items()
+            if count >= 2
+        ]
+
+        if consensus_captains:
+            # Single constraint allowing ANY of the consensus captains
+            rules['hard_constraints'].append({
+                'rule': 'consensus_captain_list',  # Changed from 'consensus_captain'
+                'players': consensus_captains,  # Changed from 'player' (list instead of single)
+                'agreement': len([c for c in consensus['captains'].values() if c >= 2]),
+                'priority': ConstraintPriority.AI_CONSENSUS.value,
+                'type': 'hard',
+                'relaxation_tier': 2
+            })
+
+        # Consensus must-play players
+        consensus_must_play = [
+            player for player, count in consensus['must_play'].items()
+            if count >= 2
+        ]
+
+        for player in consensus_must_play[:3]:
+            rules['hard_constraints'].append({
+                'rule': 'must_include',
+                'player': player,
+                'agreement': consensus['must_play'][player],
+                'priority': ConstraintPriority.AI_CONSENSUS.value,
+                'type': 'hard',
+                'relaxation_tier': 2
+            })
 
         # Add soft constraints for single AI recommendations
         rules['soft_constraints'].extend(
@@ -1453,7 +1475,6 @@ class AIEnforcementEngine:
 
         return rules
 
-    # ✅ FIX #4: Extracted helper methods for clarity
     def _initialize_rule_dict(self) -> Dict:
         """Initialize empty rules dictionary"""
         return {
@@ -1743,6 +1764,10 @@ class AIEnforcementEngine:
             if captain not in rule.get('players', []):
                 return f"Captain {captain} not in AI-recommended list: {rule['source']}"
 
+        elif rule_type == 'consensus_captain_list':  # FIXED: New rule type
+            if captain not in rule.get('players', []):
+                return f"Captain {captain} not in consensus list"
+
         elif rule_type == 'must_include':
             if rule.get('player') not in all_players:
                 return f"Missing required player: {rule['player']} ({rule['source']})"
@@ -1751,7 +1776,7 @@ class AIEnforcementEngine:
             if rule.get('player') in all_players:
                 return f"Included banned player: {rule['player']} ({rule['source']})"
 
-        elif rule_type == 'consensus_captain':
+        elif rule_type == 'consensus_captain':  # Legacy - shouldn't be used anymore
             if captain != rule.get('player'):
                 return (f"Not using consensus captain: {rule['player']} "
                        f"(agreement: {rule.get('agreement', 0)} AIs)")
@@ -1759,7 +1784,7 @@ class AIEnforcementEngine:
         return None
 
     def _record_rule_application(self, lineup: Dict, is_valid: bool,
-                                 violations: List[str], enforcement_rules: Dict) -> None:  # ✅ FIX #5
+                                 violations: List[str], enforcement_rules: Dict) -> None:
         """Record rule application for learning"""
         self.applied_rules.append({
             'timestamp': datetime.now(),
@@ -1837,7 +1862,7 @@ class AIOwnershipBucketManager:
         # Store original thresholds for reference
         self.base_thresholds = self.bucket_thresholds.copy()
 
-    def adjust_thresholds_for_slate(self, df: pd.DataFrame, field_size: str) -> None:  # ✅ FIX #5
+    def adjust_thresholds_for_slate(self, df: pd.DataFrame, field_size: str) -> None:
         """
         Dynamically adjust bucket thresholds based on slate characteristics
 
@@ -1868,19 +1893,19 @@ class AIOwnershipBucketManager:
         # Mean-based adjustments
         self._apply_mean_based_adjustment(ownership_mean)
 
-    def _apply_flat_ownership_adjustment(self) -> None:  # ✅ FIX #5
+    def _apply_flat_ownership_adjustment(self) -> None:
         """Apply adjustment for flat ownership slates"""
         for key in self.bucket_thresholds:
             self.bucket_thresholds[key] *= 0.85
         self.logger.log("Flat ownership detected - lowering thresholds", "INFO")
 
-    def _apply_polarized_ownership_adjustment(self) -> None:  # ✅ FIX #5
+    def _apply_polarized_ownership_adjustment(self) -> None:
         """Apply adjustment for polarized ownership slates"""
         for key in self.bucket_thresholds:
             self.bucket_thresholds[key] *= 1.15
         self.logger.log("Polarized ownership detected - raising thresholds", "INFO")
 
-    def _apply_large_field_adjustment(self, field_size: str) -> None:  # ✅ FIX #5
+    def _apply_large_field_adjustment(self, field_size: str) -> None:
         """Apply adjustment for large field contests"""
         for key in self.bucket_thresholds:
             self.bucket_thresholds[key] *= 0.85
@@ -1889,7 +1914,7 @@ class AIOwnershipBucketManager:
             "INFO"
         )
 
-    def _apply_mean_based_adjustment(self, ownership_mean: float) -> None:  # ✅ FIX #5
+    def _apply_mean_based_adjustment(self, ownership_mean: float) -> None:
         """Apply adjustment based on mean ownership"""
         if ownership_mean < 8:
             self.bucket_thresholds['chalk'] *= 0.9
@@ -2048,11 +2073,11 @@ class AIConfigValidator:
 
     @staticmethod
     def _validate_captain_requirements(enforcement_rules: Dict, available_players: Set[str],
-                                      validation_result: Dict) -> None:  # ✅ FIX #5
+                                      validation_result: Dict) -> None:
         """Validate captain requirements"""
         captain_rules = [
             r for r in enforcement_rules.get('hard_constraints', [])
-            if r.get('rule') in ['captain_from_list', 'captain_selection']
+            if r.get('rule') in ['captain_from_list', 'captain_selection', 'consensus_captain_list']
         ]
 
         for rule in captain_rules:
@@ -2079,7 +2104,7 @@ class AIConfigValidator:
 
     @staticmethod
     def _validate_must_include(enforcement_rules: Dict, available_players: Set[str],
-                               validation_result: Dict) -> None:  # ✅ FIX #5
+                               validation_result: Dict) -> None:
         """Validate must-include players"""
         must_include = [
             r for r in enforcement_rules.get('hard_constraints', [])
@@ -2095,7 +2120,7 @@ class AIConfigValidator:
 
     @staticmethod
     def _validate_stacks(enforcement_rules: Dict, available_players: Set[str],
-                        validation_result: Dict) -> None:  # ✅ FIX #5
+                        validation_result: Dict) -> None:
         """Validate stack feasibility"""
         stacking_rules = enforcement_rules.get('stacking_rules', [])
 
@@ -2112,7 +2137,7 @@ class AIConfigValidator:
 
     @staticmethod
     def _validate_salary_feasibility(enforcement_rules: Dict, df: pd.DataFrame,
-                                    validation_result: Dict) -> None:  # ✅ FIX #5
+                                    validation_result: Dict) -> None:
         """Validate salary feasibility"""
         hard_constraints = enforcement_rules.get('hard_constraints', [])
         required_players = [
@@ -2242,7 +2267,6 @@ class AISynthesisEngine:
         self.logger = get_logger()
         self.synthesis_history = deque(maxlen=20)
 
-    # ✅ FIX #4: Refactored from 80+ lines into focused helper methods
     def synthesize_recommendations(self,
                                    game_theory: AIRecommendation,
                                    correlation: AIRecommendation,
@@ -2471,7 +2495,7 @@ class AISynthesisEngine:
 
         return " | ".join(narratives)
 
-    def _record_synthesis(self, synthesis: Dict) -> None:  # ✅ FIX #5
+    def _record_synthesis(self, synthesis: Dict) -> None:
         """Record synthesis in history"""
         self.synthesis_history.append({
             'timestamp': datetime.now(),
