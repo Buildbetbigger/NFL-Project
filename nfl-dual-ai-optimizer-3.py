@@ -1,11 +1,7 @@
 
-"""
-
 # ============================================================================
 # PART 1: CONFIGURATION, ENUMS, AND BASE DATA CLASSES
 # ============================================================================
-# This part contains the foundational configuration and data structures
-# Libraries imported here will be used throughout all parts
 
 import pandas as pd
 import numpy as np
@@ -49,18 +45,17 @@ class OptimizerConfig:
     FLEX_SPOTS = 5
 
     # DraftKings Showdown specific rules
-    MIN_TEAMS_REQUIRED = 2  # Must have players from both teams
-    MAX_PLAYERS_PER_TEAM = 5  # Max 5 from one team (leaving 1 for opponent)
+    MIN_TEAMS_REQUIRED = 2
+    MAX_PLAYERS_PER_TEAM = 5
 
     # Performance settings
     MAX_ITERATIONS = 1000
-    OPTIMIZATION_TIMEOUT = 30  # seconds per lineup
-    MAX_PARALLEL_THREADS = 4  # Default, can be adjusted
+    OPTIMIZATION_TIMEOUT = 30
+    MAX_PARALLEL_THREADS = 4
     MAX_HISTORY_ENTRIES = 50
     CACHE_SIZE = 100
 
     # Enhanced ownership projection system
-    # Base ownership by position with salary correlation
     OWNERSHIP_BY_POSITION = {
         'QB': {'base': 15, 'salary_factor': 0.002, 'scarcity_multiplier': 1.2},
         'RB': {'base': 12, 'salary_factor': 0.0015, 'scarcity_multiplier': 1.0},
@@ -144,23 +139,21 @@ class OptimizerConfig:
     }
 
     # GPP Ownership targets by field size
-    # DFS Value: Different field sizes require different ownership strategies
     GPP_OWNERSHIP_TARGETS = {
-        'small_field': (70, 110),          # Higher ownership acceptable in small fields
-        'medium_field': (60, 90),          # Balanced approach
-        'large_field': (50, 80),           # Lower ownership for differentiation
-        'large_field_aggressive': (40, 70), # Very low ownership strategy
-        'milly_maker': (30, 60),           # Ultra contrarian for massive fields
-        'super_contrarian': (20, 50)       # Extreme leverage plays
+        'small_field': (70, 110),
+        'medium_field': (60, 90),
+        'large_field': (50, 80),
+        'large_field_aggressive': (40, 70),
+        'milly_maker': (30, 60),
+        'super_contrarian': (20, 50)
     }
 
     # Field-specific AI configurations
-    # DFS Value: Each tournament type requires different strategic approach
     FIELD_SIZE_CONFIGS = {
         'small_field': {
-            'max_exposure': 0.4,              # Can use same captain in 40% of lineups
+            'max_exposure': 0.4,
             'min_unique_captains': 5,
-            'max_chalk_players': 3,           # Can use more chalk in small fields
+            'max_chalk_players': 3,
             'min_leverage_players': 1,
             'ownership_leverage_weight': 0.3,
             'correlation_weight': 0.4,
@@ -168,7 +161,7 @@ class OptimizerConfig:
             'ai_enforcement': 'Moderate',
             'min_total_ownership': 70,
             'max_total_ownership': 110,
-            'similarity_threshold': 0.7       # Allow more similar lineups
+            'similarity_threshold': 0.7
         },
         'medium_field': {
             'max_exposure': 0.3,
@@ -231,7 +224,7 @@ class OptimizerConfig:
         'contrarian': 0.30
     }
 
-    # Sport-specific configurations (foundation for future expansion)
+    # Sport-specific configurations
     SPORT_CONFIGS = {
         'NFL': {
             'roster_size': 6,
@@ -257,10 +250,10 @@ class AIEnforcementLevel(Enum):
 
     DFS Value: Different levels allow flexibility vs. control tradeoff
     """
-    ADVISORY = "Advisory"      # AI suggestions only, no hard constraints
-    MODERATE = "Moderate"      # Some constraints enforced
-    STRONG = "Strong"          # Most constraints enforced
-    MANDATORY = "Mandatory"    # All AI decisions enforced as hard constraints
+    ADVISORY = "Advisory"
+    MODERATE = "Moderate"
+    STRONG = "Strong"
+    MANDATORY = "Mandatory"
 
 class OptimizationMode(Enum):
     """Optimization modes for different strategies"""
@@ -275,25 +268,24 @@ class StackType(Enum):
 
     DFS Value: Each stack type captures different correlated outcomes
     """
-    QB_RECEIVER = "qb_receiver"      # Standard positive correlation
-    ONSLAUGHT = "onslaught"          # 3+ players from winning team
-    LEVERAGE = "leverage"            # Low-owned correlated plays
-    BRING_BACK = "bring_back"        # Primary stack + opponent
-    DEFENSIVE = "defensive"          # DST with negative game script
-    HIDDEN = "hidden"                # Non-obvious correlations
+    QB_RECEIVER = "qb_receiver"
+    ONSLAUGHT = "onslaught"
+    LEVERAGE = "leverage"
+    BRING_BACK = "bring_back"
+    DEFENSIVE = "defensive"
+    HIDDEN = "hidden"
 
 class ConstraintPriority(Enum):
     """
     Constraint priority levels for tiered relaxation
 
     DFS Value: CRITICAL - enables three-tier constraint relaxation
-    This allows maintaining DK rules while relaxing AI preferences
     """
-    CRITICAL = 100              # DK rules, salary cap - NEVER relax
-    AI_HIGH_CONFIDENCE = 90     # AI recommendations with >0.8 confidence
-    AI_CONSENSUS = 85           # Multiple AIs agree
-    AI_MODERATE = 70            # Single AI recommendation
-    SOFT_PREFERENCE = 50        # Suggestions only
+    CRITICAL = 100
+    AI_HIGH_CONFIDENCE = 90
+    AI_CONSENSUS = 85
+    AI_MODERATE = 70
+    SOFT_PREFERENCE = 50
 
 # ============================================================================
 # BASE DATA CLASSES
@@ -334,21 +326,17 @@ class AIRecommendation:
         """
         errors = []
 
-        # Check for empty recommendations
         if not self.captain_targets and not self.must_play:
             errors.append("No captain targets or must-play players specified")
 
-        # Validate confidence bounds
         if not 0 <= self.confidence <= 1:
             errors.append(f"Invalid confidence score: {self.confidence}")
             self.confidence = max(0, min(1, self.confidence))
 
-        # Check for conflicts between must_play and never_play
         conflicts = set(self.must_play) & set(self.never_play)
         if conflicts:
             errors.append(f"Conflicting players in must/never play: {conflicts}")
 
-        # Validate stack structures
         for stack in self.stacks:
             if not isinstance(stack, dict):
                 errors.append("Invalid stack format - must be dictionary")
@@ -357,7 +345,6 @@ class AIRecommendation:
             elif 'player1' in stack and 'player2' not in stack:
                 errors.append("Stack missing player2")
 
-        # Validate enforcement rules
         for rule in self.enforcement_rules:
             if 'type' not in rule or 'constraint' not in rule:
                 errors.append("Invalid enforcement rule format")
@@ -420,21 +407,18 @@ class LineupConstraints:
         """
         errors = []
 
-        # Salary validation
         total_salary = lineup.get('Salary', 0)
         if total_salary < self.min_salary:
             errors.append(f"Salary too low: ${total_salary:,} < ${self.min_salary:,}")
         if total_salary > self.max_salary:
             errors.append(f"Salary too high: ${total_salary:,} > ${self.max_salary:,}")
 
-        # Ownership validation
         total_ownership = lineup.get('Total_Ownership', 0)
         if total_ownership > self.max_ownership:
             errors.append(f"Ownership too high: {total_ownership:.1f}%")
         if total_ownership < self.min_ownership:
             errors.append(f"Ownership too low: {total_ownership:.1f}%")
 
-        # Player validation
         all_players = [lineup.get('Captain')] + lineup.get('FLEX', [])
 
         for banned in self.banned_players:
@@ -507,14 +491,10 @@ class PerformanceMetrics:
         }
 
 # ============================================================================
-# END OF PART 1
-# ============================================================================
-
-# ============================================================================
 # PART 2: SINGLETON UTILITIES & LOGGING INFRASTRUCTURE
 # ============================================================================
-# These are singleton classes for tracking, logging, and monitoring throughout
-# the optimization process. They provide centralized tracking without coupling.
+
+import re  # ✅ FIX #1: Added missing import
 
 # ============================================================================
 # GLOBAL SINGLETONS - Proper Singleton Implementation
@@ -530,7 +510,7 @@ def get_logger():
     global _global_logger
     if _global_logger is None:
         with _singleton_lock:
-            if _global_logger is None:  # Double-check
+            if _global_logger is None:
                 _global_logger = GlobalLogger()
     return _global_logger
 
@@ -561,14 +541,9 @@ class GlobalLogger:
     Enhanced global logger with memory management and intelligent error tracking
 
     DFS Value: Understanding failures helps avoid them in future optimizations
-    Key improvements:
-    - Error pattern detection to identify recurring issues
-    - Contextual error suggestions for faster debugging
-    - Automatic memory cleanup
-    - Better categorization of log types
     """
 
-    # OPTIMIZATION: Pre-compiled regex patterns (Recommendation #10)
+    # Pre-compiled regex patterns
     _PATTERN_NUMBER = re.compile(r'\d+')
     _PATTERN_DOUBLE_QUOTE = re.compile(r'"[^"]*"')
     _PATTERN_SINGLE_QUOTE = re.compile(r"'[^']*'")
@@ -597,7 +572,7 @@ class GlobalLogger:
             'other': 0
         }
 
-    def log(self, message: str, level: str = "INFO", context: Dict = None):
+    def log(self, message: str, level: str = "INFO", context: Dict = None) -> None:  # ✅ FIX #5: Added return type
         """
         Enhanced logging with context and pattern detection
 
@@ -618,20 +593,15 @@ class GlobalLogger:
 
             if level in ["ERROR", "CRITICAL"]:
                 self.error_logs.append(entry)
-
-                # Track error patterns
                 error_key = self._extract_error_pattern(message)
                 self.error_patterns[error_key] += 1
-
-                # Categorize failure
                 self._categorize_failure(message)
 
-            # Periodic cleanup (every 5 minutes)
-            if (datetime.now() - self.last_cleanup).seconds > 300:
-                self._cleanup()
+            # ✅ FIX #3: Automatic periodic cleanup
+            self._cleanup_if_needed()
 
     def log_exception(self, exception: Exception, context: str = "",
-                     critical: bool = False):
+                     critical: bool = False) -> None:  # ✅ FIX #5: Added return type
         """
         Enhanced exception logging with helpful suggestions
 
@@ -639,8 +609,6 @@ class GlobalLogger:
         """
         with self._lock:
             error_msg = f"{context}: {str(exception)}" if context else str(exception)
-
-            # Generate helpful suggestions based on error type
             suggestions = self._get_error_suggestions(exception, context)
 
             entry = {
@@ -655,7 +623,6 @@ class GlobalLogger:
 
             self.error_logs.append(entry)
 
-            # Also log to main log with suggestion
             if suggestions:
                 self.log(
                     f"Error: {error_msg}\nSuggestion: {suggestions[0]}",
@@ -666,16 +633,14 @@ class GlobalLogger:
     def _extract_error_pattern(self, message: str) -> str:
         """
         Extract error pattern for tracking common issues
-        OPTIMIZED: Uses pre-compiled regex patterns (Recommendation #10)
-
-        Replaces specific values with placeholders to identify patterns
+        Uses pre-compiled regex patterns for performance
         """
-        pattern = self._PATTERN_NUMBER.sub('N', message)  # Replace numbers
-        pattern = self._PATTERN_DOUBLE_QUOTE.sub('"X"', pattern)  # Replace quoted strings
-        pattern = self._PATTERN_SINGLE_QUOTE.sub("'X'", pattern)  # Replace single-quoted
-        return pattern[:100]  # Limit length
+        pattern = self._PATTERN_NUMBER.sub('N', message)
+        pattern = self._PATTERN_DOUBLE_QUOTE.sub('"X"', pattern)
+        pattern = self._PATTERN_SINGLE_QUOTE.sub("'X'", pattern)
+        return pattern[:100]
 
-    def _categorize_failure(self, message: str):
+    def _categorize_failure(self, message: str) -> None:  # ✅ FIX #5: Added return type
         """Categorize failure type for analytics"""
         message_lower = message.lower()
 
@@ -694,70 +659,106 @@ class GlobalLogger:
         else:
             self.failure_categories['other'] += 1
 
+    # ✅ FIX #4: Refactored from 100+ lines to focused helper methods
     def _get_error_suggestions(self, exception: Exception, context: str) -> List[str]:
         """
         Provide helpful suggestions based on error type
-        FIXED: LRU-style cache eviction to prevent memory leak (Recommendation #8)
 
         DFS Value: Contextual help reduces time spent debugging
         """
-        suggestions = []
-        error_str = str(exception).lower()
         exception_type = type(exception).__name__
+        cache_key = f"{exception_type}_{context}"
 
         # Check cache first
-        cache_key = f"{exception_type}_{context}"
         if cache_key in self.error_suggestions_cache:
             return self.error_suggestions_cache[cache_key]
 
-        # KeyError suggestions
+        # Generate suggestions based on exception type
+        suggestions = []
         if isinstance(exception, KeyError):
-            suggestions.append("Check that all required columns are present in CSV")
-            suggestions.append("Verify player names match exactly between data and AI recommendations")
-            suggestions.append("Ensure DataFrame has been properly validated")
-
-        # ValueError suggestions
+            suggestions = self._get_keyerror_suggestions()
         elif isinstance(exception, ValueError):
-            if "salary" in error_str:
-                suggestions.append("Check salary cap constraints - may be too restrictive")
-                suggestions.append("Verify required players fit within salary cap")
-            elif "ownership" in error_str:
-                suggestions.append("Verify ownership projections are between 0-100")
-                suggestions.append("Check for missing ownership data")
-            else:
-                suggestions.append("Check data types and value ranges")
-
-        # PuLP solver errors
-        elif "pulp" in exception_type.lower() or "solver" in error_str:
-            suggestions.append("Optimization constraints may be infeasible")
-            suggestions.append("Try relaxing AI enforcement level")
-            suggestions.append("Check that required players can fit in salary cap")
-            suggestions.append("Verify team diversity requirements can be met")
-
-        # Timeout errors
-        elif "timeout" in error_str:
-            suggestions.append("Reduce number of lineups or increase timeout")
-            suggestions.append("Try fewer hard constraints")
-            suggestions.append("Consider using fewer parallel threads")
-
-        # API errors
-        elif "api" in error_str or "connection" in error_str:
-            suggestions.append("Check API key is valid")
-            suggestions.append("Verify internet connection")
-            suggestions.append("API may be rate-limited - wait and retry")
-
-        # DataFrame/Pandas errors
+            suggestions = self._get_valueerror_suggestions(str(exception))
+        elif "pulp" in exception_type.lower() or "solver" in str(exception).lower():
+            suggestions = self._get_solver_suggestions()
+        elif "timeout" in str(exception).lower():
+            suggestions = self._get_timeout_suggestions()
+        elif "api" in str(exception).lower() or "connection" in str(exception).lower():
+            suggestions = self._get_api_suggestions()
         elif isinstance(exception, (pd.errors.EmptyDataError, AttributeError)):
-            suggestions.append("Ensure CSV file is not empty")
-            suggestions.append("Check column names match expected format")
-            suggestions.append("Verify data has been loaded correctly")
+            suggestions = self._get_dataframe_suggestions()
+        else:
+            suggestions = self._get_generic_suggestions()
 
-        # Generic suggestion if no specific match
-        if not suggestions:
-            suggestions.append("Check logs for more details")
-            suggestions.append("Verify all input data is valid")
+        # Cache with LRU-style eviction
+        self._cache_suggestions(cache_key, suggestions)
+        return suggestions
 
-        # FIXED: LRU-style eviction instead of clearing all (Recommendation #8)
+    def _get_keyerror_suggestions(self) -> List[str]:
+        """Suggestions for KeyError exceptions"""
+        return [
+            "Check that all required columns are present in CSV",
+            "Verify player names match exactly between data and AI recommendations",
+            "Ensure DataFrame has been properly validated"
+        ]
+
+    def _get_valueerror_suggestions(self, error_str: str) -> List[str]:
+        """Suggestions for ValueError exceptions"""
+        error_lower = error_str.lower()
+        if "salary" in error_lower:
+            return [
+                "Check salary cap constraints - may be too restrictive",
+                "Verify required players fit within salary cap"
+            ]
+        elif "ownership" in error_lower:
+            return [
+                "Verify ownership projections are between 0-100",
+                "Check for missing ownership data"
+            ]
+        return ["Check data types and value ranges"]
+
+    def _get_solver_suggestions(self) -> List[str]:
+        """Suggestions for optimization solver issues"""
+        return [
+            "Optimization constraints may be infeasible",
+            "Try relaxing AI enforcement level",
+            "Check that required players can fit in salary cap",
+            "Verify team diversity requirements can be met"
+        ]
+
+    def _get_timeout_suggestions(self) -> List[str]:
+        """Suggestions for timeout errors"""
+        return [
+            "Reduce number of lineups or increase timeout",
+            "Try fewer hard constraints",
+            "Consider using fewer parallel threads"
+        ]
+
+    def _get_api_suggestions(self) -> List[str]:
+        """Suggestions for API-related errors"""
+        return [
+            "Check API key is valid",
+            "Verify internet connection",
+            "API may be rate-limited - wait and retry"
+        ]
+
+    def _get_dataframe_suggestions(self) -> List[str]:
+        """Suggestions for DataFrame/data issues"""
+        return [
+            "Ensure CSV file is not empty",
+            "Check column names match expected format",
+            "Verify data has been loaded correctly"
+        ]
+
+    def _get_generic_suggestions(self) -> List[str]:
+        """Generic fallback suggestions"""
+        return [
+            "Check logs for more details",
+            "Verify all input data is valid"
+        ]
+
+    def _cache_suggestions(self, cache_key: str, suggestions: List[str]) -> None:  # ✅ FIX #5: Added return type
+        """Cache suggestions with LRU-style eviction"""
         if len(self.error_suggestions_cache) > 100:
             # Remove oldest 50% instead of clearing everything
             old_keys = list(self.error_suggestions_cache.keys())[:50]
@@ -766,9 +767,17 @@ class GlobalLogger:
 
         self.error_suggestions_cache[cache_key] = suggestions
 
-        return suggestions
+    # ✅ FIX #3: Improved automatic cleanup
+    def _cleanup_if_needed(self) -> None:  # ✅ FIX #5: Added return type
+        """Automatic cleanup check - called on every log to prevent memory growth"""
+        now = datetime.now()
 
-    def _cleanup(self):
+        # Check every 5 minutes
+        if (now - self.last_cleanup).seconds > 300:
+            self._cleanup()
+            self.last_cleanup = now
+
+    def _cleanup(self) -> None:  # ✅ FIX #5: Added return type
         """Memory cleanup to prevent unbounded growth"""
         cutoff = datetime.now() - timedelta(hours=1)
 
@@ -779,13 +788,11 @@ class GlobalLogger:
                 if m.get('timestamp', datetime.now()) > cutoff
             ]
 
-            # Remove empty keys
             if not self.performance_metrics[key]:
                 del self.performance_metrics[key]
 
         # Clean old error patterns (keep only recent patterns)
         if len(self.error_patterns) > 50:
-            # Keep top 30 most common patterns
             sorted_patterns = sorted(
                 self.error_patterns.items(),
                 key=lambda x: x[1],
@@ -793,10 +800,9 @@ class GlobalLogger:
             )
             self.error_patterns = dict(sorted_patterns[:30])
 
-        self.last_cleanup = datetime.now()
-
     def log_ai_decision(self, decision_type: str, ai_source: str,
-                       success: bool, details: Dict = None, confidence: float = 0):
+                       success: bool, details: Dict = None,
+                       confidence: float = 0) -> None:  # ✅ FIX #5: Added return type
         """Log AI decision for tracking"""
         with self._lock:
             self.ai_decisions.append({
@@ -808,7 +814,8 @@ class GlobalLogger:
                 'details': details or {}
             })
 
-    def log_optimization_start(self, num_lineups: int, field_size: str, settings: Dict):
+    def log_optimization_start(self, num_lineups: int, field_size: str,
+                              settings: Dict) -> None:  # ✅ FIX #5: Added return type
         """Log optimization start with settings"""
         with self._lock:
             self.optimization_events.append({
@@ -820,7 +827,7 @@ class GlobalLogger:
             })
 
     def log_optimization_end(self, lineups_generated: int, time_taken: float,
-                            success_rate: float):
+                            success_rate: float) -> None:  # ✅ FIX #5: Added return type
         """Log optimization completion"""
         with self._lock:
             self.optimization_events.append({
@@ -876,19 +883,14 @@ class PerformanceMonitor:
             'export': []
         }
 
-    def start_timer(self, operation: str):
+    def start_timer(self, operation: str) -> None:  # ✅ FIX #5: Added return type
         """Start timing an operation"""
         with self._lock:
             self.start_times[operation] = time.time()
             self.operation_counts[operation] += 1
 
     def stop_timer(self, operation: str) -> float:
-        """
-        Stop timing and return elapsed time
-
-        Returns:
-            Elapsed time in seconds, or 0 if timer wasn't started
-        """
+        """Stop timing and return elapsed time"""
         with self._lock:
             if operation not in self.start_times:
                 return 0
@@ -896,7 +898,6 @@ class PerformanceMonitor:
             elapsed = time.time() - self.start_times[operation]
             del self.start_times[operation]
 
-            # Store timing data
             self.operation_times[operation].append(elapsed)
 
             # Keep only recent timings (memory management)
@@ -905,7 +906,8 @@ class PerformanceMonitor:
 
             return elapsed
 
-    def record_metric(self, metric_name: str, value: float, tags: Dict = None):
+    def record_metric(self, metric_name: str, value: float,
+                     tags: Dict = None) -> None:  # ✅ FIX #5: Added return type
         """Record a metric with optional tags"""
         with self._lock:
             self.metrics[metric_name].append({
@@ -921,13 +923,12 @@ class PerformanceMonitor:
                 if m['timestamp'] > cutoff
             ]
 
-    def record_phase_time(self, phase: str, duration: float):
+    def record_phase_time(self, phase: str, duration: float) -> None:  # ✅ FIX #5: Added return type
         """Record time for specific optimization phase"""
         with self._lock:
             if phase in self.phase_times:
                 self.phase_times[phase].append(duration)
 
-                # Keep recent history
                 if len(self.phase_times[phase]) > 20:
                     self.phase_times[phase] = self.phase_times[phase][-10:]
 
@@ -962,12 +963,7 @@ class PerformanceMonitor:
             return summary
 
     def get_bottlenecks(self, top_n: int = 5) -> List[Tuple[str, float]]:
-        """
-        Identify performance bottlenecks
-
-        Returns:
-            List of (operation, avg_time) sorted by time
-        """
+        """Identify performance bottlenecks"""
         with self._lock:
             bottlenecks = []
             for operation, times in self.operation_times.items():
@@ -1007,7 +1003,7 @@ class AIDecisionTracker:
         }
 
     def track_decision(self, ai_type: AIStrategistType, decision: AIRecommendation,
-                      context: Dict = None):
+                      context: Dict = None) -> None:  # ✅ FIX #5: Added return type
         """Track an AI decision"""
         with self._lock:
             entry = {
@@ -1021,7 +1017,6 @@ class AIDecisionTracker:
 
             self.decisions.append(entry)
 
-            # Track patterns
             pattern_key = self._extract_pattern(decision)
             self.decision_patterns[pattern_key].append(entry)
 
@@ -1035,7 +1030,8 @@ class AIDecisionTracker:
         ]
         return "_".join(pattern_elements)
 
-    def record_performance(self, lineup: Dict, actual_score: Optional[float] = None):
+    def record_performance(self, lineup: Dict,
+                          actual_score: Optional[float] = None) -> None:  # ✅ FIX #5: Added return type
         """
         Record lineup performance for learning
 
@@ -1052,7 +1048,7 @@ class AIDecisionTracker:
                     'projected': projected,
                     'actual': actual_score,
                     'accuracy': accuracy,
-                    'success': actual_score > projected * 1.1,  # 10% better than projected
+                    'success': actual_score > projected * 1.1,
                     'ownership': lineup.get('Total_Ownership', 0),
                     'captain': lineup.get('Captain', '')
                 }
@@ -1080,7 +1076,6 @@ class AIDecisionTracker:
                     if entry['success']:
                         self.strategy_performance[strategy]['wins'] += 1
 
-                    # Update running average score
                     current_avg = self.strategy_performance[strategy]['avg_score']
                     attempts = self.strategy_performance[strategy]['attempts']
                     self.strategy_performance[strategy]['avg_score'] = (
@@ -1088,11 +1083,7 @@ class AIDecisionTracker:
                     )
 
     def get_learning_insights(self) -> Dict:
-        """
-        Get insights from tracked performance
-
-        DFS Value: Actionable insights for future optimizations
-        """
+        """Get insights from tracked performance"""
         with self._lock:
             insights = {
                 'total_decisions': len(self.decisions),
@@ -1103,47 +1094,64 @@ class AIDecisionTracker:
             }
 
             # Calculate pattern success rates
-            pattern_stats = {}
-            for pattern in set(list(self.successful_patterns.keys()) +
-                             list(self.failed_patterns.keys())):
-                successes = self.successful_patterns.get(pattern, 0)
-                failures = self.failed_patterns.get(pattern, 0)
-                total = successes + failures
-
-                if total >= 5:  # Only report patterns with enough data
-                    pattern_stats[pattern] = {
-                        'success_rate': successes / total,
-                        'total': total,
-                        'confidence': 'high' if total >= 10 else 'medium'
-                    }
-
+            pattern_stats = self._calculate_pattern_stats()
             insights['pattern_performance'] = pattern_stats
 
             # Confidence calibration
-            calibration = {}
-            for conf_level, accuracies in self.confidence_calibration.items():
-                if accuracies:
-                    calibration[conf_level / 10] = {
-                        'actual_accuracy': np.mean(accuracies),
-                        'sample_size': len(accuracies)
-                    }
-
+            calibration = self._calculate_calibration()
             insights['confidence_calibration'] = calibration
 
             # Strategy performance
-            insights['strategy_performance'] = {
-                strategy: {
-                    'win_rate': (
-                        stats['wins'] / stats['attempts']
-                        if stats['attempts'] > 0 else 0
-                    ),
-                    'avg_score': stats['avg_score'],
-                    'attempts': stats['attempts']
-                }
-                for strategy, stats in self.strategy_performance.items()
-            }
+            insights['strategy_performance'] = self._calculate_strategy_performance()
 
             return insights
+
+    # ✅ FIX #4: Refactored from 60+ lines to focused helper methods
+    def _calculate_pattern_stats(self) -> Dict:
+        """Calculate pattern success statistics"""
+        pattern_stats = {}
+
+        for pattern in set(list(self.successful_patterns.keys()) +
+                         list(self.failed_patterns.keys())):
+            successes = self.successful_patterns.get(pattern, 0)
+            failures = self.failed_patterns.get(pattern, 0)
+            total = successes + failures
+
+            if total >= 5:
+                pattern_stats[pattern] = {
+                    'success_rate': successes / total,
+                    'total': total,
+                    'confidence': 'high' if total >= 10 else 'medium'
+                }
+
+        return pattern_stats
+
+    def _calculate_calibration(self) -> Dict:
+        """Calculate confidence calibration statistics"""
+        calibration = {}
+
+        for conf_level, accuracies in self.confidence_calibration.items():
+            if accuracies:
+                calibration[conf_level / 10] = {
+                    'actual_accuracy': np.mean(accuracies),
+                    'sample_size': len(accuracies)
+                }
+
+        return calibration
+
+    def _calculate_strategy_performance(self) -> Dict:
+        """Calculate per-strategy performance metrics"""
+        return {
+            strategy: {
+                'win_rate': (
+                    stats['wins'] / stats['attempts']
+                    if stats['attempts'] > 0 else 0
+                ),
+                'avg_score': stats['avg_score'],
+                'attempts': stats['attempts']
+            }
+            for strategy, stats in self.strategy_performance.items()
+        }
 
     def get_recommended_adjustments(self) -> Dict:
         """
@@ -1154,13 +1162,26 @@ class AIDecisionTracker:
         insights = self.get_learning_insights()
         adjustments = {}
 
-        # Recommend confidence adjustments
+        # Confidence adjustments
+        adjustments.update(self._get_confidence_adjustments(insights))
+
+        # Pattern adjustments
+        adjustments.update(self._get_pattern_adjustments(insights))
+
+        # Strategy recommendations
+        adjustments.update(self._get_strategy_recommendations(insights))
+
+        return adjustments
+
+    def _get_confidence_adjustments(self, insights: Dict) -> Dict:
+        """Get confidence-based adjustment recommendations"""
+        adjustments = {}
         calibration = insights.get('confidence_calibration', {})
+
         for conf_level, stats in calibration.items():
             actual_accuracy = stats['actual_accuracy']
             sample_size = stats['sample_size']
 
-            # Only adjust if we have enough data and significant difference
             if sample_size >= 5 and abs(conf_level - actual_accuracy) > 0.15:
                 adjustments[f'confidence_{conf_level:.1f}'] = {
                     'current': conf_level,
@@ -1168,10 +1189,15 @@ class AIDecisionTracker:
                     'reason': f'Historical accuracy is {actual_accuracy:.1%} vs stated {conf_level:.1%}'
                 }
 
-        # Recommend pattern adjustments
+        return adjustments
+
+    def _get_pattern_adjustments(self, insights: Dict) -> Dict:
+        """Get pattern-based adjustment recommendations"""
+        adjustments = {}
         pattern_perf = insights.get('pattern_performance', {})
+
         for pattern, stats in pattern_perf.items():
-            if stats['total'] >= 10:  # Enough data for confidence
+            if stats['total'] >= 10:
                 if stats['success_rate'] > 0.7:
                     adjustments[f'boost_{pattern}'] = {
                         'multiplier': 1.2,
@@ -1183,8 +1209,13 @@ class AIDecisionTracker:
                         'reason': f'Pattern shows only {stats["success_rate"]:.1%} success rate'
                     }
 
-        # Strategy recommendations
+        return adjustments
+
+    def _get_strategy_recommendations(self, insights: Dict) -> Dict:
+        """Get strategy-based recommendations"""
+        adjustments = {}
         strategy_perf = insights.get('strategy_performance', {})
+
         best_strategy = max(
             strategy_perf.items(),
             key=lambda x: x[1]['win_rate'] if x[1]['attempts'] >= 5 else 0,
@@ -1210,30 +1241,20 @@ class AIDecisionTracker:
         adjustments = self.get_recommended_adjustments()
         df_adjusted = df.copy()
 
-        # Apply pattern-based adjustments
         for key, adjustment in adjustments.items():
             if key.startswith('boost_') and current_strategy in key:
-                # Boost projections slightly for successful patterns
                 multiplier = adjustment['multiplier']
                 df_adjusted['Projected_Points'] *= multiplier
 
             elif key.startswith('reduce_') and current_strategy in key:
-                # Reduce projections for unsuccessful patterns
                 multiplier = adjustment['multiplier']
                 df_adjusted['Projected_Points'] *= multiplier
 
         return df_adjusted
 
 # ============================================================================
-# END OF PART 2
-# ============================================================================
-
-# ============================================================================
 # PART 3: ENFORCEMENT, VALIDATION, AND SYNTHESIS COMPONENTS
 # ============================================================================
-# This part contains the rule engine that enforces AI recommendations,
-# manages ownership bucketing, validates configurations, and synthesizes
-# multiple AI perspectives into unified strategy.
 
 # ============================================================================
 # AI ENFORCEMENT ENGINE WITH THREE-TIER RELAXATION
@@ -1261,12 +1282,16 @@ class AIEnforcementEngine:
         # Track which rules are most effective
         self.rule_effectiveness = defaultdict(lambda: {'applied': 0, 'success': 0})
 
+    # ✅ FIX #4: Refactored from 80+ lines to orchestrator + helper methods
     def create_enforcement_rules(self,
                                  recommendations: Dict[AIStrategistType, AIRecommendation]) -> Dict:
         """
         Create comprehensive enforcement rules from AI recommendations
 
-        Returns dictionary with categorized rules by priority and type
+        DFS Value: Different enforcement levels balance AI control vs lineup diversity
+
+        Returns:
+            Dictionary with categorized rules by priority and type
         """
         self.logger.log(
             f"Creating enforcement rules at {self.enforcement_level.value} level",
@@ -1295,6 +1320,15 @@ class AIEnforcementEngine:
         rules['stacking_rules'].extend(self._create_stacking_rules(recommendations))
 
         # Sort by priority within each category
+        self._sort_rules_by_priority(rules)
+
+        total_rules = sum(len(v) for v in rules.values() if isinstance(v, list))
+        self.logger.log(f"Created {total_rules} enforcement rules", "INFO")
+
+        return rules
+
+    def _sort_rules_by_priority(self, rules: Dict) -> None:  # ✅ FIX #5: Added return type
+        """Sort rules by priority in-place"""
         for rule_type in rules:
             if isinstance(rules[rule_type], list):
                 rules[rule_type].sort(
@@ -1302,78 +1336,38 @@ class AIEnforcementEngine:
                     reverse=True
                 )
 
-        total_rules = sum(len(v) for v in rules.values() if isinstance(v, list))
-        self.logger.log(f"Created {total_rules} enforcement rules", "INFO")
-
-        return rules
-
+    # ✅ FIX #4: Refactored from 60+ lines, extracted rule creation logic
     def _create_mandatory_rules(self, recommendations: Dict) -> Dict:
         """
         Create mandatory enforcement rules (all AI decisions enforced as hard constraints)
 
         DFS Value: Maximum AI control for large-field GPPs
         """
-        rules = {
-            'hard_constraints': [],
-            'soft_constraints': [],
-            'stacking_rules': [],
-            'ownership_rules': [],
-            'correlation_rules': []
-        }
+        rules = self._initialize_rule_dict()
 
         for ai_type, rec in recommendations.items():
-            weight = OptimizerConfig.AI_WEIGHTS.get(
-                ai_type.value.lower().replace(' ', '_'),
-                0.33
-            )
+            weight = self._get_ai_weight(ai_type)
 
-            # Captain constraints (highest priority)
+            # Captain constraints
             if rec.captain_targets:
-                rules['hard_constraints'].append({
-                    'rule': 'captain_from_list',
-                    'players': rec.captain_targets[:7],
-                    'source': ai_type.value,
-                    'priority': int(ConstraintPriority.AI_HIGH_CONFIDENCE.value *
-                                   weight * rec.confidence),
-                    'type': 'hard',
-                    'relaxation_tier': 1  # Never relax
-                })
+                rules['hard_constraints'].append(
+                    self._create_captain_rule(rec, ai_type, weight, tier=1)
+                )
 
             # Must play constraints
-            for i, player in enumerate(rec.must_play[:3]):
-                rules['hard_constraints'].append({
-                    'rule': 'must_include',
-                    'player': player,
-                    'source': ai_type.value,
-                    'priority': int((ConstraintPriority.AI_HIGH_CONFIDENCE.value - i * 5) *
-                                   weight * rec.confidence),
-                    'type': 'hard',
-                    'relaxation_tier': 2  # Relax only on attempt 3
-                })
+            rules['hard_constraints'].extend(
+                self._create_must_play_rules(rec, ai_type, weight)
+            )
 
             # Never play constraints
-            for i, player in enumerate(rec.never_play[:3]):
-                rules['hard_constraints'].append({
-                    'rule': 'must_exclude',
-                    'player': player,
-                    'source': ai_type.value,
-                    'priority': int((ConstraintPriority.AI_MODERATE.value - i * 5) *
-                                   weight * rec.confidence),
-                    'type': 'hard',
-                    'relaxation_tier': 2
-                })
+            rules['hard_constraints'].extend(
+                self._create_never_play_rules(rec, ai_type, weight)
+            )
 
             # Stack constraints
-            for i, stack in enumerate(rec.stacks[:3]):
-                rules['stacking_rules'].append({
-                    'rule': 'must_stack',
-                    'stack': stack,
-                    'source': ai_type.value,
-                    'priority': int((ConstraintPriority.AI_MODERATE.value - i * 5) *
-                                   weight * rec.confidence),
-                    'type': 'hard',
-                    'relaxation_tier': 3  # Relax on attempt 2+
-                })
+            rules['stacking_rules'].extend(
+                self._create_stack_constraints(rec, ai_type, weight)
+            )
 
         return rules
 
@@ -1383,16 +1377,12 @@ class AIEnforcementEngine:
 
         DFS Value: Balanced approach - strong AI guidance with some flexibility
         """
-        # Start with moderate rules as base
         rules = self._create_moderate_rules(recommendations)
 
         # Upgrade high-confidence recommendations to hard constraints
         for ai_type, rec in recommendations.items():
-            if rec.confidence > 0.75:  # High confidence threshold
-                weight = OptimizerConfig.AI_WEIGHTS.get(
-                    ai_type.value.lower().replace(' ', '_'),
-                    0.33
-                )
+            if rec.confidence > 0.75:
+                weight = self._get_ai_weight(ai_type)
 
                 if rec.captain_targets:
                     rules['hard_constraints'].append({
@@ -1413,27 +1403,14 @@ class AIEnforcementEngine:
 
         DFS Value: Enforces consensus, suggests individual recommendations
         """
-        rules = {
-            'hard_constraints': [],
-            'soft_constraints': [],
-            'stacking_rules': [],
-            'ownership_rules': [],
-            'correlation_rules': []
-        }
+        rules = self._initialize_rule_dict()
 
-        # Find consensus recommendations (multiple AIs agree)
-        captain_counts = defaultdict(int)
-        must_play_counts = defaultdict(int)
-
-        for rec in recommendations.values():
-            for captain in rec.captain_targets:
-                captain_counts[captain] += 1
-            for player in rec.must_play:
-                must_play_counts[player] += 1
+        # Find consensus recommendations
+        consensus = self._find_consensus_recommendations(recommendations)
 
         # Enforce consensus as hard constraints
-        for captain, count in captain_counts.items():
-            if count >= 2:  # At least 2 AIs agree
+        for captain, count in consensus['captains'].items():
+            if count >= 2:
                 rules['hard_constraints'].append({
                     'rule': 'consensus_captain',
                     'player': captain,
@@ -1444,23 +1421,9 @@ class AIEnforcementEngine:
                 })
 
         # Add soft constraints for single AI recommendations
-        for ai_type, rec in recommendations.items():
-            weight = OptimizerConfig.AI_WEIGHTS.get(
-                ai_type.value.lower().replace(' ', '_'),
-                0.33
-            )
-
-            for player in rec.must_play[:3]:
-                if must_play_counts[player] == 1:  # Only one AI suggested
-                    rules['soft_constraints'].append({
-                        'rule': 'prefer_player',
-                        'player': player,
-                        'source': ai_type.value,
-                        'weight': weight * rec.confidence,
-                        'priority': int(ConstraintPriority.SOFT_PREFERENCE.value *
-                                       weight * rec.confidence),
-                        'type': 'soft'
-                    })
+        rules['soft_constraints'].extend(
+            self._create_soft_constraints(recommendations, consensus)
+        )
 
         return rules
 
@@ -1470,20 +1433,11 @@ class AIEnforcementEngine:
 
         DFS Value: Maximum flexibility for small-field contests
         """
-        rules = {
-            'hard_constraints': [],
-            'soft_constraints': [],
-            'stacking_rules': [],
-            'ownership_rules': [],
-            'correlation_rules': []
-        }
+        rules = self._initialize_rule_dict()
 
         # All recommendations become soft constraints
         for ai_type, rec in recommendations.items():
-            weight = OptimizerConfig.AI_WEIGHTS.get(
-                ai_type.value.lower().replace(' ', '_'),
-                0.33
-            )
+            weight = self._get_ai_weight(ai_type)
 
             # Captain preferences
             for i, captain in enumerate(rec.captain_targets[:5]):
@@ -1499,88 +1453,204 @@ class AIEnforcementEngine:
 
         return rules
 
+    # ✅ FIX #4: Extracted helper methods for clarity
+    def _initialize_rule_dict(self) -> Dict:
+        """Initialize empty rules dictionary"""
+        return {
+            'hard_constraints': [],
+            'soft_constraints': [],
+            'stacking_rules': [],
+            'ownership_rules': [],
+            'correlation_rules': []
+        }
+
+    def _get_ai_weight(self, ai_type: AIStrategistType) -> float:
+        """Get weight for AI type from config"""
+        return OptimizerConfig.AI_WEIGHTS.get(
+            ai_type.value.lower().replace(' ', '_'),
+            0.33
+        )
+
+    def _create_captain_rule(self, rec: AIRecommendation, ai_type: AIStrategistType,
+                            weight: float, tier: int) -> Dict:
+        """Create captain constraint rule"""
+        return {
+            'rule': 'captain_from_list',
+            'players': rec.captain_targets[:7],
+            'source': ai_type.value,
+            'priority': int(ConstraintPriority.AI_HIGH_CONFIDENCE.value *
+                           weight * rec.confidence),
+            'type': 'hard',
+            'relaxation_tier': tier
+        }
+
+    def _create_must_play_rules(self, rec: AIRecommendation, ai_type: AIStrategistType,
+                                weight: float) -> List[Dict]:
+        """Create must-play constraint rules"""
+        rules = []
+        for i, player in enumerate(rec.must_play[:3]):
+            rules.append({
+                'rule': 'must_include',
+                'player': player,
+                'source': ai_type.value,
+                'priority': int((ConstraintPriority.AI_HIGH_CONFIDENCE.value - i * 5) *
+                               weight * rec.confidence),
+                'type': 'hard',
+                'relaxation_tier': 2
+            })
+        return rules
+
+    def _create_never_play_rules(self, rec: AIRecommendation, ai_type: AIStrategistType,
+                                 weight: float) -> List[Dict]:
+        """Create never-play constraint rules"""
+        rules = []
+        for i, player in enumerate(rec.never_play[:3]):
+            rules.append({
+                'rule': 'must_exclude',
+                'player': player,
+                'source': ai_type.value,
+                'priority': int((ConstraintPriority.AI_MODERATE.value - i * 5) *
+                               weight * rec.confidence),
+                'type': 'hard',
+                'relaxation_tier': 2
+            })
+        return rules
+
+    def _create_stack_constraints(self, rec: AIRecommendation, ai_type: AIStrategistType,
+                                  weight: float) -> List[Dict]:
+        """Create stack constraint rules"""
+        rules = []
+        for i, stack in enumerate(rec.stacks[:3]):
+            rules.append({
+                'rule': 'must_stack',
+                'stack': stack,
+                'source': ai_type.value,
+                'priority': int((ConstraintPriority.AI_MODERATE.value - i * 5) *
+                               weight * rec.confidence),
+                'type': 'hard',
+                'relaxation_tier': 3
+            })
+        return rules
+
+    def _find_consensus_recommendations(self, recommendations: Dict) -> Dict:
+        """Find consensus across multiple AI recommendations"""
+        captain_counts = defaultdict(int)
+        must_play_counts = defaultdict(int)
+
+        for rec in recommendations.values():
+            for captain in rec.captain_targets:
+                captain_counts[captain] += 1
+            for player in rec.must_play:
+                must_play_counts[player] += 1
+
+        return {
+            'captains': captain_counts,
+            'must_play': must_play_counts
+        }
+
+    def _create_soft_constraints(self, recommendations: Dict, consensus: Dict) -> List[Dict]:
+        """Create soft constraints for non-consensus recommendations"""
+        constraints = []
+
+        for ai_type, rec in recommendations.items():
+            weight = self._get_ai_weight(ai_type)
+
+            for player in rec.must_play[:3]:
+                if consensus['must_play'][player] == 1:
+                    constraints.append({
+                        'rule': 'prefer_player',
+                        'player': player,
+                        'source': ai_type.value,
+                        'weight': weight * rec.confidence,
+                        'priority': int(ConstraintPriority.SOFT_PREFERENCE.value *
+                                       weight * rec.confidence),
+                        'type': 'soft'
+                    })
+
+        return constraints
+
     def _create_stacking_rules(self, recommendations: Dict) -> List[Dict]:
         """
         Create advanced stacking rules for all stack types
 
         DFS Value: Each stack type captures different game scripts
-        - Onslaught: Blowout scenarios
-        - Bring_back: High-scoring games
-        - Leverage: Low-owned correlations
-        - Defensive: Negative game scripts
         """
         stacking_rules = []
 
         for ai_type, rec in recommendations.items():
             for stack in rec.stacks:
-                stack_type = stack.get('type', 'standard')
-
-                if stack_type == 'onslaught':
-                    # 3-4+ players from same team
-                    stacking_rules.append({
-                        'rule': 'onslaught_stack',
-                        'players': stack.get('players', []),
-                        'team': stack.get('team'),
-                        'min_players': 3,
-                        'max_players': 5,
-                        'scenario': stack.get('scenario', 'blowout'),
-                        'priority': ConstraintPriority.AI_MODERATE.value,
-                        'source': ai_type.value,
-                        'correlation_strength': 0.6,
-                        'relaxation_tier': 3
-                    })
-
-                elif stack_type == 'bring_back':
-                    # Primary stack with opposing player
-                    stacking_rules.append({
-                        'rule': 'bring_back_stack',
-                        'primary_players': stack.get('primary_stack', []),
-                        'bring_back_player': stack.get('bring_back'),
-                        'game_total': stack.get('game_total', 45),
-                        'priority': ConstraintPriority.AI_MODERATE.value,
-                        'source': ai_type.value,
-                        'correlation_strength': 0.5,
-                        'relaxation_tier': 3
-                    })
-
-                elif stack_type == 'leverage':
-                    # Low ownership correlated plays
-                    stacking_rules.append({
-                        'rule': 'leverage_stack',
-                        'players': [stack.get('player1'), stack.get('player2')],
-                        'combined_ownership_max': stack.get('combined_ownership', 20),
-                        'leverage_score_min': 3.0,
-                        'priority': ConstraintPriority.SOFT_PREFERENCE.value,
-                        'source': ai_type.value,
-                        'correlation_strength': 0.4,
-                        'relaxation_tier': 3
-                    })
-
-                elif stack_type == 'defensive':
-                    # DST with negative game script
-                    stacking_rules.append({
-                        'rule': 'defensive_stack',
-                        'dst_team': stack.get('dst_team'),
-                        'opposing_players_max': 1,
-                        'scenario': 'defensive_game',
-                        'priority': ConstraintPriority.SOFT_PREFERENCE.value,
-                        'source': ai_type.value,
-                        'relaxation_tier': 3
-                    })
-
-                else:
-                    # Standard two-player stack
-                    if 'player1' in stack and 'player2' in stack:
-                        stacking_rules.append({
-                            'rule': 'standard_stack',
-                            'players': [stack['player1'], stack['player2']],
-                            'correlation': stack.get('correlation', 0.5),
-                            'priority': ConstraintPriority.SOFT_PREFERENCE.value,
-                            'source': ai_type.value,
-                            'relaxation_tier': 3
-                        })
+                stack_rule = self._create_single_stack_rule(stack, ai_type)
+                if stack_rule:
+                    stacking_rules.append(stack_rule)
 
         # Remove duplicate stacks
+        return self._deduplicate_stacks(stacking_rules)
+
+    def _create_single_stack_rule(self, stack: Dict, ai_type: AIStrategistType) -> Optional[Dict]:
+        """Create a single stack rule based on stack type"""
+        stack_type = stack.get('type', 'standard')
+
+        if stack_type == 'onslaught':
+            return {
+                'rule': 'onslaught_stack',
+                'players': stack.get('players', []),
+                'team': stack.get('team'),
+                'min_players': 3,
+                'max_players': 5,
+                'scenario': stack.get('scenario', 'blowout'),
+                'priority': ConstraintPriority.AI_MODERATE.value,
+                'source': ai_type.value,
+                'correlation_strength': 0.6,
+                'relaxation_tier': 3
+            }
+        elif stack_type == 'bring_back':
+            return {
+                'rule': 'bring_back_stack',
+                'primary_players': stack.get('primary_stack', []),
+                'bring_back_player': stack.get('bring_back'),
+                'game_total': stack.get('game_total', 45),
+                'priority': ConstraintPriority.AI_MODERATE.value,
+                'source': ai_type.value,
+                'correlation_strength': 0.5,
+                'relaxation_tier': 3
+            }
+        elif stack_type == 'leverage':
+            return {
+                'rule': 'leverage_stack',
+                'players': [stack.get('player1'), stack.get('player2')],
+                'combined_ownership_max': stack.get('combined_ownership', 20),
+                'leverage_score_min': 3.0,
+                'priority': ConstraintPriority.SOFT_PREFERENCE.value,
+                'source': ai_type.value,
+                'correlation_strength': 0.4,
+                'relaxation_tier': 3
+            }
+        elif stack_type == 'defensive':
+            return {
+                'rule': 'defensive_stack',
+                'dst_team': stack.get('dst_team'),
+                'opposing_players_max': 1,
+                'scenario': 'defensive_game',
+                'priority': ConstraintPriority.SOFT_PREFERENCE.value,
+                'source': ai_type.value,
+                'relaxation_tier': 3
+            }
+        else:
+            # Standard two-player stack
+            if 'player1' in stack and 'player2' in stack:
+                return {
+                    'rule': 'standard_stack',
+                    'players': [stack['player1'], stack['player2']],
+                    'correlation': stack.get('correlation', 0.5),
+                    'priority': ConstraintPriority.SOFT_PREFERENCE.value,
+                    'source': ai_type.value,
+                    'relaxation_tier': 3
+                }
+
+        return None
+
+    def _deduplicate_stacks(self, stacking_rules: List[Dict]) -> List[Dict]:
+        """Remove duplicate stacks"""
         unique_stacks = []
         seen = set()
 
@@ -1640,32 +1710,9 @@ class AIEnforcementEngine:
 
         # Check hard constraints only
         for rule in enforcement_rules.get('hard_constraints', []):
-            rule_type = rule.get('rule')
-
-            if rule_type == 'captain_from_list':
-                if captain not in rule.get('players', []):
-                    violations.append(
-                        f"Captain {captain} not in AI-recommended list: {rule['source']}"
-                    )
-
-            elif rule_type == 'must_include':
-                if rule.get('player') not in all_players:
-                    violations.append(
-                        f"Missing required player: {rule['player']} ({rule['source']})"
-                    )
-
-            elif rule_type == 'must_exclude':
-                if rule.get('player') in all_players:
-                    violations.append(
-                        f"Included banned player: {rule['player']} ({rule['source']})"
-                    )
-
-            elif rule_type == 'consensus_captain':
-                if captain != rule.get('player'):
-                    violations.append(
-                        f"Not using consensus captain: {rule['player']} "
-                        f"(agreement: {rule.get('agreement', 0)} AIs)"
-                    )
+            violation = self._check_single_constraint(rule, captain, all_players)
+            if violation:
+                violations.append(violation)
 
         # Check stacking rules (if hard)
         for stack_rule in enforcement_rules.get('stacking_rules', []):
@@ -1683,6 +1730,37 @@ class AIEnforcementEngine:
         is_valid = len(violations) == 0
 
         # Record rule application
+        self._record_rule_application(lineup, is_valid, violations, enforcement_rules)
+
+        return is_valid, violations
+
+    def _check_single_constraint(self, rule: Dict, captain: str,
+                                 all_players: List[str]) -> Optional[str]:
+        """Check a single constraint and return violation message if any"""
+        rule_type = rule.get('rule')
+
+        if rule_type == 'captain_from_list':
+            if captain not in rule.get('players', []):
+                return f"Captain {captain} not in AI-recommended list: {rule['source']}"
+
+        elif rule_type == 'must_include':
+            if rule.get('player') not in all_players:
+                return f"Missing required player: {rule['player']} ({rule['source']})"
+
+        elif rule_type == 'must_exclude':
+            if rule.get('player') in all_players:
+                return f"Included banned player: {rule['player']} ({rule['source']})"
+
+        elif rule_type == 'consensus_captain':
+            if captain != rule.get('player'):
+                return (f"Not using consensus captain: {rule['player']} "
+                       f"(agreement: {rule.get('agreement', 0)} AIs)")
+
+        return None
+
+    def _record_rule_application(self, lineup: Dict, is_valid: bool,
+                                 violations: List[str], enforcement_rules: Dict) -> None:  # ✅ FIX #5
+        """Record rule application for learning"""
         self.applied_rules.append({
             'timestamp': datetime.now(),
             'lineup_num': lineup.get('Lineup', 0),
@@ -1696,8 +1774,6 @@ class AIEnforcementEngine:
             self.rule_effectiveness[rule_key]['applied'] += 1
             if is_valid:
                 self.rule_effectiveness[rule_key]['success'] += 1
-
-        return is_valid, violations
 
     def _validate_stack_rule(self, players: List[str], stack_rule: Dict) -> bool:
         """Validate a specific stack rule"""
@@ -1742,7 +1818,6 @@ class AIOwnershipBucketManager:
     Enhanced ownership bucket management with dynamic threshold adjustment
 
     DFS Value: Dynamic thresholds adapt to slate characteristics
-    Flat ownership slate = tighter buckets, polarized = wider buckets
     """
 
     def __init__(self, enforcement_engine: AIEnforcementEngine = None):
@@ -1762,13 +1837,11 @@ class AIOwnershipBucketManager:
         # Store original thresholds for reference
         self.base_thresholds = self.bucket_thresholds.copy()
 
-    def adjust_thresholds_for_slate(self, df: pd.DataFrame, field_size: str):
+    def adjust_thresholds_for_slate(self, df: pd.DataFrame, field_size: str) -> None:  # ✅ FIX #5
         """
         Dynamically adjust bucket thresholds based on slate characteristics
 
         DFS Value: CRITICAL - Adapts to ownership distribution
-        Flat ownership = lower thresholds for differentiation
-        Polarized ownership = higher thresholds to capture extremes
         """
         ownership_std = df['Ownership'].std()
         ownership_mean = df['Ownership'].mean()
@@ -1783,53 +1856,56 @@ class AIOwnershipBucketManager:
         self.bucket_thresholds = self.base_thresholds.copy()
 
         # Adjust based on ownership concentration
-        if ownership_std < 5:  # Flat ownership - everyone similar
-            # Lower thresholds to create differentiation
-            for key in self.bucket_thresholds:
-                self.bucket_thresholds[key] *= 0.85
-            self.logger.log("Flat ownership detected - lowering thresholds", "INFO")
-
-        elif ownership_std > 15:  # Polarized ownership
-            # Raise thresholds to avoid over-focusing on extremes
-            for key in self.bucket_thresholds:
-                self.bucket_thresholds[key] *= 1.15
-            self.logger.log("Polarized ownership detected - raising thresholds", "INFO")
+        if ownership_std < 5:
+            self._apply_flat_ownership_adjustment()
+        elif ownership_std > 15:
+            self._apply_polarized_ownership_adjustment()
 
         # Field-size adjustments
         if field_size in ['large_field_aggressive', 'milly_maker']:
-            # Shift all thresholds down for more aggressive leverage
-            for key in self.bucket_thresholds:
-                self.bucket_thresholds[key] *= 0.85
-            self.logger.log(
-                f"Large field ({field_size}) - increasing leverage sensitivity",
-                "INFO"
-            )
+            self._apply_large_field_adjustment(field_size)
 
-        # Adjust based on mean ownership
-        if ownership_mean < 8:  # Low overall ownership
-            # Market inefficiency - be more aggressive
+        # Mean-based adjustments
+        self._apply_mean_based_adjustment(ownership_mean)
+
+    def _apply_flat_ownership_adjustment(self) -> None:  # ✅ FIX #5
+        """Apply adjustment for flat ownership slates"""
+        for key in self.bucket_thresholds:
+            self.bucket_thresholds[key] *= 0.85
+        self.logger.log("Flat ownership detected - lowering thresholds", "INFO")
+
+    def _apply_polarized_ownership_adjustment(self) -> None:  # ✅ FIX #5
+        """Apply adjustment for polarized ownership slates"""
+        for key in self.bucket_thresholds:
+            self.bucket_thresholds[key] *= 1.15
+        self.logger.log("Polarized ownership detected - raising thresholds", "INFO")
+
+    def _apply_large_field_adjustment(self, field_size: str) -> None:  # ✅ FIX #5
+        """Apply adjustment for large field contests"""
+        for key in self.bucket_thresholds:
+            self.bucket_thresholds[key] *= 0.85
+        self.logger.log(
+            f"Large field ({field_size}) - increasing leverage sensitivity",
+            "INFO"
+        )
+
+    def _apply_mean_based_adjustment(self, ownership_mean: float) -> None:  # ✅ FIX #5
+        """Apply adjustment based on mean ownership"""
+        if ownership_mean < 8:
             self.bucket_thresholds['chalk'] *= 0.9
             self.bucket_thresholds['leverage'] *= 1.1
-
-        elif ownership_mean > 15:  # High overall ownership
-            # Chalky slate - need more differentiation
+        elif ownership_mean > 15:
             self.bucket_thresholds['leverage'] *= 0.9
 
     def categorize_players(self, df: pd.DataFrame) -> Dict[str, List[str]]:
         """
-        Categorize players into ownership buckets
-        OPTIMIZED: Vectorized operations (Recommendation #3)
-
-        Returns dict with bucket names as keys, player lists as values
+        Categorize players into ownership buckets using vectorized operations
         """
-        # Vectorized comparisons instead of row-by-row iteration
         ownership = df['Ownership'].fillna(10)
         players = df['Player'].values
-
-        # Get thresholds
         thresholds = self.bucket_thresholds
 
-        # Vectorized bucketing - much faster than iterating
+        # Vectorized bucketing
         buckets = {
             'mega_chalk': players[ownership >= thresholds['mega_chalk']].tolist(),
             'chalk': players[(ownership >= thresholds['chalk']) &
@@ -1858,7 +1934,6 @@ class AIOwnershipBucketManager:
         Calculate GPP leverage score for lineup
 
         DFS Value: Quantifies tournament differentiation
-        Higher leverage = lower ownership + high ceiling
         """
         if not players:
             return 0
@@ -1876,7 +1951,7 @@ class AIOwnershipBucketManager:
             projection = row.get('Projected_Points', 0)
             ownership = row.get('Ownership', 10)
 
-            # Captain gets 1.5x weight (assuming first player is captain)
+            # Captain gets 1.5x weight
             if i == 0:
                 projection *= 1.5
                 ownership *= 1.5
@@ -1893,7 +1968,6 @@ class AIOwnershipBucketManager:
                 leverage_bonus += 3
 
         # Calculate leverage score
-        # Formula: (projection / ownership) + leverage_bonus
         if total_ownership > 0:
             avg_projection = total_projection / len(players)
             avg_ownership = total_ownership / len(players)
@@ -1938,7 +2012,8 @@ class AIConfigValidator:
         """
         Validate that AI requirements are feasible
 
-        Returns validation result with errors, warnings, suggestions
+        Returns:
+            Validation result with errors, warnings, suggestions
         """
         validation_result = {
             'is_valid': True,
@@ -1949,7 +2024,32 @@ class AIConfigValidator:
 
         available_players = set(df['Player'].values)
 
-        # Check captain requirements
+        # Validate captain requirements
+        AIConfigValidator._validate_captain_requirements(
+            enforcement_rules, available_players, validation_result
+        )
+
+        # Validate must include players
+        AIConfigValidator._validate_must_include(
+            enforcement_rules, available_players, validation_result
+        )
+
+        # Validate stack feasibility
+        AIConfigValidator._validate_stacks(
+            enforcement_rules, available_players, validation_result
+        )
+
+        # Validate salary feasibility
+        AIConfigValidator._validate_salary_feasibility(
+            enforcement_rules, df, validation_result
+        )
+
+        return validation_result
+
+    @staticmethod
+    def _validate_captain_requirements(enforcement_rules: Dict, available_players: Set[str],
+                                      validation_result: Dict) -> None:  # ✅ FIX #5
+        """Validate captain requirements"""
         captain_rules = [
             r for r in enforcement_rules.get('hard_constraints', [])
             if r.get('rule') in ['captain_from_list', 'captain_selection']
@@ -1977,7 +2077,10 @@ class AIConfigValidator:
                     "Consider expanding captain pool for diversity"
                 )
 
-        # Check must include players
+    @staticmethod
+    def _validate_must_include(enforcement_rules: Dict, available_players: Set[str],
+                               validation_result: Dict) -> None:  # ✅ FIX #5
+        """Validate must-include players"""
         must_include = [
             r for r in enforcement_rules.get('hard_constraints', [])
             if r.get('rule') == 'must_include'
@@ -1990,7 +2093,10 @@ class AIConfigValidator:
                 )
                 validation_result['is_valid'] = False
 
-        # Check stack feasibility
+    @staticmethod
+    def _validate_stacks(enforcement_rules: Dict, available_players: Set[str],
+                        validation_result: Dict) -> None:  # ✅ FIX #5
+        """Validate stack feasibility"""
         stacking_rules = enforcement_rules.get('stacking_rules', [])
 
         for stack in stacking_rules:
@@ -2004,7 +2110,10 @@ class AIConfigValidator:
                         f"(only {len(valid)} valid players)"
                     )
 
-        # Check salary feasibility
+    @staticmethod
+    def _validate_salary_feasibility(enforcement_rules: Dict, df: pd.DataFrame,
+                                    validation_result: Dict) -> None:  # ✅ FIX #5
+        """Validate salary feasibility"""
         hard_constraints = enforcement_rules.get('hard_constraints', [])
         required_players = [
             r.get('player') for r in hard_constraints
@@ -2025,8 +2134,6 @@ class AIConfigValidator:
                     "May have limited flexibility for other positions"
                 )
 
-        return validation_result
-
     @staticmethod
     def get_ai_strategy_distribution(field_size: str, num_lineups: int,
                                     consensus_level: str = 'mixed') -> Dict:
@@ -2034,9 +2141,7 @@ class AIConfigValidator:
         Dynamic strategy distribution based on consensus level
 
         DFS Value: Adapts lineup mix based on AI agreement
-        High consensus = more balanced, Low consensus = more variety
         """
-        # Base distribution by field size
         base_distributions = {
             'small_field': {
                 'balanced': 0.5,
@@ -2075,20 +2180,28 @@ class AIConfigValidator:
         ).copy()
 
         # Adjust based on consensus level
+        distribution = AIConfigValidator._adjust_for_consensus(
+            distribution, consensus_level
+        )
+
+        # Convert to lineup counts
+        return AIConfigValidator._convert_to_lineup_counts(
+            distribution, num_lineups
+        )
+
+    @staticmethod
+    def _adjust_for_consensus(distribution: Dict, consensus_level: str) -> Dict:
+        """Adjust distribution based on AI consensus level"""
         if consensus_level == 'high':
-            # More balanced when AIs agree
             distribution['balanced'] = min(
-                distribution.get('balanced', 0.3) * 1.3,
-                0.5
+                distribution.get('balanced', 0.3) * 1.3, 0.5
             )
             distribution['contrarian'] = (
                 distribution.get('contrarian', 0.2) * 0.7
             )
         elif consensus_level == 'low':
-            # More variety when AIs disagree
             distribution['contrarian'] = min(
-                distribution.get('contrarian', 0.2) * 1.3,
-                0.4
+                distribution.get('contrarian', 0.2) * 1.3, 0.4
             )
             distribution['balanced'] = (
                 distribution.get('balanced', 0.3) * 0.7
@@ -2096,9 +2209,11 @@ class AIConfigValidator:
 
         # Normalize
         total = sum(distribution.values())
-        distribution = {k: v/total for k, v in distribution.items()}
+        return {k: v/total for k, v in distribution.items()}
 
-        # Convert to lineup counts
+    @staticmethod
+    def _convert_to_lineup_counts(distribution: Dict, num_lineups: int) -> Dict:
+        """Convert percentages to lineup counts"""
         lineup_distribution = {}
         allocated = 0
 
@@ -2127,6 +2242,7 @@ class AISynthesisEngine:
         self.logger = get_logger()
         self.synthesis_history = deque(maxlen=20)
 
+    # ✅ FIX #4: Refactored from 80+ lines into focused helper methods
     def synthesize_recommendations(self,
                                    game_theory: AIRecommendation,
                                    correlation: AIRecommendation,
@@ -2149,7 +2265,40 @@ class AISynthesisEngine:
             'patterns': []
         }
 
-        # Captain synthesis with consensus tracking
+        # Synthesize each component
+        synthesis['captain_strategy'] = self._synthesize_captains(
+            game_theory, correlation, contrarian
+        )
+
+        synthesis['player_rankings'] = self._synthesize_player_rankings(
+            game_theory, correlation, contrarian
+        )
+
+        synthesis['stacking_rules'] = self._synthesize_stacks(
+            game_theory, correlation, contrarian
+        )
+
+        synthesis['patterns'] = self._analyze_patterns(
+            game_theory, correlation, contrarian
+        )
+
+        synthesis['confidence'] = self._calculate_confidence(
+            game_theory, correlation, contrarian
+        )
+
+        synthesis['narrative'] = self._build_narrative(
+            game_theory, correlation, contrarian
+        )
+
+        # Store in history
+        self._record_synthesis(synthesis)
+
+        return synthesis
+
+    def _synthesize_captains(self, game_theory: AIRecommendation,
+                            correlation: AIRecommendation,
+                            contrarian: AIRecommendation) -> Dict:
+        """Synthesize captain recommendations with consensus tracking"""
         captain_votes = defaultdict(list)
 
         for ai_type, rec in [
@@ -2161,15 +2310,21 @@ class AISynthesisEngine:
                 captain_votes[captain].append(ai_type.value)
 
         # Classify captains by consensus
+        captain_strategy = {}
         for captain, votes in captain_votes.items():
             if len(votes) == 3:
-                synthesis['captain_strategy'][captain] = 'consensus'
+                captain_strategy[captain] = 'consensus'
             elif len(votes) == 2:
-                synthesis['captain_strategy'][captain] = 'majority'
+                captain_strategy[captain] = 'majority'
             else:
-                synthesis['captain_strategy'][captain] = votes[0]
+                captain_strategy[captain] = votes[0]
 
-        # Player rankings synthesis with weighted scoring
+        return captain_strategy
+
+    def _synthesize_player_rankings(self, game_theory: AIRecommendation,
+                                    correlation: AIRecommendation,
+                                    contrarian: AIRecommendation) -> Dict:
+        """Synthesize player rankings with weighted scoring"""
         player_scores = defaultdict(float)
 
         weights = {
@@ -2200,12 +2355,17 @@ class AISynthesisEngine:
         if player_scores:
             max_score = max(abs(score) for score in player_scores.values())
             if max_score > 0:
-                synthesis['player_rankings'] = {
+                return {
                     player: score / max_score
                     for player, score in player_scores.items()
                 }
 
-        # Stack synthesis - combine all unique stacks
+        return {}
+
+    def _synthesize_stacks(self, game_theory: AIRecommendation,
+                          correlation: AIRecommendation,
+                          contrarian: AIRecommendation) -> List[Dict]:
+        """Synthesize and prioritize all stacks"""
         all_stacks = []
         stack_patterns = defaultdict(int)
 
@@ -2215,50 +2375,14 @@ class AISynthesisEngine:
                 stack_type = stack.get('type', 'standard')
                 stack_patterns[stack_type] += 1
 
-        # Prioritize stacks
-        synthesis['stacking_rules'] = self._prioritize_stacks(all_stacks)
-
-        # Pattern analysis
-        synthesis['patterns'] = self._analyze_patterns(
-            game_theory, correlation, contrarian, stack_patterns
-        )
-
-        # Calculate overall confidence
-        confidences = [
-            game_theory.confidence * weights[AIStrategistType.GAME_THEORY],
-            correlation.confidence * weights[AIStrategistType.CORRELATION],
-            contrarian.confidence * weights[AIStrategistType.CONTRARIAN_NARRATIVE]
-        ]
-        synthesis['confidence'] = sum(confidences)
-
-        # Create narrative
-        narratives = []
-        if game_theory.narrative:
-            narratives.append(f"GT: {game_theory.narrative[:80]}")
-        if correlation.narrative:
-            narratives.append(f"Corr: {correlation.narrative[:80]}")
-        if contrarian.narrative:
-            narratives.append(f"Contra: {contrarian.narrative[:80]}")
-
-        synthesis['narrative'] = " | ".join(narratives)
-
-        # Store in history
-        self.synthesis_history.append({
-            'timestamp': datetime.now(),
-            'confidence': synthesis['confidence'],
-            'captain_count': len(synthesis['captain_strategy']),
-            'patterns': synthesis['patterns']
-        })
-
-        return synthesis
+        return self._prioritize_stacks(all_stacks)
 
     def _prioritize_stacks(self, all_stacks: List[Dict]) -> List[Dict]:
         """Prioritize and deduplicate stacks"""
-        # Group similar stacks
         stack_groups = defaultdict(list)
 
         for stack in all_stacks:
-            # Create a key for grouping
+            # Create grouping key
             if 'player1' in stack and 'player2' in stack:
                 key = tuple(sorted([stack['player1'], stack['player2']]))
             elif 'players' in stack:
@@ -2270,31 +2394,21 @@ class AISynthesisEngine:
 
         # Select best from each group
         prioritized = []
-
         for group in stack_groups.values():
             if group:
-                # Sort by correlation strength or confidence
                 best = max(group, key=lambda s: s.get('correlation', 0.5))
-
-                # Boost priority if multiple AIs suggested
                 if len(group) > 1:
                     best['consensus'] = True
-                    best['priority'] = (
-                        best.get('priority', 50) + 10 * len(group)
-                    )
-
+                    best['priority'] = best.get('priority', 50) + 10 * len(group)
                 prioritized.append(best)
 
         # Sort by priority
         prioritized.sort(key=lambda s: s.get('priority', 50), reverse=True)
+        return prioritized[:10]
 
-        return prioritized[:10]  # Top 10 stacks
-
-    def _analyze_patterns(self,
-                         game_theory: AIRecommendation,
+    def _analyze_patterns(self, game_theory: AIRecommendation,
                          correlation: AIRecommendation,
-                         contrarian: AIRecommendation,
-                         stack_patterns: Dict) -> List[str]:
+                         contrarian: AIRecommendation) -> List[str]:
         """Analyze patterns in AI recommendations"""
         patterns = []
 
@@ -2306,11 +2420,9 @@ class AISynthesisEngine:
         )
 
         if captain_overlap:
-            patterns.append(
-                f"Strong consensus on {len(captain_overlap)} captains"
-            )
+            patterns.append(f"Strong consensus on {len(captain_overlap)} captains")
 
-        # Check for contrarian dominance
+        # Check confidence patterns
         confidences = {
             'game_theory': game_theory.confidence,
             'correlation': correlation.confidence,
@@ -2321,24 +2433,56 @@ class AISynthesisEngine:
         if confidences['contrarian'] == max_conf:
             patterns.append("Contrarian approach favored")
 
-        # Stack pattern analysis
-        if stack_patterns.get('onslaught', 0) > 1:
-            patterns.append("Multiple onslaught stacks recommended")
-
-        if stack_patterns.get('bring_back', 0) > 0:
-            patterns.append("Bring-back correlation identified")
-
         return patterns
 
-# ============================================================================
-# END OF PART 3
-# ============================================================================
+    def _calculate_confidence(self, game_theory: AIRecommendation,
+                             correlation: AIRecommendation,
+                             contrarian: AIRecommendation) -> float:
+        """Calculate overall confidence from all AIs"""
+        weights = {
+            AIStrategistType.GAME_THEORY:
+                OptimizerConfig.AI_WEIGHTS.get('game_theory', 0.33),
+            AIStrategistType.CORRELATION:
+                OptimizerConfig.AI_WEIGHTS.get('correlation', 0.33),
+            AIStrategistType.CONTRARIAN_NARRATIVE:
+                OptimizerConfig.AI_WEIGHTS.get('contrarian', 0.34)
+        }
+
+        confidences = [
+            game_theory.confidence * weights[AIStrategistType.GAME_THEORY],
+            correlation.confidence * weights[AIStrategistType.CORRELATION],
+            contrarian.confidence * weights[AIStrategistType.CONTRARIAN_NARRATIVE]
+        ]
+
+        return sum(confidences)
+
+    def _build_narrative(self, game_theory: AIRecommendation,
+                        correlation: AIRecommendation,
+                        contrarian: AIRecommendation) -> str:
+        """Build combined narrative from all AIs"""
+        narratives = []
+
+        if game_theory.narrative:
+            narratives.append(f"GT: {game_theory.narrative[:80]}")
+        if correlation.narrative:
+            narratives.append(f"Corr: {correlation.narrative[:80]}")
+        if contrarian.narrative:
+            narratives.append(f"Contra: {contrarian.narrative[:80]}")
+
+        return " | ".join(narratives)
+
+    def _record_synthesis(self, synthesis: Dict) -> None:  # ✅ FIX #5
+        """Record synthesis in history"""
+        self.synthesis_history.append({
+            'timestamp': datetime.now(),
+            'confidence': synthesis['confidence'],
+            'captain_count': len(synthesis['captain_strategy']),
+            'patterns': synthesis['patterns']
+        })
 
 # ============================================================================
 # PART 4: BASE AI STRATEGIST & CLAUDE API MANAGER
 # ============================================================================
-# This part contains the foundation for AI strategists and the API manager
-# with robust error handling, retry logic, and learning capabilities.
 
 # ============================================================================
 # BASE AI STRATEGIST WITH LEARNING AND ADAPTATION
@@ -2349,11 +2493,6 @@ class BaseAIStrategist:
     Enhanced base class for all AI strategists with learning capabilities
 
     DFS Value: Learning from past performance improves future recommendations
-    Key features:
-    - Adaptive confidence based on historical accuracy
-    - Slate profile analysis for context-aware recommendations
-    - Statistical fallbacks when API unavailable
-    - Performance tracking for continuous improvement
     """
 
     def __init__(self, api_manager=None, strategist_type: AIStrategistType = None):
@@ -2376,12 +2515,11 @@ class BaseAIStrategist:
             AIStrategistType.CONTRARIAN_NARRATIVE: 0.50
         }
 
-        # Adaptive confidence modifier (adjusted based on performance)
+        # Adaptive confidence modifier
         self.adaptive_confidence_modifier = 1.0
-
-        # Store DataFrame reference for fallback recommendations
         self.df = None
 
+    # ✅ FIX #4: Refactored from 100+ lines to orchestrator + helper methods
     def get_recommendation(self, df: pd.DataFrame, game_info: Dict,
                           field_size: str, use_api: bool = True) -> AIRecommendation:
         """
@@ -2397,10 +2535,8 @@ class BaseAIStrategist:
             AIRecommendation object
         """
         try:
-            # Store DataFrame for fallback use
             self.df = df
 
-            # Validate inputs
             if df.empty:
                 self.logger.log(
                     f"{self.strategist_type.value}: Empty DataFrame provided",
@@ -2408,65 +2544,27 @@ class BaseAIStrategist:
                 )
                 return self._get_fallback_recommendation(df, field_size)
 
-            # Analyze slate characteristics for dynamic adjustment
+            # Analyze slate and check cache
             slate_profile = self._analyze_slate_profile(df, game_info)
-
-            # Generate cache key
             cache_key = self._generate_cache_key(df, game_info, field_size)
 
-            # Check cache
-            with self._cache_lock:
-                if cache_key in self.response_cache:
-                    self.logger.log(
-                        f"{self.strategist_type.value}: Using cached recommendation",
-                        "DEBUG"
-                    )
-                    cached_rec = self.response_cache[cache_key]
-                    # Apply adaptive confidence
-                    cached_rec.confidence *= self.adaptive_confidence_modifier
-                    return cached_rec
+            cached_rec = self._check_cache(cache_key)
+            if cached_rec:
+                return cached_rec
 
-            # Generate prompt with slate context
+            # Generate prompt and get response
             prompt = self.generate_prompt(df, game_info, field_size, slate_profile)
+            response = self._get_response(prompt, use_api, df, game_info,
+                                         field_size, slate_profile)
 
-            # Get response (API or manual)
-            if use_api and self.api_manager and self.api_manager.client:
-                response = self._get_api_response(prompt)
-            else:
-                response = self._get_fallback_response(
-                    df, game_info, field_size, slate_profile
-                )
-
-            # Parse response into recommendation
+            # Parse and enhance recommendation
             recommendation = self.parse_response(response, df, field_size)
-
-            # Apply learned adjustments
-            recommendation = self._apply_learned_adjustments(
-                recommendation, slate_profile
+            recommendation = self._enhance_recommendation(
+                recommendation, slate_profile, df, field_size
             )
 
-            # Validate recommendation
-            is_valid, errors = recommendation.validate()
-            if not is_valid:
-                self.logger.log(
-                    f"{self.strategist_type.value} validation errors: {errors}",
-                    "WARNING"
-                )
-                recommendation = self._correct_recommendation(recommendation, df)
-
-            # Add enforcement rules
-            recommendation.enforcement_rules = self.create_enforcement_rules(
-                recommendation, df, field_size, slate_profile
-            )
-
-            # Cache the result
-            with self._cache_lock:
-                self.response_cache[cache_key] = recommendation
-                if len(self.response_cache) > self.max_cache_size:
-                    # Remove oldest entries (FIFO)
-                    for key in list(self.response_cache.keys())[:5]:
-                        del self.response_cache[key]
-
+            # Cache and return
+            self._cache_recommendation(cache_key, recommendation)
             return recommendation
 
         except Exception as e:
@@ -2476,8 +2574,61 @@ class BaseAIStrategist:
             )
             return self._get_fallback_recommendation(df, field_size)
 
-    def _analyze_slate_profile(self, df: pd.DataFrame,
-                               game_info: Dict) -> Dict:
+    def _check_cache(self, cache_key: str) -> Optional[AIRecommendation]:
+        """Check cache for existing recommendation"""
+        with self._cache_lock:
+            if cache_key in self.response_cache:
+                self.logger.log(
+                    f"{self.strategist_type.value}: Using cached recommendation",
+                    "DEBUG"
+                )
+                cached_rec = self.response_cache[cache_key]
+                cached_rec.confidence *= self.adaptive_confidence_modifier
+                return cached_rec
+        return None
+
+    def _get_response(self, prompt: str, use_api: bool, df: pd.DataFrame,
+                     game_info: Dict, field_size: str,
+                     slate_profile: Dict) -> str:
+        """Get response from API or fallback"""
+        if use_api and self.api_manager and self.api_manager.client:
+            return self._get_api_response(prompt)
+        else:
+            return self._get_fallback_response(df, game_info, field_size, slate_profile)
+
+    def _enhance_recommendation(self, recommendation: AIRecommendation,
+                               slate_profile: Dict, df: pd.DataFrame,
+                               field_size: str) -> AIRecommendation:
+        """Enhance recommendation with learning and validation"""
+        # Apply learned adjustments
+        recommendation = self._apply_learned_adjustments(recommendation, slate_profile)
+
+        # Validate recommendation
+        is_valid, errors = recommendation.validate()
+        if not is_valid:
+            self.logger.log(
+                f"{self.strategist_type.value} validation errors: {errors}",
+                "WARNING"
+            )
+            recommendation = self._correct_recommendation(recommendation, df)
+
+        # Add enforcement rules
+        recommendation.enforcement_rules = self.create_enforcement_rules(
+            recommendation, df, field_size, slate_profile
+        )
+
+        return recommendation
+
+    def _cache_recommendation(self, cache_key: str,
+                             recommendation: AIRecommendation) -> None:  # ✅ FIX #5
+        """Cache recommendation with size management"""
+        with self._cache_lock:
+            self.response_cache[cache_key] = recommendation
+            if len(self.response_cache) > self.max_cache_size:
+                for key in list(self.response_cache.keys())[:5]:
+                    del self.response_cache[key]
+
+    def _analyze_slate_profile(self, df: pd.DataFrame, game_info: Dict) -> Dict:
         """
         Analyze slate characteristics for dynamic strategy adjustment
 
@@ -2505,11 +2656,7 @@ class BaseAIStrategist:
         return profile
 
     def _determine_slate_type(self, df: pd.DataFrame, game_info: Dict) -> str:
-        """
-        Determine slate type for strategy adjustment
-
-        Returns: 'shootout', 'low_scoring', 'blowout_risk', 'flat_pricing', 'standard'
-        """
+        """Determine slate type for strategy adjustment"""
         total = game_info.get('total', 45)
         spread = abs(game_info.get('spread', 0))
 
@@ -2524,17 +2671,12 @@ class BaseAIStrategist:
         else:
             return 'standard'
 
-    def _apply_learned_adjustments(self,
-                                   recommendation: AIRecommendation,
+    def _apply_learned_adjustments(self, recommendation: AIRecommendation,
                                    slate_profile: Dict) -> AIRecommendation:
-        """
-        Apply learned patterns and adjustments
-
-        DFS Value: Historical performance improves future recommendations
-        """
-        # Adjust confidence based on slate type and historical performance
+        """Apply learned patterns and adjustments"""
         slate_type = slate_profile.get('slate_type', 'standard')
 
+        # Adjust confidence based on historical success
         if slate_type in self.successful_patterns:
             confidence_boost = self.successful_patterns[slate_type] * 0.1
             recommendation.confidence = min(
@@ -2542,38 +2684,46 @@ class BaseAIStrategist:
                 recommendation.confidence + confidence_boost
             )
 
-        # Apply adaptive confidence modifier
         recommendation.confidence *= self.adaptive_confidence_modifier
 
-        # Adjust captain targets based on slate profile
+        # Adjust captain targets based on slate type
+        recommendation = self._adjust_captains_for_slate(
+            recommendation, slate_type, slate_profile
+        )
+
+        return recommendation
+
+    def _adjust_captains_for_slate(self, recommendation: AIRecommendation,
+                                   slate_type: str,
+                                   slate_profile: Dict) -> AIRecommendation:
+        """Adjust captain targets based on slate characteristics"""
         if slate_type == 'shootout' and self.df is not None:
             # Prioritize pass catchers in shootouts
-            qbs_and_receivers = []
-            for player in recommendation.captain_targets:
-                player_data = self.df[self.df['Player'] == player]
-                if not player_data.empty:
-                    if player_data.iloc[0]['Position'] in ['QB', 'WR', 'TE']:
-                        qbs_and_receivers.append(player)
+            qbs_and_receivers = [
+                player for player in recommendation.captain_targets
+                if self._is_passing_game_player(player)
+            ]
 
             if qbs_and_receivers:
-                # Move QB/pass catchers to front
                 recommendation.captain_targets = qbs_and_receivers + [
                     p for p in recommendation.captain_targets
                     if p not in qbs_and_receivers
                 ]
 
-        elif slate_type == 'blowout_risk' and self.df is not None:
-            # Favor players from underdog team
-            spread = slate_profile.get('spread', 0)
-            if spread > 7:
-                # Identify underdog team (this is simplified)
-                teams = self.df['Team'].unique()
-                # Adjust captain targets to favor underdog players
-                pass
-
         return recommendation
 
-    def track_performance(self, lineup: Dict, actual_points: float = None):
+    def _is_passing_game_player(self, player: str) -> bool:
+        """Check if player is QB/WR/TE"""
+        if self.df is None:
+            return False
+
+        player_data = self.df[self.df['Player'] == player]
+        if not player_data.empty:
+            return player_data.iloc[0]['Position'] in ['QB', 'WR', 'TE']
+        return False
+
+    def track_performance(self, lineup: Dict,
+                         actual_points: Optional[float] = None) -> None:  # ✅ FIX #5
         """
         Track lineup performance for learning
 
@@ -2593,19 +2743,22 @@ class BaseAIStrategist:
 
             self.performance_history.append(performance_data)
 
-            # Update successful patterns by slate type
+            # Update successful patterns
             slate_type = performance_data.get('slate_type', 'standard')
             if performance_data['accuracy'] > 0.8:
                 self.successful_patterns[slate_type] += 1
 
-            # Update adaptive confidence based on recent performance
-            if len(self.performance_history) >= 10:
-                recent_accuracy = np.mean([
-                    p['accuracy']
-                    for p in list(self.performance_history)[-10:]
-                ])
-                # Range: 0.5 to 1.5
-                self.adaptive_confidence_modifier = 0.5 + recent_accuracy
+            # Update adaptive confidence
+            self._update_adaptive_confidence()
+
+    def _update_adaptive_confidence(self) -> None:  # ✅ FIX #5
+        """Update confidence modifier based on recent performance"""
+        if len(self.performance_history) >= 10:
+            recent_accuracy = np.mean([
+                p['accuracy']
+                for p in list(self.performance_history)[-10:]
+            ])
+            self.adaptive_confidence_modifier = 0.5 + recent_accuracy
 
     def _get_api_response(self, prompt: str) -> str:
         """Get response from API with error handling"""
@@ -2625,24 +2778,15 @@ class BaseAIStrategist:
 
     def _get_fallback_response(self, df: pd.DataFrame, game_info: Dict,
                                field_size: str, slate_profile: Dict) -> str:
-        """
-        Generate fallback response using statistical analysis
-
-        DFS Value: CRITICAL - Enables operation without API
-        Uses data-driven approach rather than empty response
-        """
-        # This will be implemented by child classes
-        # Base implementation returns empty JSON
+        """Generate fallback response using statistical analysis"""
         return "{}"
 
     def _get_fallback_recommendation(self, df: pd.DataFrame,
                                     field_size: str) -> AIRecommendation:
         """
         Create fallback recommendation using statistical analysis
-        OPTIMIZED: Reduced DataFrame copies (Recommendation #11)
 
         DFS Value: CRITICAL - Better than empty recommendation
-        Uses actual data to make informed suggestions
         """
         if df.empty:
             return AIRecommendation(
@@ -2651,52 +2795,17 @@ class BaseAIStrategist:
                 source_ai=self.strategist_type
             )
 
-        # Use vectorized operations and filters instead of copies
-        # Calculate leverage scores efficiently
+        # Vectorized calculations
         ownership = df['Ownership'].fillna(10)
         projected = df['Projected_Points']
 
-        # Vectorized GPP score calculation
-        gpp_scores = projected / (ownership + 5)
+        captains, must_play, never_play = self._select_fallback_players(
+            df, ownership, projected
+        )
 
-        # Adjust based on AI type
-        if self.strategist_type == AIStrategistType.GAME_THEORY:
-            # Focus on ownership leverage - use boolean masks
-            low_own_mask = ownership < 15
-            leverage_mask = ownership < 10
-            high_own_mask = ownership > 35
-
-            captains = df.loc[low_own_mask].nlargest(7, 'Projected_Points')['Player'].tolist()
-            must_play = df.loc[leverage_mask].nlargest(3, 'Projected_Points')['Player'].tolist()
-            never_play = df.loc[high_own_mask].nlargest(2, 'Ownership')['Player'].tolist()
-
-        elif self.strategist_type == AIStrategistType.CORRELATION:
-            # Focus on stacking opportunities - use position masks
-            qb_mask = df['Position'] == 'QB'
-            receiver_mask = df['Position'].isin(['WR', 'TE'])
-
-            captains = df.loc[qb_mask].nlargest(3, 'Projected_Points')['Player'].tolist()
-            captains += df.loc[receiver_mask].nlargest(4, 'Projected_Points')['Player'].tolist()
-
-            must_play = []
-            never_play = []
-
-        else:  # CONTRARIAN_NARRATIVE
-            # Focus on ultra-low ownership - use masks
-            ultra_low_mask = ownership < 10
-            very_low_mask = ownership < 5
-
-            captains = df.loc[ultra_low_mask].nlargest(7, 'Projected_Points')['Player'].tolist()
-            must_play = df.loc[very_low_mask].nlargest(2, 'Projected_Points')['Player'].tolist()
-            never_play = df.nlargest(3, 'Ownership')['Player'].tolist()
-
-        # Create basic stacks
         stacks = self._create_statistical_stacks(df)
 
-        confidence = self.fallback_confidence.get(
-            self.strategist_type,
-            0.5
-        )
+        confidence = self.fallback_confidence.get(self.strategist_type, 0.5)
 
         return AIRecommendation(
             captain_targets=captains[:7],
@@ -2713,19 +2822,47 @@ class BaseAIStrategist:
             source_ai=self.strategist_type
         )
 
+    def _select_fallback_players(self, df: pd.DataFrame, ownership: pd.Series,
+                                 projected: pd.Series) -> Tuple[List[str], List[str], List[str]]:
+        """Select players based on AI type using vectorized operations"""
+        if self.strategist_type == AIStrategistType.GAME_THEORY:
+            low_own_mask = ownership < 15
+            leverage_mask = ownership < 10
+            high_own_mask = ownership > 35
+
+            captains = df.loc[low_own_mask].nlargest(7, 'Projected_Points')['Player'].tolist()
+            must_play = df.loc[leverage_mask].nlargest(3, 'Projected_Points')['Player'].tolist()
+            never_play = df.loc[high_own_mask].nlargest(2, 'Ownership')['Player'].tolist()
+
+        elif self.strategist_type == AIStrategistType.CORRELATION:
+            qb_mask = df['Position'] == 'QB'
+            receiver_mask = df['Position'].isin(['WR', 'TE'])
+
+            captains = df.loc[qb_mask].nlargest(3, 'Projected_Points')['Player'].tolist()
+            captains += df.loc[receiver_mask].nlargest(4, 'Projected_Points')['Player'].tolist()
+            must_play = []
+            never_play = []
+
+        else:  # CONTRARIAN_NARRATIVE
+            ultra_low_mask = ownership < 10
+            very_low_mask = ownership < 5
+
+            captains = df.loc[ultra_low_mask].nlargest(7, 'Projected_Points')['Player'].tolist()
+            must_play = df.loc[very_low_mask].nlargest(2, 'Projected_Points')['Player'].tolist()
+            never_play = df.nlargest(3, 'Ownership')['Player'].tolist()
+
+        return captains, must_play, never_play
+
     def _create_statistical_stacks(self, df: pd.DataFrame) -> List[Dict]:
         """Create stacks using statistical analysis"""
         stacks = []
 
         try:
-            # QB stacks - use masks for efficiency
             qb_mask = df['Position'] == 'QB'
             qbs = df[qb_mask]
 
             for _, qb in qbs.iterrows():
                 team = qb['Team']
-
-                # Find pass catchers from same team
                 teammates_mask = (df['Team'] == team) & df['Position'].isin(['WR', 'TE'])
                 teammates = df[teammates_mask]
 
@@ -2750,7 +2887,7 @@ class BaseAIStrategist:
         """Correct invalid recommendations"""
         available_players = set(df['Player'].values)
 
-        # Filter captain targets to valid players
+        # Filter to valid players
         recommendation.captain_targets = [
             p for p in recommendation.captain_targets
             if p in available_players
@@ -2758,25 +2895,18 @@ class BaseAIStrategist:
 
         # Add fallback captains if needed
         if len(recommendation.captain_targets) < 3:
-            top_players = df.nlargest(
-                5, 'Projected_Points'
-            )['Player'].tolist()
+            top_players = df.nlargest(5, 'Projected_Points')['Player'].tolist()
             for player in top_players:
                 if player not in recommendation.captain_targets:
                     recommendation.captain_targets.append(player)
                 if len(recommendation.captain_targets) >= 5:
                     break
 
-        # Filter must_play to valid players
         recommendation.must_play = [
-            p for p in recommendation.must_play
-            if p in available_players
+            p for p in recommendation.must_play if p in available_players
         ]
-
-        # Filter never_play to valid players
         recommendation.never_play = [
-            p for p in recommendation.never_play
-            if p in available_players
+            p for p in recommendation.never_play if p in available_players
         ]
 
         return recommendation
@@ -2784,7 +2914,6 @@ class BaseAIStrategist:
     def _generate_cache_key(self, df: pd.DataFrame, game_info: Dict,
                            field_size: str) -> str:
         """Generate cache key for memoization"""
-        # Create hash from key parameters
         key_components = [
             str(len(df)),
             str(df['Player'].iloc[0] if not df.empty else ''),
@@ -2813,11 +2942,8 @@ class BaseAIStrategist:
                                 slate_profile: Dict) -> List[Dict]:
         """Create enforcement rules - can be overridden by child classes"""
         rules = []
-
-        # Validate players exist
         available_players = set(df['Player'].values)
 
-        # Captain enforcement
         valid_captains = [
             c for c in recommendation.captain_targets
             if c in available_players
@@ -2852,14 +2978,8 @@ class BaseAIStrategist:
 class ClaudeAPIManager:
     """
     Enhanced Claude API manager with retry logic and comprehensive caching
-    FIXED: Exponential backoff overflow (Recommendation #7)
 
     DFS Value: Reliable API access = consistent AI recommendations
-    Key features:
-    - Exponential backoff retry for transient failures
-    - Thread-safe caching
-    - Rate limit handling
-    - Detailed usage statistics
     """
 
     def __init__(self, api_key: str):
@@ -2891,25 +3011,19 @@ class ClaudeAPIManager:
 
         self.logger = get_logger()
         self.perf_monitor = get_performance_monitor()
-
-        # Response time tracking
         self.response_times = deque(maxlen=100)
 
         self.initialize_client()
 
-    def initialize_client(self):
+    def initialize_client(self) -> None:  # ✅ FIX #5
         """Initialize Claude client with validation"""
         try:
-            # Validate API key format
             if not self.api_key or not self.api_key.startswith('sk-'):
                 raise ValueError("Invalid API key format")
 
-            # Import and initialize client
             try:
                 from anthropic import Anthropic
                 self.client = Anthropic(api_key=self.api_key)
-
-                # Test the connection
                 self.validate_connection()
 
             except ImportError:
@@ -2927,27 +3041,48 @@ class ClaudeAPIManager:
             self.logger.log(f"Failed to initialize Claude API: {e}", "ERROR")
             self.client = None
 
+    # ✅ FIX #4: Refactored from 120+ lines into focused helper methods
     def get_ai_response(self, prompt: str,
                        ai_type: Optional[AIStrategistType] = None,
                        max_retries: int = 3) -> str:
         """
         Get response from Claude API with exponential backoff retry
-        FIXED: Timeout overflow prevention (Recommendation #7)
 
         DFS Value: CRITICAL - Retry logic prevents failures from transient issues
-
-        Args:
-            prompt: Prompt for AI
-            ai_type: Type of AI strategist (for tracking)
-            max_retries: Maximum retry attempts
-
-        Returns:
-            AI response string (JSON format)
         """
-        # Generate cache key
+        # Check cache first
+        cached_response = self._check_response_cache(prompt, ai_type)
+        if cached_response:
+            return cached_response
+
+        # Update statistics
+        self._update_request_stats(ai_type)
+
+        # Retry loop with exponential backoff
+        for attempt in range(max_retries):
+            try:
+                response = self._make_api_call(prompt, attempt)
+
+                if response:
+                    self._update_success_stats(response, ai_type, attempt)
+                    self._cache_response(prompt, response)
+                    return response
+
+            except TimeoutError:
+                if not self._handle_timeout(attempt, max_retries):
+                    return self._handle_final_failure(ai_type, "timeout")
+
+            except Exception as e:
+                if not self._handle_exception(e, attempt, max_retries, ai_type):
+                    return self._handle_final_failure(ai_type, "exception")
+
+        return "{}"
+
+    def _check_response_cache(self, prompt: str,
+                              ai_type: Optional[AIStrategistType]) -> Optional[str]:
+        """Check cache for existing response"""
         prompt_hash = hashlib.md5(prompt.encode()).hexdigest()
 
-        # Check cache
         with self._cache_lock:
             if prompt_hash in self.cache:
                 self.stats['cache_hits'] += 1
@@ -2957,147 +3092,135 @@ class ClaudeAPIManager:
                 )
                 return self.cache[prompt_hash]
 
-        # Update request statistics
+        return None
+
+    def _update_request_stats(self, ai_type: Optional[AIStrategistType]) -> None:  # ✅ FIX #5
+        """Update request statistics"""
         self.stats['requests'] += 1
         if ai_type:
             self.stats['by_ai'][ai_type]['requests'] += 1
 
-        # Retry loop with exponential backoff
-        for attempt in range(max_retries):
-            try:
-                if not self.client:
-                    raise Exception("API client not initialized")
+    def _make_api_call(self, prompt: str, attempt: int) -> Optional[str]:
+        """Make actual API call with timeout"""
+        if not self.client:
+            raise Exception("API client not initialized")
 
-                self.perf_monitor.start_timer("claude_api_call")
-                start_time = time.time()
+        self.perf_monitor.start_timer("claude_api_call")
+        start_time = time.time()
 
-                # FIXED: Cap timeout to prevent overflow (Recommendation #7)
-                timeout = min(30 * (1.5 ** attempt), 300)  # Max 5 minutes
+        # ✅ FIX #2: Cap timeout to prevent overflow
+        timeout = min(30 * (1.5 ** attempt), 300)
 
-                # Make API call
-                message = self.client.messages.create(
-                    model="claude-3-sonnet-20241022",
-                    max_tokens=2000,
-                    temperature=0.7,
-                    timeout=timeout,
-                    system="""You are an expert Daily Fantasy Sports (DFS) strategist specializing in NFL tournament optimization.
-                             You provide specific, actionable recommendations using exact player names and clear reasoning.
-                             Always respond with valid JSON containing specific player recommendations.
-                             Focus on game theory, correlations, and contrarian angles that win GPP tournaments.
-                             Your recommendations must be enforceable as optimization constraints.""",
-                    messages=[{"role": "user", "content": prompt}]
-                )
+        message = self.client.messages.create(
+            model="claude-3-sonnet-20241022",
+            max_tokens=2000,
+            temperature=0.7,
+            timeout=timeout,
+            system="""You are an expert Daily Fantasy Sports (DFS) strategist specializing in NFL tournament optimization.
+                     You provide specific, actionable recommendations using exact player names and clear reasoning.
+                     Always respond with valid JSON containing specific player recommendations.
+                     Focus on game theory, correlations, and contrarian angles that win GPP tournaments.
+                     Your recommendations must be enforceable as optimization constraints.""",
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-                elapsed = self.perf_monitor.stop_timer("claude_api_call")
+        self.perf_monitor.stop_timer("claude_api_call")
 
-                # Extract response
-                response = message.content[0].text if message.content else "{}"
+        response = message.content[0].text if message.content else "{}"
+        return response
 
-                # Update statistics
-                response_time = time.time() - start_time
-                self.response_times.append(response_time)
+    def _update_success_stats(self, response: str,
+                             ai_type: Optional[AIStrategistType],
+                             attempt: int) -> None:  # ✅ FIX #5
+        """Update statistics after successful API call"""
+        response_time = time.time() - self.perf_monitor.start_times.get("claude_api_call", time.time())
+        self.response_times.append(response_time)
 
-                if ai_type:
-                    self.stats['by_ai'][ai_type]['tokens'] += len(response) // 4
-                    # Update average time
-                    current_avg = self.stats['by_ai'][ai_type]['avg_time']
-                    total_requests = self.stats['by_ai'][ai_type]['requests']
-                    self.stats['by_ai'][ai_type]['avg_time'] = (
-                        (current_avg * (total_requests - 1) + response_time) /
-                        total_requests
-                    )
+        if ai_type:
+            self.stats['by_ai'][ai_type]['tokens'] += len(response) // 4
 
-                self.stats['total_tokens'] += len(response) // 4
-                self.stats['avg_response_time'] = np.mean(
-                    list(self.response_times)
-                )
+            current_avg = self.stats['by_ai'][ai_type]['avg_time']
+            total_requests = self.stats['by_ai'][ai_type]['requests']
+            self.stats['by_ai'][ai_type]['avg_time'] = (
+                (current_avg * (total_requests - 1) + response_time) / total_requests
+            )
 
-                # Cache response
-                with self._cache_lock:
-                    self.cache[prompt_hash] = response
-                    self.stats['cache_size'] = len(self.cache)
+        self.stats['total_tokens'] += len(response) // 4
+        self.stats['avg_response_time'] = np.mean(list(self.response_times))
 
-                    # Manage cache size
-                    if len(self.cache) > self.max_cache_size:
-                        # Remove oldest entries (FIFO)
-                        for key in list(self.cache.keys())[:10]:
-                            del self.cache[key]
+    def _cache_response(self, prompt: str, response: str) -> None:  # ✅ FIX #5
+        """Cache response with size management"""
+        prompt_hash = hashlib.md5(prompt.encode()).hexdigest()
 
-                self.logger.log(
-                    f"AI response received for "
-                    f"{ai_type.value if ai_type else 'unknown'} "
-                    f"({len(response)} chars, {elapsed:.2f}s)",
-                    "DEBUG"
-                )
+        with self._cache_lock:
+            self.cache[prompt_hash] = response
+            self.stats['cache_size'] = len(self.cache)
 
-                return response
+            if len(self.cache) > self.max_cache_size:
+                for key in list(self.cache.keys())[:10]:
+                    del self.cache[key]
 
-            except TimeoutError:
-                if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
-                    self.logger.log(
-                        f"Timeout on attempt {attempt+1}/{max_retries}, "
-                        f"retrying in {wait_time}s",
-                        "WARNING"
-                    )
-                    time.sleep(wait_time)
-                else:
-                    self.logger.log(
-                        "All API retries exhausted (timeout)",
-                        "ERROR"
-                    )
-                    self.stats['errors'] += 1
-                    if ai_type:
-                        self.stats['by_ai'][ai_type]['errors'] += 1
-                    return "{}"
+    def _handle_timeout(self, attempt: int, max_retries: int) -> bool:
+        """Handle timeout error, return True if should retry"""
+        if attempt < max_retries - 1:
+            wait_time = 2 ** attempt
+            self.logger.log(
+                f"Timeout on attempt {attempt+1}/{max_retries}, "
+                f"retrying in {wait_time}s",
+                "WARNING"
+            )
+            time.sleep(wait_time)
+            return True
 
-            except Exception as e:
-                error_str = str(e).lower()
+        self.logger.log("All API retries exhausted (timeout)", "ERROR")
+        return False
 
-                # Handle rate limiting
-                if "rate_limit" in error_str or "429" in error_str:
-                    if attempt < max_retries - 1:
-                        wait_time = 5 * (attempt + 1)
-                        self.logger.log(
-                            f"Rate limited, waiting {wait_time}s",
-                            "WARNING"
-                        )
-                        time.sleep(wait_time)
-                        continue
+    def _handle_exception(self, e: Exception, attempt: int, max_retries: int,
+                         ai_type: Optional[AIStrategistType]) -> bool:
+        """Handle exception, return True if should retry"""
+        error_str = str(e).lower()
 
-                # Log error and potentially retry
-                self.stats['errors'] += 1
-                if ai_type:
-                    self.stats['by_ai'][ai_type]['errors'] += 1
+        # Handle rate limiting
+        if "rate_limit" in error_str or "429" in error_str:
+            if attempt < max_retries - 1:
+                wait_time = 5 * (attempt + 1)
+                self.logger.log(f"Rate limited, waiting {wait_time}s", "WARNING")
+                time.sleep(wait_time)
+                return True
 
-                if attempt < max_retries - 1:
-                    self.logger.log(
-                        f"API error on attempt {attempt+1}: {e}, retrying...",
-                        "WARNING"
-                    )
-                    time.sleep(2 ** attempt)
-                else:
-                    self.logger.log(
-                        f"API error for {ai_type.value if ai_type else 'unknown'}: {e}",
-                        "ERROR"
-                    )
-                    return "{}"
+        # Log error
+        self.stats['errors'] += 1
+        if ai_type:
+            self.stats['by_ai'][ai_type]['errors'] += 1
 
-        # Should not reach here, but return empty JSON as fallback
+        if attempt < max_retries - 1:
+            self.logger.log(
+                f"API error on attempt {attempt+1}: {e}, retrying...",
+                "WARNING"
+            )
+            time.sleep(2 ** attempt)
+            return True
+
+        self.logger.log(
+            f"API error for {ai_type.value if ai_type else 'unknown'}: {e}",
+            "ERROR"
+        )
+        return False
+
+    def _handle_final_failure(self, ai_type: Optional[AIStrategistType],
+                             failure_type: str) -> str:
+        """Handle final failure after all retries exhausted"""
+        self.stats['errors'] += 1
+        if ai_type:
+            self.stats['by_ai'][ai_type]['errors'] += 1
         return "{}"
 
     def validate_connection(self) -> bool:
-        """
-        Validate API connection is working
-
-        Returns:
-            True if connection successful
-        """
+        """Validate API connection is working"""
         try:
             if not self.client:
                 return False
 
-            # Try a minimal test request
             test_prompt = "Respond with only the word: OK"
 
             message = self.client.messages.create(
@@ -3133,7 +3256,7 @@ class ClaudeAPIManager:
                 'by_ai': dict(self.stats['by_ai'])
             }
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:  # ✅ FIX #5
         """Clear response cache"""
         with self._cache_lock:
             self.cache.clear()
@@ -3142,16 +3265,8 @@ class ClaudeAPIManager:
         self.logger.log("API cache cleared", "INFO")
 
 # ============================================================================
-# END OF PART 4
-# ============================================================================
-
-# ============================================================================
 # PART 5: INDIVIDUAL AI STRATEGISTS
 # ============================================================================
-# This part contains the three specialized AI strategists:
-# 1. Game Theory - Ownership leverage and game theory
-# 2. Correlation - Stacking and correlation analysis
-# 3. Contrarian Narrative - Hidden angles and contrarian plays
 
 # ============================================================================
 # GPP GAME THEORY STRATEGIST
@@ -3162,12 +3277,12 @@ class GPPGameTheoryStrategist(BaseAIStrategist):
     AI Strategist 1: Game Theory and Ownership Leverage
 
     DFS Value: Identifies ownership arbitrage opportunities
-    Focus: Low-owned high-upside plays, field tendencies, leverage spots
     """
 
     def __init__(self, api_manager=None):
         super().__init__(api_manager, AIStrategistType.GAME_THEORY)
 
+    # ✅ FIX #4: Refactored from 100+ lines into orchestrator + helper methods
     def generate_prompt(self, df: pd.DataFrame, game_info: Dict,
                        field_size: str, slate_profile: Dict) -> str:
         """Generate game theory focused prompt with slate context"""
@@ -3179,16 +3294,37 @@ class GPPGameTheoryStrategist(BaseAIStrategist):
         if df.empty:
             return "Error: Empty player pool"
 
-        # Prepare ownership analysis
+        # Gather prompt components
+        ownership_analysis = self._get_ownership_analysis(df, field_size)
+        leverage_plays = self._get_leverage_plays(df)
+        strategy_guidance = self._get_strategy_guidance(field_size, slate_profile)
+
+        # Build complete prompt
+        prompt = self._build_game_theory_prompt(
+            game_info, slate_profile, ownership_analysis,
+            leverage_plays, strategy_guidance
+        )
+
+        return prompt
+
+    def _get_ownership_analysis(self, df: pd.DataFrame, field_size: str) -> Dict:
+        """Get ownership bucket analysis"""
         bucket_manager = AIOwnershipBucketManager()
         bucket_manager.adjust_thresholds_for_slate(df, field_size)
         buckets = bucket_manager.categorize_players(df)
 
-        # Get low-owned high-upside plays using vectorized operations
-        low_owned_mask = df['Ownership'] < 10
-        low_owned_high_upside = df[low_owned_mask].nlargest(10, 'Projected_Points')
+        return {
+            'buckets': buckets,
+            'distribution': {k: len(v) for k, v in buckets.items()}
+        }
 
-        # Field-specific strategies
+    def _get_leverage_plays(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Get low-owned high-upside plays"""
+        low_owned_mask = df['Ownership'] < 10
+        return df[low_owned_mask].nlargest(10, 'Projected_Points')
+
+    def _get_strategy_guidance(self, field_size: str, slate_profile: Dict) -> Dict:
+        """Get field and slate specific strategy guidance"""
         field_strategies = {
             'small_field': "Focus on slight differentiation while maintaining optimal plays",
             'medium_field': "Balance chalk with 2-3 strong leverage plays",
@@ -3197,7 +3333,6 @@ class GPPGameTheoryStrategist(BaseAIStrategist):
             'milly_maker': "Maximum contrarian approach with <10% captains only"
         }
 
-        # Slate adjustments
         slate_adjustments = {
             'shootout': "Prioritize ceiling over floor, embrace variance",
             'low_scoring': "Target TD-dependent players for leverage",
@@ -3206,7 +3341,20 @@ class GPPGameTheoryStrategist(BaseAIStrategist):
             'standard': "Balanced approach with calculated risks"
         }
 
-        prompt = f"""You are an expert DFS game theory strategist. Create an ENFORCEABLE lineup strategy for {field_size} GPP tournaments.
+        return {
+            'field_strategy': field_strategies.get(field_size, 'Standard GPP strategy'),
+            'slate_adjustment': slate_adjustments.get(
+                slate_profile.get('slate_type', 'standard'), ''
+            )
+        }
+
+    def _build_game_theory_prompt(self, game_info: Dict, slate_profile: Dict,
+                                  ownership_analysis: Dict, leverage_plays: pd.DataFrame,
+                                  strategy_guidance: Dict) -> str:
+        """Build complete game theory prompt"""
+        buckets = ownership_analysis['buckets']
+
+        prompt = f"""You are an expert DFS game theory strategist. Create an ENFORCEABLE lineup strategy for GPP tournaments.
 
 GAME CONTEXT:
 Teams: {game_info.get('teams', 'Unknown')}
@@ -3223,11 +3371,11 @@ Leverage (5-10%): {len(buckets['leverage'])} players - {buckets['leverage'][:3] 
 Super Leverage (<5%): {len(buckets['super_leverage'])} players - {buckets['super_leverage'][:3] if buckets['super_leverage'] else 'None'}
 
 HIGH LEVERAGE PLAYS (<10% ownership):
-{low_owned_high_upside[['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']].to_string()}
+{leverage_plays[['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']].to_string()}
 
 FIELD STRATEGY:
-{field_strategies.get(field_size, 'Standard GPP strategy')}
-{slate_adjustments.get(slate_profile.get('slate_type', 'standard'), '')}
+{strategy_guidance['field_strategy']}
+{strategy_guidance['slate_adjustment']}
 
 CRITICAL: Respond ONLY with valid JSON. DO NOT include markdown formatting or code blocks.
 
@@ -3265,139 +3413,180 @@ Use EXACT player names from the data provided. Focus on ownership leverage and e
 
         return prompt
 
+    # ✅ FIX #4: Refactored from 150+ lines into focused helper methods
     def parse_response(self, response: str, df: pd.DataFrame,
                       field_size: str) -> AIRecommendation:
         """Parse game theory response with robust error handling"""
         try:
-            # Clean response - remove markdown if present
-            response = response.strip()
-            response = response.replace('```json\n', '').replace('```\n', '').replace('```', '')
-
-            # Try to parse JSON
-            if response and response != '{}':
-                try:
-                    data = json.loads(response)
-                except json.JSONDecodeError as e:
-                    self.logger.log(
-                        f"JSON parse error: {e}, attempting text extraction",
-                        "WARNING"
-                    )
-                    data = self._extract_from_text_response(response, df)
-            else:
-                data = {}
-
+            # Clean and parse JSON
+            data = self._clean_and_parse_json(response, df)
             available_players = set(df['Player'].values)
 
-            # Extract captain rules
-            captain_rules = data.get('captain_rules', {})
-            captain_targets = captain_rules.get('must_be_one_of', [])
-            valid_captains = [c for c in captain_targets if c in available_players]
-
-            # If insufficient valid captains, use game theory selection
-            if len(valid_captains) < 3:
-                ownership_ceiling = captain_rules.get('ownership_ceiling', 15)
-                min_proj = captain_rules.get('min_projection', 15)
-
-                # Use vectorized filtering instead of multiple operations
-                eligible_mask = (
-                    (df['Ownership'] <= ownership_ceiling) &
-                    (df['Projected_Points'] >= min_proj)
-                )
-                eligible = df[eligible_mask]
-
-                if len(eligible) < 5:
-                    # Relax constraints
-                    eligible = df[df['Ownership'] <= ownership_ceiling * 1.5]
-
-                if not eligible.empty:
-                    # Calculate leverage score vectorized
-                    max_proj = eligible['Projected_Points'].max()
-                    leverage_scores = (
-                        (eligible['Projected_Points'] / max_proj * 100) /
-                        (eligible['Ownership'] + 5)
-                    )
-
-                    # Get top leverage plays
-                    eligible = eligible.copy()
-                    eligible['Leverage_Score'] = leverage_scores
-                    leverage_captains = eligible.nlargest(5, 'Leverage_Score')['Player'].tolist()
-
-                    for captain in leverage_captains:
-                        if captain not in valid_captains:
-                            valid_captains.append(captain)
-                        if len(valid_captains) >= 5:
-                            break
-
-            # Extract lineup rules
-            lineup_rules = data.get('lineup_rules', {})
-            must_include = [
-                p for p in lineup_rules.get('must_include', [])
-                if p in available_players
-            ]
-            never_include = [
-                p for p in lineup_rules.get('never_include', [])
-                if p in available_players
-            ]
-            ownership_range = lineup_rules.get('ownership_sum_range', [60, 90])
-            min_leverage = lineup_rules.get('min_leverage_players', 2)
-
-            # Extract correlation rules and create stacks
-            correlation_rules = data.get('correlation_rules', {})
-            stacks = []
-
-            for stack_data in correlation_rules.get('required_stacks', []):
-                p1 = stack_data.get('player1')
-                p2 = stack_data.get('player2')
-
-                if p1 in available_players and p2 in available_players:
-                    stacks.append({
-                        'player1': p1,
-                        'player2': p2,
-                        'type': stack_data.get('type', 'leverage'),
-                        'correlation': 0.5,
-                        'leverage_based': True
-                    })
-
-            # Extract insights
-            game_theory = data.get('game_theory_insights', {})
-            key_insights = [
-                data.get('key_insight', 'Ownership arbitrage opportunity'),
-                game_theory.get('exploit_angle', ''),
-                game_theory.get('unique_construction', ''),
-                f"Target {ownership_range[0]}-{ownership_range[1]}% total ownership"
-            ]
-            key_insights = [i for i in key_insights if i]
+            # Extract components
+            captain_targets = self._extract_captain_targets(
+                data, df, available_players
+            )
+            lineup_rules = self._extract_lineup_rules(
+                data, available_players
+            )
+            stacks = self._extract_correlation_stacks(
+                data, available_players
+            )
+            insights = self._extract_insights(data, lineup_rules)
 
             # Build enforcement rules
             enforcement_rules = self._build_game_theory_enforcement_rules(
-                valid_captains, must_include, never_include,
-                ownership_range, min_leverage, stacks
+                captain_targets, lineup_rules['must_include'],
+                lineup_rules['never_include'], lineup_rules['ownership_range'],
+                lineup_rules['min_leverage'], stacks
             )
 
-            confidence = data.get('confidence', 0.75)
-            confidence = max(0.0, min(1.0, confidence))
+            confidence = max(0.0, min(1.0, data.get('confidence', 0.75)))
 
             return AIRecommendation(
-                captain_targets=valid_captains[:7],
-                must_play=must_include[:5],
-                never_play=never_include[:5],
+                captain_targets=captain_targets[:7],
+                must_play=lineup_rules['must_include'][:5],
+                never_play=lineup_rules['never_include'][:5],
                 stacks=stacks[:5],
-                key_insights=key_insights[:3],
+                key_insights=insights[:3],
                 confidence=confidence,
                 enforcement_rules=enforcement_rules,
-                narrative=game_theory.get('exploit_angle', 'Game theory optimization'),
+                narrative=data.get('game_theory_insights', {}).get(
+                    'exploit_angle', 'Game theory optimization'
+                ),
                 source_ai=AIStrategistType.GAME_THEORY,
                 ownership_leverage={
-                    'ownership_range': ownership_range,
-                    'ownership_ceiling': captain_rules.get('ownership_ceiling', 15),
-                    'min_leverage': min_leverage,
-                    'max_chalk': lineup_rules.get('max_chalk_players', 2)
+                    'ownership_range': lineup_rules['ownership_range'],
+                    'ownership_ceiling': data.get('captain_rules', {}).get(
+                        'ownership_ceiling', 15
+                    ),
+                    'min_leverage': lineup_rules['min_leverage'],
+                    'max_chalk': lineup_rules.get('max_chalk', 2)
                 }
             )
 
         except Exception as e:
             self.logger.log_exception(e, "parse_game_theory_response")
             return self._get_fallback_recommendation(df, field_size)
+
+    def _clean_and_parse_json(self, response: str, df: pd.DataFrame) -> Dict:
+        """Clean response and parse JSON"""
+        response = response.strip()
+        response = response.replace('```json\n', '').replace('```\n', '').replace('```', '')
+
+        if response and response != '{}':
+            try:
+                return json.loads(response)
+            except json.JSONDecodeError as e:
+                self.logger.log(
+                    f"JSON parse error: {e}, attempting text extraction",
+                    "WARNING"
+                )
+                return self._extract_from_text_response(response, df)
+
+        return {}
+
+    def _extract_captain_targets(self, data: Dict, df: pd.DataFrame,
+                                 available_players: Set[str]) -> List[str]:
+        """Extract and validate captain targets"""
+        captain_rules = data.get('captain_rules', {})
+        captain_targets = captain_rules.get('must_be_one_of', [])
+        valid_captains = [c for c in captain_targets if c in available_players]
+
+        # If insufficient, use game theory selection
+        if len(valid_captains) < 3:
+            valid_captains = self._select_game_theory_captains(
+                df, captain_rules, valid_captains
+            )
+
+        return valid_captains
+
+    def _select_game_theory_captains(self, df: pd.DataFrame, captain_rules: Dict,
+                                     existing: List[str]) -> List[str]:
+        """Select captains using game theory principles"""
+        ownership_ceiling = captain_rules.get('ownership_ceiling', 15)
+        min_proj = captain_rules.get('min_projection', 15)
+
+        eligible_mask = (
+            (df['Ownership'] <= ownership_ceiling) &
+            (df['Projected_Points'] >= min_proj)
+        )
+        eligible = df[eligible_mask]
+
+        if len(eligible) < 5:
+            eligible = df[df['Ownership'] <= ownership_ceiling * 1.5]
+
+        if not eligible.empty:
+            max_proj = eligible['Projected_Points'].max()
+            leverage_scores = (
+                (eligible['Projected_Points'] / max_proj * 100) /
+                (eligible['Ownership'] + 5)
+            )
+
+            eligible = eligible.copy()
+            eligible['Leverage_Score'] = leverage_scores
+            leverage_captains = eligible.nlargest(5, 'Leverage_Score')['Player'].tolist()
+
+            for captain in leverage_captains:
+                if captain not in existing:
+                    existing.append(captain)
+                if len(existing) >= 5:
+                    break
+
+        return existing
+
+    def _extract_lineup_rules(self, data: Dict,
+                              available_players: Set[str]) -> Dict:
+        """Extract lineup rules from response"""
+        lineup_rules = data.get('lineup_rules', {})
+
+        return {
+            'must_include': [
+                p for p in lineup_rules.get('must_include', [])
+                if p in available_players
+            ],
+            'never_include': [
+                p for p in lineup_rules.get('never_include', [])
+                if p in available_players
+            ],
+            'ownership_range': lineup_rules.get('ownership_sum_range', [60, 90]),
+            'min_leverage': lineup_rules.get('min_leverage_players', 2),
+            'max_chalk': lineup_rules.get('max_chalk_players', 2)
+        }
+
+    def _extract_correlation_stacks(self, data: Dict,
+                                    available_players: Set[str]) -> List[Dict]:
+        """Extract correlation stacks from response"""
+        correlation_rules = data.get('correlation_rules', {})
+        stacks = []
+
+        for stack_data in correlation_rules.get('required_stacks', []):
+            p1 = stack_data.get('player1')
+            p2 = stack_data.get('player2')
+
+            if p1 in available_players and p2 in available_players:
+                stacks.append({
+                    'player1': p1,
+                    'player2': p2,
+                    'type': stack_data.get('type', 'leverage'),
+                    'correlation': 0.5,
+                    'leverage_based': True
+                })
+
+        return stacks
+
+    def _extract_insights(self, data: Dict, lineup_rules: Dict) -> List[str]:
+        """Extract key insights from response"""
+        game_theory = data.get('game_theory_insights', {})
+
+        insights = [
+            data.get('key_insight', 'Ownership arbitrage opportunity'),
+            game_theory.get('exploit_angle', ''),
+            game_theory.get('unique_construction', ''),
+            f"Target {lineup_rules['ownership_range'][0]}-{lineup_rules['ownership_range'][1]}% total ownership"
+        ]
+
+        return [i for i in insights if i]
 
     def _extract_from_text_response(self, response: str, df: pd.DataFrame) -> Dict:
         """Extract structured data from non-JSON response"""
@@ -3422,13 +3611,16 @@ Use EXACT player names from the data provided. Focus on ownership leverage and e
 
         return data
 
-    def _build_game_theory_enforcement_rules(self, captains, must_include,
-                                            never_include, ownership_range,
-                                            min_leverage, stacks):
+    def _build_game_theory_enforcement_rules(self, captains: List[str],
+                                            must_include: List[str],
+                                            never_include: List[str],
+                                            ownership_range: List[int],
+                                            min_leverage: int,
+                                            stacks: List[Dict]) -> List[Dict]:
         """Build game theory enforcement rules"""
         rules = []
 
-        # Captain constraint (highest priority)
+        # Captain constraint
         if captains:
             rules.append({
                 'type': 'hard',
@@ -3483,13 +3675,13 @@ class GPPCorrelationStrategist(BaseAIStrategist):
     AI Strategist 2: Correlation and Stacking Patterns
 
     DFS Value: Maximizes ceiling through correlated outcomes
-    Focus: QB stacks, game scripts, onslaught scenarios, bring-backs
     """
 
     def __init__(self, api_manager=None):
         super().__init__(api_manager, AIStrategistType.CORRELATION)
         self.correlation_matrix = {}
 
+    # ✅ FIX #4: Refactored from 90+ lines into helper methods
     def generate_prompt(self, df: pd.DataFrame, game_info: Dict,
                        field_size: str, slate_profile: Dict) -> str:
         """Generate correlation focused prompt"""
@@ -3501,7 +3693,21 @@ class GPPCorrelationStrategist(BaseAIStrategist):
         if df.empty:
             return "Error: Empty player pool"
 
-        # Team analysis using vectorized operations
+        # Gather components
+        team_analysis = self._analyze_teams(df)
+        correlation_targets = self._identify_correlation_targets(df)
+        game_script = self._analyze_game_script(game_info, slate_profile)
+
+        # Build prompt
+        prompt = self._build_correlation_prompt(
+            game_info, slate_profile, team_analysis,
+            correlation_targets, game_script
+        )
+
+        return prompt
+
+    def _analyze_teams(self, df: pd.DataFrame) -> Dict:
+        """Analyze teams and players"""
         teams = df['Team'].unique()[:2]
 
         if len(teams) >= 2:
@@ -3514,35 +3720,64 @@ class GPPCorrelationStrategist(BaseAIStrategist):
             team1_df = df if len(teams) > 0 else pd.DataFrame()
             team2_df = pd.DataFrame()
 
-        # Calculate correlation opportunities using vectorized operations
-        qbs = df[df['Position'] == 'QB']['Player'].tolist()
-        pass_catchers = df[df['Position'].isin(['WR', 'TE'])]['Player'].tolist()
-        rbs = df[df['Position'] == 'RB']['Player'].tolist()
+        return {
+            'team1': team1,
+            'team2': team2,
+            'team1_df': team1_df,
+            'team2_df': team2_df
+        }
 
-        # Determine game flow expectations
+    def _identify_correlation_targets(self, df: pd.DataFrame) -> Dict:
+        """Identify correlation target players by position"""
+        return {
+            'qbs': df[df['Position'] == 'QB']['Player'].tolist(),
+            'pass_catchers': df[df['Position'].isin(['WR', 'TE'])]['Player'].tolist()[:8],
+            'rbs': df[df['Position'] == 'RB']['Player'].tolist()
+        }
+
+    def _analyze_game_script(self, game_info: Dict, slate_profile: Dict) -> Dict:
+        """Analyze expected game script"""
         total = game_info.get('total', 45)
         spread = game_info.get('spread', 0)
-        favorite = team1 if spread < 0 else team2
-        underdog = team2 if favorite == team1 else team1
 
-        prompt = f"""You are an expert DFS correlation strategist. Create SPECIFIC stacking rules for {field_size} GPP.
+        # Determine favorite and underdog
+        teams = game_info.get('teams', 'Team1 vs Team2').split(' vs ')
+        favorite = teams[0] if spread < 0 else (teams[1] if len(teams) > 1 else teams[0])
+        underdog = teams[1] if spread < 0 and len(teams) > 1 else teams[0]
+
+        return {
+            'total': total,
+            'spread': spread,
+            'favorite': favorite,
+            'underdog': underdog,
+            'slate_type': slate_profile.get('slate_type', 'standard')
+        }
+
+    def _build_correlation_prompt(self, game_info: Dict, slate_profile: Dict,
+                                  team_analysis: Dict, correlation_targets: Dict,
+                                  game_script: Dict) -> str:
+        """Build complete correlation prompt"""
+        team1_data = team_analysis['team1_df']
+        team2_data = team_analysis['team2_df']
+
+        prompt = f"""You are an expert DFS correlation strategist. Create SPECIFIC stacking rules for GPP.
 
 GAME ENVIRONMENT:
-Total: {total} | Spread: {spread}
-Favorite: {favorite} by {abs(spread)} points
-Underdog: {underdog}
-Slate Type: {slate_profile.get('slate_type', 'standard')}
+Total: {game_script['total']} | Spread: {game_script['spread']}
+Favorite: {game_script['favorite']} by {abs(game_script['spread'])} points
+Underdog: {game_script['underdog']}
+Slate Type: {game_script['slate_type']}
 
-TEAM 1 - {team1} ({'Favorite' if team1 == favorite else 'Underdog'}):
-{team1_df[['Player', 'Position', 'Salary', 'Projected_Points']].head(8).to_string() if not team1_df.empty else 'No data'}
+TEAM 1 - {team_analysis['team1']} ({'Favorite' if team_analysis['team1'] == game_script['favorite'] else 'Underdog'}):
+{team1_data[['Player', 'Position', 'Salary', 'Projected_Points']].head(8).to_string() if not team1_data.empty else 'No data'}
 
-TEAM 2 - {team2} ({'Favorite' if team2 == favorite else 'Underdog'}):
-{team2_df[['Player', 'Position', 'Salary', 'Projected_Points']].head(8).to_string() if not team2_df.empty else 'No data'}
+TEAM 2 - {team_analysis['team2']} ({'Favorite' if team_analysis['team2'] == game_script['favorite'] else 'Underdog'}):
+{team2_data[['Player', 'Position', 'Salary', 'Projected_Points']].head(8).to_string() if not team2_data.empty else 'No data'}
 
 CORRELATION TARGETS:
-QBs: {qbs}
-Pass Catchers: {pass_catchers[:8]}
-RBs: {rbs}
+QBs: {correlation_targets['qbs']}
+Pass Catchers: {correlation_targets['pass_catchers']}
+RBs: {correlation_targets['rbs']}
 
 CRITICAL: Respond ONLY with valid JSON. DO NOT include markdown formatting or code blocks.
 
@@ -3576,110 +3811,36 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
 
         return prompt
 
+    # ✅ FIX #4: Refactored from 120+ lines into focused methods
     def parse_response(self, response: str, df: pd.DataFrame,
                       field_size: str) -> AIRecommendation:
         """Parse correlation response with robust handling"""
         try:
-            # Clean response
-            response = response.strip()
-            response = response.replace('```json\n', '').replace('```\n', '').replace('```', '')
-
-            # Parse JSON
-            if response and response != '{}':
-                try:
-                    data = json.loads(response)
-                except json.JSONDecodeError:
-                    self.logger.log(
-                        "JSON parse failed, using text extraction",
-                        "WARNING"
-                    )
-                    data = self._extract_correlation_from_text(response, df)
-            else:
-                data = {}
-
+            # Clean and parse
+            data = self._clean_and_parse_json(response, df)
             available_players = set(df['Player'].values)
-            all_stacks = []
 
-            # Process primary stacks
-            for stack in data.get('primary_stacks', []):
-                if self._validate_stack(stack, available_players):
-                    stack['priority'] = ConstraintPriority.AI_MODERATE.value
-                    stack['enforced'] = True
-                    all_stacks.append(stack)
+            # Extract all stacks
+            all_stacks = self._extract_all_stacks(data, available_players)
 
-            # Process onslaught stacks (3+ players from winning team)
-            for onslaught in data.get('onslaught_stacks', []):
-                players = onslaught.get('players', [])
-                valid_players = [p for p in players if p in available_players]
-
-                if len(valid_players) >= 3:
-                    all_stacks.append({
-                        'type': 'onslaught',
-                        'players': valid_players,
-                        'team': onslaught.get('team', ''),
-                        'scenario': onslaught.get('scenario', 'Blowout correlation'),
-                        'priority': ConstraintPriority.AI_MODERATE.value,
-                        'correlation': 0.6
-                    })
-
-            # Process bring-back stacks
-            for bring_back in data.get('bring_back_stacks', []):
-                primary = bring_back.get('primary', [])
-                opponent = bring_back.get('bring_back', '')
-
-                valid_primary = [p for p in primary if p in available_players]
-
-                if valid_primary and opponent in available_players:
-                    all_stacks.append({
-                        'type': 'bring_back',
-                        'primary_stack': valid_primary,
-                        'bring_back': opponent,
-                        'game_total': bring_back.get('game_total', 45),
-                        'priority': ConstraintPriority.AI_MODERATE.value,
-                        'correlation': 0.5
-                    })
-
-            # If no valid stacks from AI, create statistical ones
-            if len(all_stacks) < 2:
-                all_stacks.extend(self._create_statistical_stacks(df))
-
-            # Extract captain correlation
-            captain_rules = data.get('captain_correlation', {})
-            captain_targets = captain_rules.get('best_captains_for_stacking', [])
-            valid_captains = [c for c in captain_targets if c in available_players]
-
-            # If no valid captains, use correlation-based selection
-            if len(valid_captains) < 3:
-                valid_captains.extend(
-                    self._get_correlation_captains(df, all_stacks)
-                )
-                valid_captains = list(set(valid_captains))[:7]
-
-            # Process negative correlations
-            avoid_pairs = []
-            for neg_corr in data.get('negative_correlation', []):
-                players = neg_corr.get('avoid_together', [])
-                if (len(players) >= 2 and
-                    all(p in available_players for p in players[:2])):
-                    avoid_pairs.append({
-                        'players': players,
-                        'reason': neg_corr.get('reason', 'negative correlation')
-                    })
-
-            # Build enforcement rules
-            enforcement_rules = self._build_correlation_enforcement_rules(
-                all_stacks, avoid_pairs, valid_captains
+            # Extract captain targets
+            captain_targets = self._extract_correlation_captains(
+                data, df, all_stacks, available_players
             )
 
-            # Build correlation matrix
+            # Process negative correlations
+            avoid_pairs = self._extract_avoid_pairs(data, available_players)
+
+            # Build enforcement and correlation matrix
+            enforcement_rules = self._build_correlation_enforcement_rules(
+                all_stacks, avoid_pairs, captain_targets
+            )
             self.correlation_matrix = self._build_correlation_matrix(
                 all_stacks, avoid_pairs
             )
 
-            confidence = data.get('confidence', 0.75)
-            confidence = max(0.0, min(1.0, confidence))
+            confidence = max(0.0, min(1.0, data.get('confidence', 0.75)))
 
-            # Extract insights
             key_insights = [
                 data.get('stack_narrative', 'Correlation-based construction'),
                 f"Primary focus: {all_stacks[0]['type'] if all_stacks else 'standard'} stacks",
@@ -3687,7 +3848,7 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
             ]
 
             return AIRecommendation(
-                captain_targets=valid_captains,
+                captain_targets=captain_targets,
                 must_play=[],
                 never_play=[],
                 stacks=all_stacks[:10],
@@ -3703,6 +3864,106 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
             self.logger.log_exception(e, "parse_correlation_response")
             return self._get_fallback_recommendation(df, field_size)
 
+    def _extract_all_stacks(self, data: Dict,
+                           available_players: Set[str]) -> List[Dict]:
+        """Extract and combine all types of stacks"""
+        all_stacks = []
+
+        # Primary stacks
+        for stack in data.get('primary_stacks', []):
+            if self._validate_stack(stack, available_players):
+                stack['priority'] = ConstraintPriority.AI_MODERATE.value
+                stack['enforced'] = True
+                all_stacks.append(stack)
+
+        # Onslaught stacks
+        all_stacks.extend(self._extract_onslaught_stacks(data, available_players))
+
+        # Bring-back stacks
+        all_stacks.extend(self._extract_bring_back_stacks(data, available_players))
+
+        # Fallback if no valid stacks
+        if len(all_stacks) < 2:
+            all_stacks.extend(self._create_statistical_stacks(self.df))
+
+        return all_stacks
+
+    def _extract_onslaught_stacks(self, data: Dict,
+                                  available_players: Set[str]) -> List[Dict]:
+        """Extract onslaught stacks (3+ players from winning team)"""
+        stacks = []
+
+        for onslaught in data.get('onslaught_stacks', []):
+            players = onslaught.get('players', [])
+            valid_players = [p for p in players if p in available_players]
+
+            if len(valid_players) >= 3:
+                stacks.append({
+                    'type': 'onslaught',
+                    'players': valid_players,
+                    'team': onslaught.get('team', ''),
+                    'scenario': onslaught.get('scenario', 'Blowout correlation'),
+                    'priority': ConstraintPriority.AI_MODERATE.value,
+                    'correlation': 0.6
+                })
+
+        return stacks
+
+    def _extract_bring_back_stacks(self, data: Dict,
+                                   available_players: Set[str]) -> List[Dict]:
+        """Extract bring-back stacks"""
+        stacks = []
+
+        for bring_back in data.get('bring_back_stacks', []):
+            primary = bring_back.get('primary', [])
+            opponent = bring_back.get('bring_back', '')
+
+            valid_primary = [p for p in primary if p in available_players]
+
+            if valid_primary and opponent in available_players:
+                stacks.append({
+                    'type': 'bring_back',
+                    'primary_stack': valid_primary,
+                    'bring_back': opponent,
+                    'game_total': bring_back.get('game_total', 45),
+                    'priority': ConstraintPriority.AI_MODERATE.value,
+                    'correlation': 0.5
+                })
+
+        return stacks
+
+    def _extract_correlation_captains(self, data: Dict, df: pd.DataFrame,
+                                      stacks: List[Dict],
+                                      available_players: Set[str]) -> List[str]:
+        """Extract captain targets based on correlation"""
+        captain_rules = data.get('captain_correlation', {})
+        captain_targets = captain_rules.get('best_captains_for_stacking', [])
+        valid_captains = [c for c in captain_targets if c in available_players]
+
+        if len(valid_captains) < 3:
+            valid_captains.extend(
+                self._get_correlation_captains(df, stacks)
+            )
+            valid_captains = list(set(valid_captains))[:7]
+
+        return valid_captains
+
+    def _extract_avoid_pairs(self, data: Dict,
+                            available_players: Set[str]) -> List[Dict]:
+        """Extract negative correlation pairs"""
+        avoid_pairs = []
+
+        for neg_corr in data.get('negative_correlation', []):
+            players = neg_corr.get('avoid_together', [])
+            if (len(players) >= 2 and
+                all(p in available_players for p in players[:2])):
+                avoid_pairs.append({
+                    'players': players,
+                    'reason': neg_corr.get('reason', 'negative correlation')
+                })
+
+        return avoid_pairs
+
     def _validate_stack(self, stack: Dict, available_players: Set[str]) -> bool:
         """Validate stack players exist"""
         player1 = stack.get('player1')
@@ -3716,24 +3977,23 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
         """Get captain targets based on correlation analysis"""
         captains = []
 
-        # Prioritize QBs involved in stacks
+        # QBs involved in stacks
         for stack in stacks:
             if stack.get('type') in ['QB_WR', 'QB_TE', 'primary', 'QB_WR1']:
                 player1 = stack.get('player1')
                 if player1:
-                    # Use vectorized filtering
                     player_match = df[df['Player'] == player1]
                     if not player_match.empty and player_match.iloc[0]['Position'] == 'QB':
                         captains.append(player1)
 
-        # Add primary pass catchers
+        # Primary pass catchers
         for stack in stacks:
             if 'player2' in stack:
                 player2 = stack['player2']
                 if player2 not in captains:
                     captains.append(player2)
 
-        # Add bring-back targets
+        # Bring-back targets
         for stack in stacks:
             if stack.get('type') == 'bring_back':
                 bring_back = stack.get('bring_back')
@@ -3748,7 +4008,6 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
         """Build correlation-specific enforcement rules"""
         rules = []
 
-        # Captain rules
         if captains:
             rules.append({
                 'type': 'hard',
@@ -3759,52 +4018,58 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
                 'description': 'Correlation-optimized captains'
             })
 
-        # High priority stacks
+        # High priority stacks (first 3)
         high_priority_stacks = [
             s for s in stacks if s.get('priority', 0) >= 70
         ][:3]
 
         for i, stack in enumerate(high_priority_stacks):
-            if stack.get('type') == 'onslaught':
-                rules.append({
-                    'type': 'hard' if i == 0 else 'soft',
-                    'constraint': 'onslaught_stack',
-                    'players': stack['players'][:4],
-                    'min_players': 3,
-                    'weight': 0.9 if i > 0 else 1.0,
-                    'priority': ConstraintPriority.AI_MODERATE.value - (i * 5),
-                    'relaxation_tier': 3,
-                    'description': f"Onslaught: {stack.get('team', 'team')}"
-                })
-            elif stack.get('type') == 'bring_back':
-                rules.append({
-                    'type': 'hard' if i == 0 else 'soft',
-                    'constraint': 'bring_back_stack',
-                    'primary': stack.get('primary_stack', []),
-                    'bring_back': stack.get('bring_back'),
-                    'weight': 0.8 if i > 0 else 1.0,
-                    'priority': ConstraintPriority.AI_MODERATE.value - (i * 5),
-                    'relaxation_tier': 3,
-                    'description': 'Bring-back correlation'
-                })
-            else:
-                players = []
-                if 'player1' in stack and 'player2' in stack:
-                    players = [stack['player1'], stack['player2']]
-
-                if players:
-                    rules.append({
-                        'type': 'hard' if i == 0 else 'soft',
-                        'constraint': 'correlation_stack',
-                        'players': players,
-                        'correlation': stack.get('correlation', 0.5),
-                        'weight': 0.8 if i > 0 else 1.0,
-                        'priority': ConstraintPriority.AI_MODERATE.value - (i * 5),
-                        'relaxation_tier': 3,
-                        'description': f"Stack: {stack.get('type', 'correlation')}"
-                    })
+            rules.append(self._create_stack_rule(stack, i))
 
         return rules
+
+    def _create_stack_rule(self, stack: Dict, index: int) -> Dict:
+        """Create a single stack rule"""
+        stack_type = stack.get('type')
+        is_hard = index == 0
+
+        if stack_type == 'onslaught':
+            return {
+                'type': 'hard' if is_hard else 'soft',
+                'constraint': 'onslaught_stack',
+                'players': stack['players'][:4],
+                'min_players': 3,
+                'weight': 0.9 if index > 0 else 1.0,
+                'priority': ConstraintPriority.AI_MODERATE.value - (index * 5),
+                'relaxation_tier': 3,
+                'description': f"Onslaught: {stack.get('team', 'team')}"
+            }
+        elif stack_type == 'bring_back':
+            return {
+                'type': 'hard' if is_hard else 'soft',
+                'constraint': 'bring_back_stack',
+                'primary': stack.get('primary_stack', []),
+                'bring_back': stack.get('bring_back'),
+                'weight': 0.8 if index > 0 else 1.0,
+                'priority': ConstraintPriority.AI_MODERATE.value - (index * 5),
+                'relaxation_tier': 3,
+                'description': 'Bring-back correlation'
+            }
+        else:
+            players = []
+            if 'player1' in stack and 'player2' in stack:
+                players = [stack['player1'], stack['player2']]
+
+            return {
+                'type': 'hard' if is_hard else 'soft',
+                'constraint': 'correlation_stack',
+                'players': players,
+                'correlation': stack.get('correlation', 0.5),
+                'weight': 0.8 if index > 0 else 1.0,
+                'priority': ConstraintPriority.AI_MODERATE.value - (index * 5),
+                'relaxation_tier': 3,
+                'description': f"Stack: {stack.get('type', 'correlation')}"
+            }
 
     def _build_correlation_matrix(self, stacks: List[Dict],
                                   avoid_pairs: List[Dict]) -> Dict:
@@ -3834,7 +4099,6 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
             'confidence': 0.6
         }
 
-        # Look for QB-receiver pairs mentioned using vectorized operations
         qb_mask = df['Position'] == 'QB'
         receiver_mask = df['Position'].isin(['WR', 'TE'])
 
@@ -3844,7 +4108,6 @@ Use EXACT player names. Focus on correlations that maximize ceiling potential.""
         for qb in qbs:
             for receiver in receivers:
                 if qb in response and receiver in response:
-                    # Check if same team using vectorized filtering
                     qb_team = df[df['Player'] == qb]['Team'].values
                     rec_team = df[df['Player'] == receiver]['Team'].values
 
@@ -3869,12 +4132,12 @@ class GPPContrarianNarrativeStrategist(BaseAIStrategist):
     AI Strategist 3: Contrarian Narratives and Hidden Angles
 
     DFS Value: Finds non-obvious tournament-winning angles
-    Focus: Chalk fades, hidden correlations, contrarian captains, leverage scenarios
     """
 
     def __init__(self, api_manager=None):
         super().__init__(api_manager, AIStrategistType.CONTRARIAN_NARRATIVE)
 
+    # ✅ FIX #4: Refactored from 80+ lines into helper methods
     def generate_prompt(self, df: pd.DataFrame, game_info: Dict,
                        field_size: str, slate_profile: Dict) -> str:
         """Generate contrarian narrative focused prompt"""
@@ -3886,7 +4149,19 @@ class GPPContrarianNarrativeStrategist(BaseAIStrategist):
         if df.empty:
             return "Error: Empty player pool"
 
-        # Calculate contrarian opportunities using vectorized operations
+        # Analyze contrarian opportunities
+        contrarian_data = self._analyze_contrarian_opportunities(df, game_info)
+
+        # Build prompt
+        prompt = self._build_contrarian_prompt(
+            game_info, slate_profile, contrarian_data
+        )
+
+        return prompt
+
+    def _analyze_contrarian_opportunities(self, df: pd.DataFrame,
+                                         game_info: Dict) -> Dict:
+        """Analyze contrarian opportunities using vectorized operations"""
         ownership = df['Ownership'].fillna(10)
         projected = df['Projected_Points']
         salary = df['Salary']
@@ -3895,44 +4170,44 @@ class GPPContrarianNarrativeStrategist(BaseAIStrategist):
         value = projected / (salary / 1000)
         contrarian_score = (projected / projected.max()) / (ownership / 100 + 0.1)
 
-        # Add computed columns efficiently
         df_analysis = df.copy()
         df_analysis['Value'] = value
         df_analysis['Contrarian_Score'] = contrarian_score
 
-        # Find contrarian plays using vectorized filtering
-        low_owned_high_ceiling = df_analysis[ownership < 10].nlargest(10, 'Projected_Points')
-        hidden_value = df_analysis[ownership < 15].nlargest(10, 'Value')
-        contrarian_captains = df_analysis.nlargest(10, 'Contrarian_Score')
+        return {
+            'low_owned_high_ceiling': df_analysis[ownership < 10].nlargest(10, 'Projected_Points'),
+            'hidden_value': df_analysis[ownership < 15].nlargest(10, 'Value'),
+            'contrarian_captains': df_analysis.nlargest(10, 'Contrarian_Score'),
+            'chalk_plays': df_analysis[ownership > 30].nlargest(5, 'Ownership')
+        }
 
-        # Identify chalk to fade
-        chalk_plays = df_analysis[ownership > 30].nlargest(5, 'Ownership')
-
-        # Teams
-        teams = df['Team'].unique()[:2]
+    def _build_contrarian_prompt(self, game_info: Dict, slate_profile: Dict,
+                                 contrarian_data: Dict) -> str:
+        """Build complete contrarian prompt"""
+        teams = game_info.get('teams', 'Team1 vs Team2').split(' vs ')
         total = game_info.get('total', 45)
         spread = game_info.get('spread', 0)
 
         prompt = f"""You are a contrarian DFS strategist who finds NON-OBVIOUS narratives that win GPP tournaments.
 
 GAME SETUP:
-{teams[0] if len(teams) > 0 else 'Team1'} vs {teams[1] if len(teams) > 1 else 'Team2'}
+{teams[0]} vs {teams[1] if len(teams) > 1 else 'Team2'}
 Total: {total} | Spread: {spread}
 Slate Type: {slate_profile.get('slate_type', 'standard')}
 
 CONTRARIAN OPPORTUNITIES:
 
 LOW-OWNED HIGH CEILING (<10% owned):
-{low_owned_high_ceiling[['Player', 'Position', 'Team', 'Projected_Points', 'Ownership']].to_string()}
+{contrarian_data['low_owned_high_ceiling'][['Player', 'Position', 'Team', 'Projected_Points', 'Ownership']].to_string()}
 
 HIDDEN VALUE PLAYS:
-{hidden_value[['Player', 'Position', 'Salary', 'Value', 'Ownership']].to_string()}
+{contrarian_data['hidden_value'][['Player', 'Position', 'Salary', 'Value', 'Ownership']].to_string()}
 
 CONTRARIAN CAPTAIN SCORES:
-{contrarian_captains[['Player', 'Contrarian_Score', 'Ownership']].to_string()}
+{contrarian_data['contrarian_captains'][['Player', 'Contrarian_Score', 'Ownership']].to_string()}
 
 CHALK TO FADE (>30% owned):
-{chalk_plays[['Player', 'Position', 'Ownership', 'Salary']].to_string() if not chalk_plays.empty else 'No major chalk'}
+{contrarian_data['chalk_plays'][['Player', 'Position', 'Ownership', 'Salary']].to_string() if not contrarian_data['chalk_plays'].empty else 'No major chalk'}
 
 CRITICAL: Respond ONLY with valid JSON. DO NOT include markdown formatting or code blocks.
 
@@ -3970,111 +4245,25 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
 
         return prompt
 
+    # ✅ FIX #4: Refactored from 100+ lines into focused methods
     def parse_response(self, response: str, df: pd.DataFrame,
                       field_size: str) -> AIRecommendation:
         """Parse contrarian narrative response"""
         try:
-            # Clean response
-            response = response.strip()
-            response = response.replace('```json\n', '').replace('```\n', '').replace('```', '')
-
-            # Parse JSON
-            if response and response != '{}':
-                try:
-                    data = json.loads(response)
-                except json.JSONDecodeError:
-                    self.logger.log(
-                        "JSON parse failed, using narrative extraction",
-                        "WARNING"
-                    )
-                    data = self._extract_narrative_from_text(response, df)
-            else:
-                data = {}
-
+            # Clean and parse
+            data = self._clean_and_parse_json(response, df)
             available_players = set(df['Player'].values)
 
-            # Extract contrarian captains
-            contrarian_captains = []
-            captain_narratives = {}
-
-            for captain_data in data.get('contrarian_captains', []):
-                player = captain_data.get('player')
-                if player and player in available_players:
-                    contrarian_captains.append(player)
-                    # Use vectorized lookup
-                    player_own = df[df['Player'] == player]['Ownership'].values
-                    captain_narratives[player] = {
-                        'narrative': captain_data.get('narrative', ''),
-                        'ceiling_path': captain_data.get('ceiling_path', ''),
-                        'ownership': player_own[0] if len(player_own) > 0 else 10
-                    }
-
-            # If insufficient contrarian captains, find statistically
-            if len(contrarian_captains) < 3:
-                contrarian_captains.extend(
-                    self._find_statistical_contrarian_captains(
-                        df, contrarian_captains
-                    )
-                )
-                contrarian_captains = contrarian_captains[:7]
-
-            # Extract tournament winner lineup
-            tournament_winner = data.get('tournament_winner', {})
-            tw_captain = tournament_winner.get('captain')
-            tw_core = tournament_winner.get('core', [])
-            tw_differentiators = tournament_winner.get('differentiators', [])
-
-            must_play = []
-
-            # Add tournament winner captain
-            if tw_captain and tw_captain in available_players:
-                if tw_captain not in contrarian_captains:
-                    contrarian_captains.insert(0, tw_captain)
-
-            # Add core players
-            for player in tw_core:
-                if player in available_players:
-                    must_play.append(player)
-
-            # Add differentiators
-            for player in tw_differentiators:
-                if player in available_players and player not in must_play:
-                    must_play.append(player)
-
-            # Extract fades and pivots
-            fades = []
-            pivots = {}
-
-            for fade_data in data.get('fade_the_chalk', []):
-                fade_player = fade_data.get('player')
-                pivot_player = fade_data.get('pivot_to')
-
-                if fade_player and fade_player in available_players:
-                    # Verify it's actually chalk using vectorized lookup
-                    player_ownership = df[df['Player'] == fade_player]['Ownership'].values
-                    if len(player_ownership) > 0 and player_ownership[0] > 20:
-                        fades.append(fade_player)
-
-                        if pivot_player and pivot_player in available_players:
-                            pivots[fade_player] = pivot_player
-                            if pivot_player not in must_play:
-                                must_play.append(pivot_player)
-
-            # Extract hidden correlations
-            hidden_stacks = []
-
-            for corr in data.get('hidden_correlations', []):
-                p1 = corr.get('player1')
-                p2 = corr.get('player2')
-
-                if p1 in available_players and p2 in available_players:
-                    hidden_stacks.append({
-                        'player1': p1,
-                        'player2': p2,
-                        'type': 'hidden',
-                        'narrative': corr.get('narrative', 'Non-obvious correlation'),
-                        'correlation': 0.4
-                    })
+            # Extract components
+            contrarian_captains, captain_narratives = self._extract_contrarian_captains(
+                data, df, available_players
+            )
+            must_play, fades, pivots = self._extract_tournament_lineup(
+                data, available_players
+            )
+            hidden_stacks = self._extract_hidden_correlations(
+                data, available_players
+            )
 
             # Build enforcement rules
             enforcement_rules = self._build_contrarian_enforcement_rules(
@@ -4082,7 +4271,7 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
                 captain_narratives
             )
 
-            # Extract contrarian angles
+            # Extract angles and insights
             game_theory = data.get('contrarian_game_theory', {})
             contrarian_angles = [
                 game_theory.get('fatal_flaw', ''),
@@ -4091,15 +4280,13 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
             ]
             contrarian_angles = [a for a in contrarian_angles if a]
 
-            # Extract insights
             key_insights = [
                 data.get('primary_narrative', 'Contrarian approach'),
                 f"Fade {len(fades)} chalk plays",
                 f"{len(contrarian_captains)} contrarian captains identified"
             ]
 
-            confidence = data.get('confidence', 0.7)
-            confidence = max(0.0, min(1.0, confidence))
+            confidence = max(0.0, min(1.0, data.get('confidence', 0.7)))
 
             return AIRecommendation(
                 captain_targets=contrarian_captains,
@@ -4118,13 +4305,98 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
             self.logger.log_exception(e, "parse_contrarian_response")
             return self._get_fallback_recommendation(df, field_size)
 
+    def _extract_contrarian_captains(self, data: Dict, df: pd.DataFrame,
+                                    available_players: Set[str]) -> Tuple[List[str], Dict]:
+        """Extract contrarian captains with narratives"""
+        contrarian_captains = []
+        captain_narratives = {}
+
+        for captain_data in data.get('contrarian_captains', []):
+            player = captain_data.get('player')
+            if player and player in available_players:
+                contrarian_captains.append(player)
+                player_own = df[df['Player'] == player]['Ownership'].values
+                captain_narratives[player] = {
+                    'narrative': captain_data.get('narrative', ''),
+                    'ceiling_path': captain_data.get('ceiling_path', ''),
+                    'ownership': player_own[0] if len(player_own) > 0 else 10
+                }
+
+        # Fallback if insufficient
+        if len(contrarian_captains) < 3:
+            contrarian_captains.extend(
+                self._find_statistical_contrarian_captains(df, contrarian_captains)
+            )
+            contrarian_captains = contrarian_captains[:7]
+
+        return contrarian_captains, captain_narratives
+
+    def _extract_tournament_lineup(self, data: Dict,
+                                   available_players: Set[str]) -> Tuple[List[str], List[str], Dict]:
+        """Extract tournament winner lineup components"""
+        tournament_winner = data.get('tournament_winner', {})
+
+        must_play = []
+        tw_captain = tournament_winner.get('captain')
+        tw_core = tournament_winner.get('core', [])
+        tw_differentiators = tournament_winner.get('differentiators', [])
+
+        # Add core players
+        for player in tw_core:
+            if player in available_players:
+                must_play.append(player)
+
+        # Add differentiators
+        for player in tw_differentiators:
+            if player in available_players and player not in must_play:
+                must_play.append(player)
+
+        # Extract fades and pivots
+        fades = []
+        pivots = {}
+
+        for fade_data in data.get('fade_the_chalk', []):
+            fade_player = fade_data.get('player')
+            pivot_player = fade_data.get('pivot_to')
+
+            if fade_player and fade_player in available_players:
+                # Verify it's actually chalk
+                player_df = self.df
+                if player_df is not None:
+                    player_ownership = player_df[player_df['Player'] == fade_player]['Ownership'].values
+                    if len(player_ownership) > 0 and player_ownership[0] > 20:
+                        fades.append(fade_player)
+
+                        if pivot_player and pivot_player in available_players:
+                            pivots[fade_player] = pivot_player
+                            if pivot_player not in must_play:
+                                must_play.append(pivot_player)
+
+        return must_play, fades, pivots
+
+    def _extract_hidden_correlations(self, data: Dict,
+                                    available_players: Set[str]) -> List[Dict]:
+        """Extract hidden correlation stacks"""
+        hidden_stacks = []
+
+        for corr in data.get('hidden_correlations', []):
+            p1 = corr.get('player1')
+            p2 = corr.get('player2')
+
+            if p1 in available_players and p2 in available_players:
+                hidden_stacks.append({
+                    'player1': p1,
+                    'player2': p2,
+                    'type': 'hidden',
+                    'narrative': corr.get('narrative', 'Non-obvious correlation'),
+                    'correlation': 0.4
+                })
+
+        return hidden_stacks
+
     def _find_statistical_contrarian_captains(self, df: pd.DataFrame,
                                              existing: List[str]) -> List[str]:
-        """
-        Find contrarian captains using statistical analysis
-        OPTIMIZED: Use vectorized operations without DataFrame copy (Recommendation #11)
-        """
-        # Use boolean masks for efficient filtering
+        """Find contrarian captains using statistical analysis"""
         existing_set = set(existing)
         existing_mask = ~df['Player'].isin(existing_set)
         low_own_mask = df['Ownership'] < 15
@@ -4135,15 +4407,14 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
         if eligible.empty:
             return []
 
-        # Calculate contrarian score vectorized
+        # Calculate contrarian score
         max_proj = eligible['Projected_Points'].max()
         contrarian_scores = (
             (eligible['Projected_Points'] / max_proj) /
             (eligible['Ownership'] / 100 + 0.1)
         )
 
-        # Get top contrarian plays
-        eligible = eligible.copy()  # Only copy the filtered subset
+        eligible = eligible.copy()
         eligible['Contrarian_Score'] = contrarian_scores
         captains = eligible.nlargest(5, 'Contrarian_Score')['Player'].tolist()
 
@@ -4224,7 +4495,6 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
             'confidence': 0.6
         }
 
-        # Use vectorized filtering
         low_owned_mask = df['Ownership'] < 10
         high_owned_mask = df['Ownership'] > 30
 
@@ -4252,14 +4522,8 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
         return data
 
 # ============================================================================
-# END OF PART 5
-# ============================================================================
-
-# ============================================================================
 # PART 6: MAIN OPTIMIZER ENGINE WITH THREE-TIER CONSTRAINT RELAXATION
 # ============================================================================
-# This is the core optimization engine that generates lineups using AI
-# recommendations with intelligent constraint relaxation.
 
 # ============================================================================
 # AI-DRIVEN GPP OPTIMIZER
@@ -4268,17 +4532,8 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
 class AIChefGPPOptimizer:
     """
     Main optimizer where AI is the chef and optimization is execution
-    OPTIMIZED: Multiple performance improvements (Recommendations #1, #2, #5, #6)
 
     DFS Value: CRITICAL - Three-tier relaxation enables lineup diversity
-    while maintaining DK rules and AI strategic intent
-
-    Key Features:
-    - Three-tier constraint relaxation (Strict -> Relaxed -> Minimal)
-    - Thread-safe parallel generation
-    - Lineup similarity detection
-    - Dynamic strategy distribution
-    - Performance tracking
     """
 
     def __init__(self, df: pd.DataFrame, game_info: Dict,
@@ -4331,21 +4586,18 @@ class AIChefGPPOptimizer:
         self.max_workers = min(OptimizerConfig.MAX_PARALLEL_THREADS, 4)
         self.generation_timeout = OptimizerConfig.OPTIMIZATION_TIMEOUT
 
-        # OPTIMIZATION: Similarity tracking with frozensets (Recommendation #5)
+        # Similarity tracking with frozensets
         self._lineup_signatures = []
 
-        # OPTIMIZATION: Model cache for reuse (Recommendation #2)
+        # Model cache for reuse
         self._model_cache = {}
 
         # Prepare data
         self._prepare_data()
 
     def _validate_inputs(self, df: pd.DataFrame, game_info: Dict,
-                        field_size: str):
-        """
-        Validate all inputs before initialization
-        IMPROVED: Better error messages (Recommendation #12)
-        """
+                        field_size: str) -> None:  # ✅ FIX #5
+        """Validate all inputs before initialization"""
         if df is None or df.empty:
             raise ValueError(
                 "Player pool DataFrame cannot be empty.\n"
@@ -4359,7 +4611,7 @@ class AIChefGPPOptimizer:
         if missing_columns:
             raise ValueError(
                 f"Missing required columns: {missing_columns}\n"
-                f"Suggestion: Ensure CSV has these column names (case-insensitive): "
+                f"Suggestion: Ensure CSV has these column names: "
                 f"{', '.join(required_columns)}"
             )
 
@@ -4369,11 +4621,8 @@ class AIChefGPPOptimizer:
                 "WARNING"
             )
 
-    def _prepare_data(self):
-        """
-        Prepare data with additional calculations
-        OPTIMIZED: Create indexed lookups for O(1) access (Recommendation #1)
-        """
+    def _prepare_data(self) -> None:  # ✅ FIX #5
+        """Prepare data with additional calculations and indexed lookups"""
         # Add ownership if missing
         if 'Ownership' not in self.df.columns:
             self.df['Ownership'] = self.df.apply(
@@ -4393,11 +4642,10 @@ class AIChefGPPOptimizer:
             self.df['Value'] * (30 / (self.df['Ownership'] + 10))
         )
 
-        # Add team counts for validation
+        # Team counts for validation
         self.team_counts = self.df['Team'].value_counts().to_dict()
 
-        # OPTIMIZATION: Create O(1) indexed lookups (Recommendation #1)
-        # This eliminates expensive df[df['Player'] == player] operations
+        # Create O(1) indexed lookups
         self.df_indexed = self.df.set_index('Player')
         self.player_lookup = {
             'position': self.df_indexed['Position'].to_dict(),
@@ -4411,12 +4659,7 @@ class AIChefGPPOptimizer:
 
     def get_triple_ai_strategies(self,
                                 use_api: bool = True) -> Dict[AIStrategistType, AIRecommendation]:
-        """
-        Get strategies from all three AIs with parallel execution
-
-        Returns:
-            Dictionary mapping AI type to recommendation
-        """
+        """Get strategies from all three AIs with parallel execution"""
         self.logger.log("Getting strategies from three AI strategists", "INFO")
         self.perf_monitor.start_timer("get_ai_strategies")
 
@@ -4454,42 +4697,10 @@ class AIChefGPPOptimizer:
                             f"{ai_type.value} failed: {e}",
                             "ERROR"
                         )
-                        # Use fallback
-                        if ai_type == AIStrategistType.GAME_THEORY:
-                            recommendations[ai_type] = (
-                                self.game_theory_ai._get_fallback_recommendation(
-                                    self.df, self.field_size
-                                )
-                            )
-                        elif ai_type == AIStrategistType.CORRELATION:
-                            recommendations[ai_type] = (
-                                self.correlation_ai._get_fallback_recommendation(
-                                    self.df, self.field_size
-                                )
-                            )
-                        else:
-                            recommendations[ai_type] = (
-                                self.contrarian_ai._get_fallback_recommendation(
-                                    self.df, self.field_size
-                                )
-                            )
+                        recommendations[ai_type] = self._get_fallback_for_ai(ai_type)
         else:
             # Manual mode - sequential execution
-            recommendations[AIStrategistType.GAME_THEORY] = (
-                self.game_theory_ai.get_recommendation(
-                    self.df, self.game_info, self.field_size, False
-                )
-            )
-            recommendations[AIStrategistType.CORRELATION] = (
-                self.correlation_ai.get_recommendation(
-                    self.df, self.game_info, self.field_size, False
-                )
-            )
-            recommendations[AIStrategistType.CONTRARIAN_NARRATIVE] = (
-                self.contrarian_ai.get_recommendation(
-                    self.df, self.game_info, self.field_size, False
-                )
-            )
+            recommendations = self._get_strategies_sequential(use_api)
 
         # Validate we have all recommendations
         for ai_type in AIStrategistType:
@@ -4498,7 +4709,6 @@ class AIChefGPPOptimizer:
                     f"Missing recommendation for {ai_type.value}",
                     "WARNING"
                 )
-                # Create minimal fallback
                 recommendations[ai_type] = AIRecommendation(
                     captain_targets=[],
                     confidence=0.3,
@@ -4506,6 +4716,44 @@ class AIChefGPPOptimizer:
                 )
 
         # Log AI decisions
+        self._log_ai_decisions(recommendations)
+
+        elapsed = self.perf_monitor.stop_timer("get_ai_strategies")
+        self.logger.log(f"AI strategies obtained in {elapsed:.2f}s", "INFO")
+
+        return recommendations
+
+    def _get_strategies_sequential(self, use_api: bool) -> Dict[AIStrategistType, AIRecommendation]:
+        """Get strategies sequentially"""
+        return {
+            AIStrategistType.GAME_THEORY: self.game_theory_ai.get_recommendation(
+                self.df, self.game_info, self.field_size, use_api
+            ),
+            AIStrategistType.CORRELATION: self.correlation_ai.get_recommendation(
+                self.df, self.game_info, self.field_size, use_api
+            ),
+            AIStrategistType.CONTRARIAN_NARRATIVE: self.contrarian_ai.get_recommendation(
+                self.df, self.game_info, self.field_size, use_api
+            )
+        }
+
+    def _get_fallback_for_ai(self, ai_type: AIStrategistType) -> AIRecommendation:
+        """Get fallback recommendation for failed AI"""
+        if ai_type == AIStrategistType.GAME_THEORY:
+            return self.game_theory_ai._get_fallback_recommendation(
+                self.df, self.field_size
+            )
+        elif ai_type == AIStrategistType.CORRELATION:
+            return self.correlation_ai._get_fallback_recommendation(
+                self.df, self.field_size
+            )
+        else:
+            return self.contrarian_ai._get_fallback_recommendation(
+                self.df, self.field_size
+            )
+
+    def _log_ai_decisions(self, recommendations: Dict) -> None:  # ✅ FIX #5
+        """Log AI decisions for tracking"""
         for ai_type, rec in recommendations.items():
             self.logger.log_ai_decision(
                 "strategy_received",
@@ -4518,11 +4766,6 @@ class AIChefGPPOptimizer:
                 },
                 rec.confidence
             )
-
-        elapsed = self.perf_monitor.stop_timer("get_ai_strategies")
-        self.logger.log(f"AI strategies obtained in {elapsed:.2f}s", "INFO")
-
-        return recommendations
 
     def synthesize_ai_strategies(self,
                                 recommendations: Dict[AIStrategistType, AIRecommendation]) -> Dict:
@@ -4562,27 +4805,28 @@ class AIChefGPPOptimizer:
 
         except Exception as e:
             self.logger.log_exception(e, "synthesize_ai_strategies")
-            return {
-                'synthesis': {
-                    'captain_strategy': {},
-                    'confidence': 0.4,
-                    'narrative': "Using fallback synthesis"
-                },
-                'enforcement_rules': {
-                    'hard_constraints': [],
-                    'soft_constraints': []
-                },
-                'validation': {'is_valid': True, 'errors': [], 'warnings': []},
-                'recommendations': recommendations
-            }
+            return self._get_fallback_synthesis(recommendations)
 
+    def _get_fallback_synthesis(self, recommendations: Dict) -> Dict:
+        """Get fallback synthesis if main synthesis fails"""
+        return {
+            'synthesis': {
+                'captain_strategy': {},
+                'confidence': 0.4,
+                'narrative': "Using fallback synthesis"
+            },
+            'enforcement_rules': {
+                'hard_constraints': [],
+                'soft_constraints': []
+            },
+            'validation': {'is_valid': True, 'errors': [], 'warnings': []},
+            'recommendations': recommendations
+        }
+
+    # ✅ FIX #4: Refactored from 80+ lines into focused helper methods
     def generate_ai_driven_lineups(self, num_lineups: int,
                                    ai_strategy: Dict) -> pd.DataFrame:
-        """
-        Generate lineups with three-tier constraint relaxation
-
-        DFS Value: CRITICAL - Maintains diversity while respecting AI intent
-        """
+        """Generate lineups with three-tier constraint relaxation"""
         self.perf_monitor.start_timer("total_optimization")
         start_time = time.time()
 
@@ -4592,25 +4836,16 @@ class AIChefGPPOptimizer:
             'parallel': self.max_workers > 1
         })
 
-        # Extract components
+        # Extract and prepare components
         synthesis = ai_strategy.get('synthesis', {})
         enforcement_rules = ai_strategy.get('enforcement_rules', {})
 
-        # Prepare data structures using indexed lookups
-        players = self.df['Player'].tolist()
-        positions = self.player_lookup['position']
-        teams = self.player_lookup['team']
-        salaries = self.player_lookup['salary']
-        points = self.player_lookup['points']
-        ownership = self.player_lookup['ownership']
-
-        # Apply AI modifications to projections
-        ai_adjusted_points = self._apply_ai_adjustments(points, synthesis)
+        # Prepare optimization data
+        opt_data = self._prepare_optimization_data(synthesis)
 
         # Get strategy distribution
-        consensus_level = self._determine_consensus_level(synthesis)
-        strategy_distribution = AIConfigValidator.get_ai_strategy_distribution(
-            self.field_size, num_lineups, consensus_level
+        strategy_distribution = self._get_strategy_distribution(
+            num_lineups, synthesis
         )
 
         self.logger.log(
@@ -4618,10 +4853,43 @@ class AIChefGPPOptimizer:
             "INFO"
         )
 
-        all_lineups = []
-        used_captains = set()
+        # Generate lineups
+        all_lineups = self._generate_all_lineups(
+            strategy_distribution, opt_data, enforcement_rules, synthesis
+        )
 
-        # Generate lineups by strategy
+        # Finalize and return
+        return self._finalize_generation(all_lineups, num_lineups, start_time)
+
+    def _prepare_optimization_data(self, synthesis: Dict) -> Dict:
+        """Prepare data structures for optimization"""
+        players = self.df['Player'].tolist()
+
+        # Apply AI modifications to projections
+        ai_adjusted_points = self._apply_ai_adjustments(
+            self.player_lookup['points'], synthesis
+        )
+
+        return {
+            'players': players,
+            'salaries': self.player_lookup['salary'],
+            'points': ai_adjusted_points,
+            'ownership': self.player_lookup['ownership'],
+            'positions': self.player_lookup['position'],
+            'teams': self.player_lookup['team']
+        }
+
+    def _get_strategy_distribution(self, num_lineups: int, synthesis: Dict) -> Dict:
+        """Get strategy distribution based on consensus"""
+        consensus_level = self._determine_consensus_level(synthesis)
+        return AIConfigValidator.get_ai_strategy_distribution(
+            self.field_size, num_lineups, consensus_level
+        )
+
+    def _generate_all_lineups(self, strategy_distribution: Dict, opt_data: Dict,
+                              enforcement_rules: Dict, synthesis: Dict) -> List[Dict]:
+        """Generate all lineups using appropriate method"""
+        # Build lineup tasks
         lineup_tasks = []
         for strategy, count in strategy_distribution.items():
             strategy_name = (
@@ -4630,43 +4898,25 @@ class AIChefGPPOptimizer:
             for i in range(count):
                 lineup_tasks.append((len(lineup_tasks) + 1, strategy_name))
 
-        # Use parallel generation for better performance
+        # ✅ FIX #2: Thread-safe captain tracking
+        used_captains = set()
+        captain_lock = threading.Lock()
+
+        # Choose generation method
         if self.max_workers > 1 and len(lineup_tasks) > 5:
-            all_lineups = self._generate_lineups_parallel(
-                lineup_tasks, players, salaries, ai_adjusted_points,
-                ownership, positions, teams, enforcement_rules,
-                synthesis, used_captains
+            return self._generate_lineups_parallel(
+                lineup_tasks, opt_data, enforcement_rules,
+                synthesis, used_captains, captain_lock
             )
         else:
-            # Sequential generation
-            for i, (lineup_num, strategy_name) in enumerate(lineup_tasks):
-                lineup = self._build_ai_enforced_lineup(
-                    lineup_num=lineup_num,
-                    strategy=strategy_name,
-                    players=players,
-                    salaries=salaries,
-                    points=ai_adjusted_points,
-                    ownership=ownership,
-                    positions=positions,
-                    teams=teams,
-                    enforcement_rules=enforcement_rules,
-                    synthesis=synthesis,
-                    used_captains=used_captains
-                )
+            return self._generate_lineups_sequential(
+                lineup_tasks, opt_data, enforcement_rules,
+                synthesis, used_captains
+            )
 
-                if lineup:
-                    is_valid, violations = (
-                        self.enforcement_engine.validate_lineup_against_ai(
-                            lineup, enforcement_rules
-                        )
-                    )
-
-                    if is_valid or len(all_lineups) < num_lineups * 0.5:
-                        # Accept if valid or we need more lineups
-                        all_lineups.append(lineup)
-                        used_captains.add(lineup['Captain'])
-
-        # Calculate metrics
+    def _finalize_generation(self, all_lineups: List[Dict],
+                            num_lineups: int, start_time: float) -> pd.DataFrame:
+        """Finalize generation and calculate metrics"""
         total_time = time.time() - start_time
         success_rate = len(all_lineups) / max(num_lineups, 1)
 
@@ -4674,39 +4924,28 @@ class AIChefGPPOptimizer:
             len(all_lineups), total_time, success_rate
         )
 
-        # Store generated lineups
         self.generated_lineups = all_lineups
-
         return pd.DataFrame(all_lineups)
 
-    def _generate_lineups_parallel(self, lineup_tasks, players, salaries, points,
-                                   ownership, positions, teams, enforcement_rules,
-                                   synthesis, used_captains):
-        """
-        Thread-safe parallel lineup generation
-        FIXED: Race condition in captain selection (Recommendation #6)
-
-        DFS Value: Speed without sacrificing correctness
-        """
+    # ✅ FIX #2: Fixed race condition with proper locking
+    def _generate_lineups_parallel(self, lineup_tasks: List[Tuple], opt_data: Dict,
+                                   enforcement_rules: Dict, synthesis: Dict,
+                                   used_captains: Set[str],
+                                   captain_lock: threading.Lock) -> List[Dict]:
+        """Thread-safe parallel lineup generation"""
         all_lineups = []
-        captain_lock = threading.Lock()
 
         def generate_single_lineup(task_data):
             lineup_num, strategy_name = task_data
 
-            # Don't pass used_captains to avoid TOCTOU bug
+            # Generate lineup without checking used_captains
             lineup = self._build_ai_enforced_lineup(
                 lineup_num=lineup_num,
                 strategy=strategy_name,
-                players=players,
-                salaries=salaries,
-                points=points,
-                ownership=ownership,
-                positions=positions,
-                teams=teams,
+                opt_data=opt_data,
                 enforcement_rules=enforcement_rules,
                 synthesis=synthesis,
-                used_captains=set()  # Empty set to avoid conflicts
+                used_captains=set()  # Empty set to avoid race
             )
 
             if lineup:
@@ -4717,7 +4956,7 @@ class AIChefGPPOptimizer:
                 )
 
                 if is_valid:
-                    # FIXED: Atomic captain check and add (Recommendation #6)
+                    # ✅ FIX #2: Atomic captain check and add
                     with captain_lock:
                         if lineup['Captain'] not in used_captains:
                             used_captains.add(lineup['Captain'])
@@ -4727,7 +4966,7 @@ class AIChefGPPOptimizer:
 
             return None
 
-        # Use ThreadPoolExecutor for I/O-bound tasks
+        # Use ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = [
                 executor.submit(generate_single_lineup, task)
@@ -4747,93 +4986,73 @@ class AIChefGPPOptimizer:
 
         return all_lineups
 
+    def _generate_lineups_sequential(self, lineup_tasks: List[Tuple], opt_data: Dict,
+                                    enforcement_rules: Dict, synthesis: Dict,
+                                    used_captains: Set[str]) -> List[Dict]:
+        """Sequential lineup generation"""
+        all_lineups = []
+
+        for lineup_num, strategy_name in lineup_tasks:
+            lineup = self._build_ai_enforced_lineup(
+                lineup_num=lineup_num,
+                strategy=strategy_name,
+                opt_data=opt_data,
+                enforcement_rules=enforcement_rules,
+                synthesis=synthesis,
+                used_captains=used_captains
+            )
+
+            if lineup:
+                is_valid, violations = (
+                    self.enforcement_engine.validate_lineup_against_ai(
+                        lineup, enforcement_rules
+                    )
+                )
+
+                if is_valid or len(all_lineups) < len(lineup_tasks) * 0.5:
+                    all_lineups.append(lineup)
+                    used_captains.add(lineup['Captain'])
+
+        return all_lineups
+
+    # ✅ FIX #4: Refactored from 150+ lines into orchestrator + helper methods
     def _build_ai_enforced_lineup(self, lineup_num: int, strategy: str,
-                                  players: List[str], salaries: Dict,
-                                  points: Dict, ownership: Dict,
-                                  positions: Dict, teams: Dict,
-                                  enforcement_rules: Dict,
+                                  opt_data: Dict, enforcement_rules: Dict,
                                   synthesis: Dict,
                                   used_captains: Set[str]) -> Optional[Dict]:
-        """
-        Build lineup with three-tier constraint relaxation
-
-        DFS Value: CRITICAL - Three attempts with graduated relaxation
-        Attempt 1: Strict (all AI constraints)
-        Attempt 2: Relaxed (relax soft constraints)
-        Attempt 3: Minimal (only DK rules + captain diversity)
-        """
+        """Build lineup with three-tier constraint relaxation"""
         max_attempts = 3
 
         for attempt in range(max_attempts):
             try:
                 self.lineup_generation_stats['attempts'] += 1
 
-                # Create optimization model
-                model = pulp.LpProblem(
-                    f"AI_Lineup_{lineup_num}_{strategy}_a{attempt}",
-                    pulp.LpMaximize
+                # Create and configure model
+                model = self._create_optimization_model(
+                    lineup_num, strategy, attempt
                 )
 
-                # Decision variables
-                flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
-                captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
+                # Add decision variables
+                flex, captain = self._add_decision_variables(model, opt_data['players'])
 
-                # AI-modified objective function
-                player_weights = synthesis.get('player_rankings', {})
+                # Set objective
+                self._set_objective(model, flex, captain, opt_data, synthesis)
 
-                objective = pulp.lpSum([
-                    points[p] * player_weights.get(p, 1.0) * flex[p] +
-                    1.5 * points[p] * player_weights.get(p, 1.0) * captain[p]
-                    for p in players
-                ])
-
-                model += objective
-
-                # TIER 1 CONSTRAINTS - NEVER RELAX (DK Rules)
-                self._add_dk_constraints(
-                    model, flex, captain, players, salaries, teams
+                # Add constraints by tier
+                self._add_all_constraints(
+                    model, flex, captain, opt_data, enforcement_rules,
+                    used_captains, attempt
                 )
 
-                # TIER 2 CONSTRAINTS - Relax on attempt 3
-                if attempt < 2:
-                    self._add_tier2_constraints(
-                        model, flex, captain, enforcement_rules,
-                        players, used_captains, attempt
-                    )
+                # Solve model
+                lineup = self._solve_and_extract(
+                    model, flex, captain, opt_data, lineup_num,
+                    strategy, synthesis, attempt
+                )
 
-                # TIER 3 CONSTRAINTS - Relax on attempt 2+
-                if attempt == 0:
-                    self._add_tier3_constraints(
-                        model, flex, captain, enforcement_rules, players
-                    )
-
-                # Solve with timeout
-                timeout = 5 + (attempt * 5)
-                model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=timeout))
-
-                if pulp.LpStatus[model.status] == 'Optimal':
-                    lineup = self._extract_lineup_from_solution(
-                        flex, captain, players, salaries, points, ownership,
-                        lineup_num, strategy, synthesis, teams
-                    )
-
-                    if lineup and self._verify_dk_requirements(lineup, teams):
-                        # Check similarity to existing lineups
-                        if not self._is_too_similar(lineup):
-                            self.lineup_generation_stats['successes'] += 1
-                            if attempt > 0:
-                                self.logger.log(
-                                    f"Lineup {lineup_num} succeeded on "
-                                    f"attempt {attempt + 1}",
-                                    "DEBUG"
-                                )
-                            return lineup
-                        else:
-                            self.lineup_generation_stats['failures_by_reason']['too_similar'] += 1
-                    elif lineup:
-                        self.lineup_generation_stats['failures_by_reason']['dk_requirements'] += 1
-                else:
-                    self.lineup_generation_stats['failures_by_reason']['no_solution'] += 1
+                if lineup:
+                    self.lineup_generation_stats['successes'] += 1
+                    return lineup
 
             except Exception as e:
                 self.lineup_generation_stats['failures_by_reason']['exception'] += 1
@@ -4844,20 +5063,100 @@ class AIChefGPPOptimizer:
 
         return None
 
-    def _add_dk_constraints(self, model, flex, captain, players,
-                           salaries, teams):
-        """
-        Add DraftKings Showdown constraints - NEVER RELAXED
+    def _create_optimization_model(self, lineup_num: int, strategy: str,
+                                   attempt: int) -> pulp.LpProblem:
+        """Create optimization model"""
+        return pulp.LpProblem(
+            f"AI_Lineup_{lineup_num}_{strategy}_a{attempt}",
+            pulp.LpMaximize
+        )
 
-        DFS Value: CRITICAL - These ensure valid DK submissions
-        """
+    def _add_decision_variables(self, model: pulp.LpProblem,
+                                players: List[str]) -> Tuple[Dict, Dict]:
+        """Add decision variables to model"""
+        flex = pulp.LpVariable.dicts("Flex", players, cat='Binary')
+        captain = pulp.LpVariable.dicts("Captain", players, cat='Binary')
+        return flex, captain
+
+    def _set_objective(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
+                      opt_data: Dict, synthesis: Dict) -> None:  # ✅ FIX #5
+        """Set objective function with AI weights"""
+        players = opt_data['players']
+        points = opt_data['points']
+        player_weights = synthesis.get('player_rankings', {})
+
+        objective = pulp.lpSum([
+            points[p] * player_weights.get(p, 1.0) * flex[p] +
+            1.5 * points[p] * player_weights.get(p, 1.0) * captain[p]
+            for p in players
+        ])
+
+        model += objective
+
+    def _add_all_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
+                            opt_data: Dict, enforcement_rules: Dict,
+                            used_captains: Set[str], attempt: int) -> None:  # ✅ FIX #5
+        """Add all constraints by tier"""
+        # Tier 1: DK rules (never relax)
+        self._add_dk_constraints(
+            model, flex, captain, opt_data['players'],
+            opt_data['salaries'], opt_data['teams']
+        )
+
+        # Tier 2: AI high-confidence (relax on attempt 3)
+        if attempt < 2:
+            self._add_tier2_constraints(
+                model, flex, captain, enforcement_rules,
+                opt_data['players'], used_captains, attempt
+            )
+
+        # Tier 3: Soft preferences (relax on attempt 2+)
+        if attempt == 0:
+            self._add_tier3_constraints(
+                model, flex, captain, enforcement_rules, opt_data['players']
+            )
+
+    def _solve_and_extract(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
+                          opt_data: Dict, lineup_num: int, strategy: str,
+                          synthesis: Dict, attempt: int) -> Optional[Dict]:
+        """Solve model and extract lineup"""
+        # Solve with timeout
+        timeout = 5 + (attempt * 5)
+        model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=timeout))
+
+        if pulp.LpStatus[model.status] == 'Optimal':
+            lineup = self._extract_lineup_from_solution(
+                flex, captain, opt_data, lineup_num, strategy, synthesis
+            )
+
+            if lineup and self._verify_dk_requirements(lineup, opt_data['teams']):
+                if not self._is_too_similar(lineup):
+                    if attempt > 0:
+                        self.logger.log(
+                            f"Lineup {lineup_num} succeeded on attempt {attempt + 1}",
+                            "DEBUG"
+                        )
+                    return lineup
+                else:
+                    self.lineup_generation_stats['failures_by_reason']['too_similar'] += 1
+            elif lineup:
+                self.lineup_generation_stats['failures_by_reason']['dk_requirements'] += 1
+        else:
+            self.lineup_generation_stats['failures_by_reason']['no_solution'] += 1
+
+        return None
+
+    def _add_dk_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
+                           players: List[str], salaries: Dict,
+                           teams: Dict) -> None:  # ✅ FIX #5
+        """Add DraftKings Showdown constraints - NEVER RELAXED"""
         # Exactly 1 captain
         model += pulp.lpSum(captain.values()) == 1, "One_Captain"
 
         # Exactly 5 FLEX
         model += pulp.lpSum(flex.values()) == 5, "Five_Flex"
 
-        # Player can't be both captain and FLEX
+        # Player can't be both
         for p in players:
             model += flex[p] + captain[p] <= 1, f"Exclusive_{p}"
 
@@ -4867,27 +5166,18 @@ class AIChefGPPOptimizer:
             for p in players
         ]) <= OptimizerConfig.SALARY_CAP, "Salary_Cap"
 
-        # DraftKings team diversity requirements
+        # Team diversity
         unique_teams = list(set(teams.values()))
-
         if len(unique_teams) >= 2:
             team1, team2 = unique_teams[0], unique_teams[1]
             team1_players = [p for p in players if teams[p] == team1]
             team2_players = [p for p in players if teams[p] == team2]
 
-            # Must have AT LEAST 1 from each team
             if team1_players:
                 model += pulp.lpSum([
                     flex[p] + captain[p] for p in team1_players
                 ]) >= 1, "Min_Team1"
 
-            if team2_players:
-                model += pulp.lpSum([
-                    flex[p] + captain[p] for p in team2_players
-                ]) >= 1, "Min_Team2"
-
-            # Max 5 from one team
-            if team1_players:
                 model += pulp.lpSum([
                     flex[p] + captain[p] for p in team1_players
                 ]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM, "Max_Team1"
@@ -4895,11 +5185,16 @@ class AIChefGPPOptimizer:
             if team2_players:
                 model += pulp.lpSum([
                     flex[p] + captain[p] for p in team2_players
+                ]) >= 1, "Min_Team2"
+
+                model += pulp.lpSum([
+                    flex[p] + captain[p] for p in team2_players
                 ]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM, "Max_Team2"
 
-    def _add_tier2_constraints(self, model, flex, captain, enforcement_rules,
-                               players, used_captains, attempt):
-        """Add Tier 2 constraints (AI high-confidence) - Relax on attempt 3"""
+    def _add_tier2_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
+                               enforcement_rules: Dict, players: List[str],
+                               used_captains: Set[str], attempt: int) -> None:  # ✅ FIX #5
+        """Add Tier 2 constraints (AI high-confidence)"""
         for constraint in enforcement_rules.get('hard_constraints', []):
             if not self.enforcement_engine.should_apply_constraint(
                 constraint, attempt
@@ -4933,10 +5228,10 @@ class AIChefGPPOptimizer:
                     model += flex[player] + captain[player] == 0, \
                         f"Must_Exclude_{player}"
 
-    def _add_tier3_constraints(self, model, flex, captain, enforcement_rules,
-                               players):
-        """Add Tier 3 constraints (soft preferences) - Only on attempt 1"""
-        # Stack constraints
+    def _add_tier3_constraints(self, model: pulp.LpProblem, flex: Dict, captain: Dict,
+                               enforcement_rules: Dict,
+                               players: List[str]) -> None:  # ✅ FIX #5
+        """Add Tier 3 constraints (soft preferences)"""
         for stack_rule in enforcement_rules.get('stacking_rules', []):
             if stack_rule.get('rule') == 'correlation_stack':
                 stack_players = [
@@ -4944,29 +5239,29 @@ class AIChefGPPOptimizer:
                     if p in players
                 ]
                 if len(stack_players) >= 2:
-                    # Encourage but don't require
                     model += pulp.lpSum([
                         flex[p] + captain[p] for p in stack_players
                     ]) >= 1, f"Stack_{stack_players[0]}"
 
-    def _extract_lineup_from_solution(self, flex, captain, players, salaries,
-                                     points, ownership, lineup_num, strategy,
-                                     synthesis, teams):
-        """
-        Extract lineup from solved model
-        OPTIMIZED: Use indexed lookups instead of DataFrame filtering (Recommendation #1)
-        """
+    def _extract_lineup_from_solution(self, flex: Dict, captain: Dict, opt_data: Dict,
+                                     lineup_num: int, strategy: str,
+                                     synthesis: Dict) -> Optional[Dict]:
+        """Extract lineup from solved model using indexed lookups"""
         captain_pick = None
         flex_picks = []
 
-        for p in players:
+        for p in opt_data['players']:
             if captain[p].value() == 1:
                 captain_pick = p
             if flex[p].value() == 1:
                 flex_picks.append(p)
 
         if captain_pick and len(flex_picks) == 5:
-            # Use O(1) dictionary lookups instead of DataFrame filtering
+            # Use O(1) dictionary lookups
+            salaries = opt_data['salaries']
+            points = opt_data['points']
+            ownership = opt_data['ownership']
+
             total_salary = (
                 sum(salaries[p] for p in flex_picks) +
                 1.5 * salaries[captain_pick]
@@ -4987,14 +5282,7 @@ class AIChefGPPOptimizer:
             )
 
             # Determine ownership tier
-            if total_ownership < 60:
-                ownership_tier = 'Elite Contrarian'
-            elif total_ownership < 80:
-                ownership_tier = 'Optimal'
-            elif total_ownership < 100:
-                ownership_tier = 'Balanced'
-            else:
-                ownership_tier = 'Chalky'
+            ownership_tier = self._determine_ownership_tier(total_ownership)
 
             return {
                 'Lineup': lineup_num,
@@ -5017,12 +5305,19 @@ class AIChefGPPOptimizer:
 
         return None
 
-    def _verify_dk_requirements(self, lineup: Dict, teams: Dict) -> bool:
-        """
-        Verify lineup meets DraftKings Showdown requirements
+    def _determine_ownership_tier(self, total_ownership: float) -> str:
+        """Determine ownership tier label"""
+        if total_ownership < 60:
+            return 'Elite Contrarian'
+        elif total_ownership < 80:
+            return 'Optimal'
+        elif total_ownership < 100:
+            return 'Balanced'
+        else:
+            return 'Chalky'
 
-        DFS Value: CRITICAL - Ensures valid submissions
-        """
+    def _verify_dk_requirements(self, lineup: Dict, teams: Dict) -> bool:
+        """Verify lineup meets DraftKings Showdown requirements"""
         captain = lineup.get('Captain')
         flex_players = lineup.get('FLEX', [])
 
@@ -5031,7 +5326,7 @@ class AIChefGPPOptimizer:
 
         all_players = [captain] + flex_players
 
-        # Check team representation using O(1) lookups
+        # Check team representation
         team_counts = defaultdict(int)
         for player in all_players:
             team = teams.get(player)
@@ -5051,14 +5346,8 @@ class AIChefGPPOptimizer:
         return True
 
     def _is_too_similar(self, new_lineup: Dict) -> bool:
-        """
-        Check if lineup is too similar to existing lineups
-        OPTIMIZED: Use frozensets for fast set operations (Recommendation #5)
-
-        DFS Value: Ensures lineup diversity for tournament equity
-        """
+        """Check if lineup is too similar using frozensets"""
         if not self._lineup_signatures:
-            # First lineup, store and accept
             new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
             self._lineup_signatures.append(new_players)
             return False
@@ -5069,8 +5358,6 @@ class AIChefGPPOptimizer:
         )
 
         threshold = field_config.get('similarity_threshold', 0.67)
-
-        # Create frozenset for O(1) set operations
         new_players = frozenset([new_lineup['Captain']] + new_lineup['FLEX'])
 
         # Only check last N lineups
@@ -5078,17 +5365,16 @@ class AIChefGPPOptimizer:
         recent_signatures = self._lineup_signatures[-check_count:]
 
         for existing_sig in recent_signatures:
-            # Fast set operations with frozensets
             intersection = len(new_players & existing_sig)
             union = len(new_players | existing_sig)
 
             if union > 0 and (intersection / union) > threshold:
                 return True
 
-        # Store signature for future checks
+        # Store signature
         self._lineup_signatures.append(new_players)
 
-        # Memory management - keep last 100
+        # ✅ FIX #3: Memory management
         if len(self._lineup_signatures) > 100:
             self._lineup_signatures = self._lineup_signatures[-50:]
 
@@ -5097,13 +5383,10 @@ class AIChefGPPOptimizer:
     def _apply_ai_adjustments(self, points: Dict, synthesis: Dict) -> Dict:
         """Apply AI-recommended adjustments to projections"""
         adjusted = points.copy()
-
-        # Apply player rankings as multipliers
         rankings = synthesis.get('player_rankings', {})
 
         for player, score in rankings.items():
             if player in adjusted:
-                # Normalize score to multiplier (0.7 to 1.3 range)
                 if score > 0:
                     multiplier = 1.0 + min(score * 0.15, 0.3)
                 else:
@@ -5139,23 +5422,17 @@ class AIChefGPPOptimizer:
             return 'low'
 
 # ============================================================================
-# END OF PART 6
-# ============================================================================
-
-# ============================================================================
 # PART 7: UI & HELPER FUNCTIONS - FINAL PART
 # ============================================================================
-# This final part contains all helper functions for validation, display,
-# export, and the complete Streamlit UI application.
 
 # ============================================================================
 # HELPER FUNCTIONS - VALIDATION AND PROCESSING
 # ============================================================================
 
+# ✅ FIX #4: Refactored from 120+ lines into orchestrator + helper methods
 def validate_and_process_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     """
     Enhanced validation and processing of uploaded DataFrame
-    IMPROVED: Better error messages with suggestions (Recommendation #12)
 
     Returns:
         (processed_df, validation_dict)
@@ -5169,169 +5446,38 @@ def validate_and_process_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict
     }
 
     try:
-        # Column mapping for different CSV formats
-        column_mappings = {
-            'name': 'Player',
-            'first_name': 'First_Name',
-            'last_name': 'Last_Name',
-            'position': 'Position',
-            'team': 'Team',
-            'salary': 'Salary',
-            'ppg_projection': 'Projected_Points',
-            'ownership_projection': 'Ownership',
-            'proj': 'Projected_Points',
-            'own': 'Ownership',
-            'sal': 'Salary',
-            'pos': 'Position'
-        }
+        # Rename columns to standard format
+        df = _rename_columns(df, validation)
 
-        # Rename columns
-        df = df.rename(columns={
-            k.lower(): v for k, v in column_mappings.items()
-        })
+        # Create player column if needed
+        df = _create_player_column(df, validation)
 
-        # Create Player column if needed
-        if 'Player' not in df.columns:
-            if 'First_Name' in df.columns and 'Last_Name' in df.columns:
-                df['Player'] = (
-                    df['First_Name'].fillna('') + ' ' +
-                    df['Last_Name'].fillna('')
-                )
-                df['Player'] = df['Player'].str.strip()
-                validation['fixes_applied'].append(
-                    "Created Player names from first/last name"
-                )
-            else:
-                validation['errors'].append("Cannot determine player names")
-                validation['warnings'].append(
-                    "Suggestion: Ensure CSV has 'Player', 'Name', or 'First_Name'/'Last_Name' columns"
-                )
-                validation['is_valid'] = False
-                return df, validation
+        if not validation['is_valid']:
+            return df, validation
 
-        # Ensure numeric columns
-        numeric_columns = ['Salary', 'Projected_Points', 'Ownership']
-        for col in numeric_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-                if df[col].isna().any():
-                    na_count = df[col].isna().sum()
-                    validation['warnings'].append(
-                        f"{na_count} {col} values couldn't be converted to numbers"
-                    )
-
-                    # Fill with sensible defaults
-                    if col == 'Salary':
-                        df[col] = df[col].fillna(OptimizerConfig.MIN_SALARY)
-                        validation['fixes_applied'].append(
-                            f"Filled {na_count} missing salaries with minimum (${OptimizerConfig.MIN_SALARY:,})"
-                        )
-                    elif col == 'Projected_Points':
-                        median = df[col].median()
-                        df[col] = df[col].fillna(
-                            median if not pd.isna(median) else 10
-                        )
-                        validation['fixes_applied'].append(
-                            f"Filled {na_count} missing projections with median"
-                        )
-                    elif col == 'Ownership':
-                        df[col] = df[col].fillna(10)
-                        validation['fixes_applied'].append(
-                            f"Filled {na_count} missing ownership with 10%"
-                        )
+        # Convert numeric columns
+        df = _convert_numeric_columns(df, validation)
 
         # Add ownership if missing
-        if 'Ownership' not in df.columns:
-            df['Ownership'] = df.apply(
-                lambda row: OptimizerConfig.get_default_ownership(
-                    row.get('Position', 'FLEX'),
-                    row.get('Salary', 5000)
-                ), axis=1
-            )
-            validation['fixes_applied'].append(
-                "Added ownership projections based on position/salary"
-            )
+        df = _add_ownership_column(df, validation)
 
         # Validate ownership values
-        if 'Ownership' in df.columns:
-            invalid_own = df[
-                (df['Ownership'] < 0) | (df['Ownership'] > 100)
-            ]
-            if not invalid_own.empty:
-                df.loc[df['Ownership'] < 0, 'Ownership'] = 0
-                df.loc[df['Ownership'] > 100, 'Ownership'] = 100
-                validation['warnings'].append(
-                    f"Corrected {len(invalid_own)} invalid ownership values (must be 0-100%)"
-                )
-                validation['fixes_applied'].append(
-                    "Clamped ownership values to 0-100% range"
-                )
+        df = _validate_ownership_values(df, validation)
 
         # Remove duplicates
-        if df.duplicated(subset=['Player']).any():
-            dup_count = df.duplicated(subset=['Player']).sum()
-            df = df.drop_duplicates(subset=['Player'], keep='first')
-            validation['warnings'].append(
-                f"Removed {dup_count} duplicate players (kept first occurrence)"
-            )
+        df = _remove_duplicates(df, validation)
 
         # Validate minimum requirements
-        validation['stats']['total_players'] = len(df)
-        if len(df) < 6:
-            validation['errors'].append(
-                f"Only {len(df)} players found (minimum 6 required for Showdown)"
-            )
-            validation['warnings'].append(
-                "Suggestion: Ensure CSV contains at least 6 players"
-            )
-            validation['is_valid'] = False
-        elif len(df) < 12:
-            validation['warnings'].append(
-                f"Only {len(df)} players (12+ recommended for lineup diversity)"
-            )
+        _validate_minimum_requirements(df, validation)
 
         # Validate team count
-        teams = df['Team'].unique()
-        validation['stats']['teams'] = len(teams)
-        if len(teams) != 2:
-            validation['warnings'].append(
-                f"Expected 2 teams for Showdown, found {len(teams)}"
-            )
-            if len(teams) > 2:
-                validation['warnings'].append(
-                    f"Teams found: {', '.join(teams)}"
-                )
+        _validate_team_count(df, validation)
 
-        # Position distribution
-        positions = df['Position'].value_counts()
-        validation['stats']['positions'] = positions.to_dict()
-
-        # Check for QBs
-        if 'QB' not in positions or positions.get('QB', 0) == 0:
-            validation['warnings'].append(
-                "No QB in player pool - unusual for Showdown format"
-            )
+        # Check position distribution
+        _check_position_distribution(df, validation)
 
         # Validate salary feasibility
-        min_lineup_salary = df.nsmallest(6, 'Salary')['Salary'].sum()
-        max_lineup_salary = df.nlargest(6, 'Salary')['Salary'].sum()
-
-        validation['stats']['min_possible_salary'] = min_lineup_salary
-        validation['stats']['max_possible_salary'] = max_lineup_salary
-
-        if min_lineup_salary > OptimizerConfig.SALARY_CAP:
-            validation['errors'].append(
-                f"Minimum possible salary (${min_lineup_salary:,}) exceeds cap (${OptimizerConfig.SALARY_CAP:,})"
-            )
-            validation['warnings'].append(
-                "Suggestion: Check that salary values are correct (should be in dollars, not thousands)"
-            )
-            validation['is_valid'] = False
-
-        if max_lineup_salary < 35000:
-            validation['warnings'].append(
-                f"Maximum possible salary only ${max_lineup_salary:,} - limited lineup diversity"
-            )
+        _validate_salary_feasibility(df, validation)
 
     except Exception as e:
         validation['errors'].append(f"Processing error: {str(e)}")
@@ -5342,7 +5488,193 @@ def validate_and_process_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict
 
     return df, validation
 
-def init_session_state():
+def _rename_columns(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
+    """Rename columns to standard format"""
+    column_mappings = {
+        'name': 'Player',
+        'first_name': 'First_Name',
+        'last_name': 'Last_Name',
+        'position': 'Position',
+        'team': 'Team',
+        'salary': 'Salary',
+        'ppg_projection': 'Projected_Points',
+        'ownership_projection': 'Ownership',
+        'proj': 'Projected_Points',
+        'own': 'Ownership',
+        'sal': 'Salary',
+        'pos': 'Position'
+    }
+
+    return df.rename(columns={
+        k.lower(): v for k, v in column_mappings.items()
+    })
+
+def _create_player_column(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
+    """Create Player column if needed"""
+    if 'Player' not in df.columns:
+        if 'First_Name' in df.columns and 'Last_Name' in df.columns:
+            df['Player'] = (
+                df['First_Name'].fillna('') + ' ' +
+                df['Last_Name'].fillna('')
+            )
+            df['Player'] = df['Player'].str.strip()
+            validation['fixes_applied'].append(
+                "Created Player names from first/last name"
+            )
+        else:
+            validation['errors'].append("Cannot determine player names")
+            validation['warnings'].append(
+                "Suggestion: Ensure CSV has 'Player', 'Name', or 'First_Name'/'Last_Name' columns"
+            )
+            validation['is_valid'] = False
+
+    return df
+
+def _convert_numeric_columns(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
+    """Convert and fill numeric columns"""
+    numeric_columns = ['Salary', 'Projected_Points', 'Ownership']
+
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+            if df[col].isna().any():
+                na_count = df[col].isna().sum()
+                validation['warnings'].append(
+                    f"{na_count} {col} values couldn't be converted to numbers"
+                )
+
+                # Fill with sensible defaults
+                if col == 'Salary':
+                    df[col] = df[col].fillna(OptimizerConfig.MIN_SALARY)
+                    validation['fixes_applied'].append(
+                        f"Filled {na_count} missing salaries with minimum (${OptimizerConfig.MIN_SALARY:,})"
+                    )
+                elif col == 'Projected_Points':
+                    median = df[col].median()
+                    df[col] = df[col].fillna(
+                        median if not pd.isna(median) else 10
+                    )
+                    validation['fixes_applied'].append(
+                        f"Filled {na_count} missing projections with median"
+                    )
+                elif col == 'Ownership':
+                    df[col] = df[col].fillna(10)
+                    validation['fixes_applied'].append(
+                        f"Filled {na_count} missing ownership with 10%"
+                    )
+
+    return df
+
+def _add_ownership_column(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
+    """Add ownership column if missing"""
+    if 'Ownership' not in df.columns:
+        df['Ownership'] = df.apply(
+            lambda row: OptimizerConfig.get_default_ownership(
+                row.get('Position', 'FLEX'),
+                row.get('Salary', 5000)
+            ), axis=1
+        )
+        validation['fixes_applied'].append(
+            "Added ownership projections based on position/salary"
+        )
+
+    return df
+
+def _validate_ownership_values(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
+    """Validate and correct ownership values"""
+    if 'Ownership' in df.columns:
+        invalid_own = df[
+            (df['Ownership'] < 0) | (df['Ownership'] > 100)
+        ]
+
+        if not invalid_own.empty:
+            df.loc[df['Ownership'] < 0, 'Ownership'] = 0
+            df.loc[df['Ownership'] > 100, 'Ownership'] = 100
+            validation['warnings'].append(
+                f"Corrected {len(invalid_own)} invalid ownership values (must be 0-100%)"
+            )
+            validation['fixes_applied'].append(
+                "Clamped ownership values to 0-100% range"
+            )
+
+    return df
+
+def _remove_duplicates(df: pd.DataFrame, validation: Dict) -> pd.DataFrame:
+    """Remove duplicate players"""
+    if df.duplicated(subset=['Player']).any():
+        dup_count = df.duplicated(subset=['Player']).sum()
+        df = df.drop_duplicates(subset=['Player'], keep='first')
+        validation['warnings'].append(
+            f"Removed {dup_count} duplicate players (kept first occurrence)"
+        )
+
+    return df
+
+def _validate_minimum_requirements(df: pd.DataFrame, validation: Dict) -> None:
+    """Validate minimum player requirements"""
+    validation['stats']['total_players'] = len(df)
+
+    if len(df) < 6:
+        validation['errors'].append(
+            f"Only {len(df)} players found (minimum 6 required for Showdown)"
+        )
+        validation['warnings'].append(
+            "Suggestion: Ensure CSV contains at least 6 players"
+        )
+        validation['is_valid'] = False
+    elif len(df) < 12:
+        validation['warnings'].append(
+            f"Only {len(df)} players (12+ recommended for lineup diversity)"
+        )
+
+def _validate_team_count(df: pd.DataFrame, validation: Dict) -> None:
+    """Validate team count"""
+    teams = df['Team'].unique()
+    validation['stats']['teams'] = len(teams)
+
+    if len(teams) != 2:
+        validation['warnings'].append(
+            f"Expected 2 teams for Showdown, found {len(teams)}"
+        )
+        if len(teams) > 2:
+            validation['warnings'].append(
+                f"Teams found: {', '.join(teams)}"
+            )
+
+def _check_position_distribution(df: pd.DataFrame, validation: Dict) -> None:
+    """Check position distribution"""
+    positions = df['Position'].value_counts()
+    validation['stats']['positions'] = positions.to_dict()
+
+    if 'QB' not in positions or positions.get('QB', 0) == 0:
+        validation['warnings'].append(
+            "No QB in player pool - unusual for Showdown format"
+        )
+
+def _validate_salary_feasibility(df: pd.DataFrame, validation: Dict) -> None:
+    """Validate salary feasibility"""
+    min_lineup_salary = df.nsmallest(6, 'Salary')['Salary'].sum()
+    max_lineup_salary = df.nlargest(6, 'Salary')['Salary'].sum()
+
+    validation['stats']['min_possible_salary'] = min_lineup_salary
+    validation['stats']['max_possible_salary'] = max_lineup_salary
+
+    if min_lineup_salary > OptimizerConfig.SALARY_CAP:
+        validation['errors'].append(
+            f"Minimum possible salary (${min_lineup_salary:,}) exceeds cap (${OptimizerConfig.SALARY_CAP:,})"
+        )
+        validation['warnings'].append(
+            "Suggestion: Check that salary values are correct (should be in dollars, not thousands)"
+        )
+        validation['is_valid'] = False
+
+    if max_lineup_salary < 35000:
+        validation['warnings'].append(
+            f"Maximum possible salary only ${max_lineup_salary:,} - limited lineup diversity"
+        )
+
+def init_session_state() -> None:  # ✅ FIX #5
     """Initialize Streamlit session state"""
     import streamlit as st
 
@@ -5405,7 +5737,7 @@ def create_sample_data() -> pd.DataFrame:
 
 def display_ai_recommendations(
     recommendations: Dict[AIStrategistType, AIRecommendation]
-):
+) -> None:  # ✅ FIX #5
     """Display AI recommendations with clear formatting"""
     import streamlit as st
 
@@ -5459,7 +5791,7 @@ def display_ai_recommendations(
         if rec:
             display_single_ai_recommendation(rec, "Contrarian")
 
-def display_single_ai_recommendation(rec: AIRecommendation, name: str):
+def display_single_ai_recommendation(rec: AIRecommendation, name: str) -> None:  # ✅ FIX #5
     """Display single AI recommendation"""
     import streamlit as st
 
@@ -5505,7 +5837,7 @@ def display_single_ai_recommendation(rec: AIRecommendation, name: str):
                     elif 'player1' in stack and 'player2' in stack:
                         st.write(f"• {stack['player1'][:15]}...")
 
-def display_ai_synthesis(synthesis: Dict):
+def display_ai_synthesis(synthesis: Dict) -> None:  # ✅ FIX #5
     """Display AI synthesis"""
     import streamlit as st
 
@@ -5541,8 +5873,9 @@ def display_ai_synthesis(synthesis: Dict):
         st.write(f"Total: {len(synthesis.get('enforcement_rules', []))}")
         st.write(f"Stacks: {len(synthesis.get('stacking_rules', []))}")
 
+# ✅ FIX #4: Refactored from 80+ lines into orchestrator + helper methods
 def display_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
-                           synthesis: Dict, field_size: str):
+                           synthesis: Dict, field_size: str) -> None:  # ✅ FIX #5
     """Display comprehensive lineup analysis"""
     import streamlit as st
 
@@ -5552,7 +5885,16 @@ def display_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
 
     st.markdown("### Lineup Analysis")
 
-    # Summary metrics
+    # Display summary metrics
+    _display_summary_metrics(lineups_df)
+
+    # Display visualizations
+    _display_lineup_visualizations(lineups_df, field_size)
+
+def _display_summary_metrics(lineups_df: pd.DataFrame) -> None:  # ✅ FIX #5
+    """Display summary metrics"""
+    import streamlit as st
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -5579,33 +5921,49 @@ def display_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
                 f"{lineups_df['Leverage_Score'].mean():.1f}"
             )
 
-    # Visualizations
+def _display_lineup_visualizations(lineups_df: pd.DataFrame,
+                                   field_size: str) -> None:  # ✅ FIX #5
+    """Display lineup visualizations"""
+    import streamlit as st
+
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 
-    # 1. Strategy Distribution
+    _plot_strategy_distribution(lineups_df, axes[0, 0])
+    _plot_captain_usage(lineups_df, axes[0, 1])
+    _plot_ownership_distribution(lineups_df, field_size, axes[1, 0])
+    _plot_projection_distribution(lineups_df, axes[1, 1])
+
+    plt.tight_layout()
+    st.pyplot(fig)
+
+def _plot_strategy_distribution(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FIX #5
+    """Plot strategy distribution pie chart"""
     if 'AI_Strategy' in lineups_df.columns:
         strategy_counts = lineups_df['AI_Strategy'].value_counts()
-        axes[0, 0].pie(
+        ax.pie(
             strategy_counts.values,
             labels=strategy_counts.index,
             autopct='%1.0f%%',
             startangle=90
         )
-        axes[0, 0].set_title('Strategy Distribution')
+        ax.set_title('Strategy Distribution')
 
-    # 2. Captain Usage
+def _plot_captain_usage(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FIX #5
+    """Plot captain usage bar chart"""
     if 'Captain' in lineups_df.columns:
         captain_usage = lineups_df['Captain'].value_counts().head(10)
-        axes[0, 1].barh(range(len(captain_usage)), captain_usage.values)
-        axes[0, 1].set_yticks(range(len(captain_usage)))
-        axes[0, 1].set_yticklabels(captain_usage.index)
-        axes[0, 1].set_xlabel('Times Used')
-        axes[0, 1].set_title('Top 10 Captain Usage')
-        axes[0, 1].invert_yaxis()
+        ax.barh(range(len(captain_usage)), captain_usage.values)
+        ax.set_yticks(range(len(captain_usage)))
+        ax.set_yticklabels(captain_usage.index)
+        ax.set_xlabel('Times Used')
+        ax.set_title('Top 10 Captain Usage')
+        ax.invert_yaxis()
 
-    # 3. Ownership Distribution
+def _plot_ownership_distribution(lineups_df: pd.DataFrame,
+                                 field_size: str, ax) -> None:  # ✅ FIX #5
+    """Plot ownership distribution histogram"""
     if 'Total_Ownership' in lineups_df.columns:
-        axes[1, 0].hist(
+        ax.hist(
             lineups_df['Total_Ownership'],
             bins=20,
             alpha=0.7,
@@ -5616,29 +5974,27 @@ def display_lineup_analysis(lineups_df: pd.DataFrame, df: pd.DataFrame,
         target_range = OptimizerConfig.GPP_OWNERSHIP_TARGETS.get(
             field_size, (60, 90)
         )
-        axes[1, 0].axvspan(
+        ax.axvspan(
             target_range[0], target_range[1],
             alpha=0.2, color='green'
         )
 
-        axes[1, 0].set_xlabel('Total Ownership %')
-        axes[1, 0].set_ylabel('Number of Lineups')
-        axes[1, 0].set_title('Ownership Distribution')
+        ax.set_xlabel('Total Ownership %')
+        ax.set_ylabel('Number of Lineups')
+        ax.set_title('Ownership Distribution')
 
-    # 4. Projection Distribution
+def _plot_projection_distribution(lineups_df: pd.DataFrame, ax) -> None:  # ✅ FIX #5
+    """Plot projection distribution histogram"""
     if 'Projected' in lineups_df.columns:
-        axes[1, 1].hist(
+        ax.hist(
             lineups_df['Projected'],
             bins=15,
             alpha=0.7,
             edgecolor='black'
         )
-        axes[1, 1].set_xlabel('Projected Points')
-        axes[1, 1].set_ylabel('Number of Lineups')
-        axes[1, 1].set_title('Projection Distribution')
-
-    plt.tight_layout()
-    st.pyplot(fig)
+        ax.set_xlabel('Projected Points')
+        ax.set_ylabel('Number of Lineups')
+        ax.set_title('Projection Distribution')
 
 # ============================================================================
 # EXPORT FUNCTIONS
@@ -5717,7 +6073,8 @@ def export_detailed_lineups(lineups_df: pd.DataFrame) -> str:
 # MAIN STREAMLIT APPLICATION
 # ============================================================================
 
-def main():
+# ✅ FIX #4: Refactored from 250+ lines into orchestrator + section methods
+def main() -> None:  # ✅ FIX #5
     """Main application"""
     import streamlit as st
 
@@ -5735,26 +6092,35 @@ def main():
     # Initialize session state
     init_session_state()
 
-    # Sidebar configuration
+    # Render sidebar configuration
+    field_size, use_api, api_manager = _render_sidebar()
+
+    # Create main tabs
+    tabs = st.tabs([
+        "Data Upload",
+        "AI Analysis",
+        "Generate Lineups",
+        "Results",
+        "Export"
+    ])
+
+    # Render each tab
+    _render_data_upload_tab(tabs[0])
+    _render_ai_analysis_tab(tabs[1], field_size, use_api, api_manager)
+    _render_generate_lineups_tab(tabs[2])
+    _render_results_tab(tabs[3], field_size)
+    _render_export_tab(tabs[4])
+
+def _render_sidebar() -> Tuple[str, bool, Optional[Any]]:
+    """Render sidebar configuration"""
+    import streamlit as st
+
     with st.sidebar:
         st.header("AI-Chef Configuration")
 
         # Quick Settings
-        with st.expander("Quick Settings", expanded=True):
-            quick_mode = st.radio(
-                "Optimization Mode",
-                ["Balanced", "Aggressive", "Conservative"]
-            )
-
-            if quick_mode == "Aggressive":
-                enforcement_level = 'Mandatory'
-                field_preset = 'large_field_aggressive'
-            elif quick_mode == "Conservative":
-                enforcement_level = 'Moderate'
-                field_preset = 'small_field'
-            else:
-                enforcement_level = 'Strong'
-                field_preset = 'large_field'
+        quick_mode = _render_quick_settings()
+        field_preset = _get_field_preset(quick_mode)
 
         st.markdown("---")
 
@@ -5767,45 +6133,80 @@ def main():
         )
         field_size = OptimizerConfig.FIELD_SIZES[contest_type]
 
-        # API Configuration
         st.markdown("---")
-        st.markdown("### AI Connection")
 
-        use_api = st.checkbox("Use Claude API (Optional)", value=False)
+        # API Configuration
+        use_api, api_manager = _render_api_configuration()
 
-        api_manager = None
-        if use_api:
-            api_key = st.text_input(
-                "Claude API Key",
-                type="password",
-                placeholder="sk-ant-api03-..."
-            )
+    return field_size, use_api, api_manager
 
-            if api_key and st.button("Connect to Claude"):
-                try:
-                    with st.spinner("Connecting..."):
-                        api_manager = ClaudeAPIManager(api_key)
-                        if api_manager.validate_connection():
-                            st.success("Connected to Claude AI")
-                            st.session_state['api_manager'] = api_manager
-                        else:
-                            st.error("Connection validation failed")
-                except Exception as e:
-                    st.error(f"Connection error: {str(e)}")
+def _render_quick_settings() -> str:
+    """Render quick settings expander"""
+    import streamlit as st
 
-            if 'api_manager' in st.session_state:
-                api_manager = st.session_state['api_manager']
+    with st.expander("Quick Settings", expanded=True):
+        quick_mode = st.radio(
+            "Optimization Mode",
+            ["Balanced", "Aggressive", "Conservative"]
+        )
 
-    # Main Content
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Data Upload",
-        "AI Analysis",
-        "Generate Lineups",
-        "Results",
-        "Export"
-    ])
+    return quick_mode
 
-    with tab1:
+def _get_field_preset(quick_mode: str) -> str:
+    """Get field preset based on quick mode"""
+    if quick_mode == "Aggressive":
+        return 'large_field_aggressive'
+    elif quick_mode == "Conservative":
+        return 'small_field'
+    else:
+        return 'large_field'
+
+def _render_api_configuration() -> Tuple[bool, Optional[Any]]:
+    """Render API configuration section"""
+    import streamlit as st
+
+    st.markdown("### AI Connection")
+    use_api = st.checkbox("Use Claude API (Optional)", value=False)
+
+    api_manager = None
+    if use_api:
+        api_key = st.text_input(
+            "Claude API Key",
+            type="password",
+            placeholder="sk-ant-api03-..."
+        )
+
+        if api_key and st.button("Connect to Claude"):
+            api_manager = _connect_to_claude(api_key)
+
+        if 'api_manager' in st.session_state:
+            api_manager = st.session_state['api_manager']
+
+    return use_api, api_manager
+
+def _connect_to_claude(api_key: str) -> Optional[Any]:
+    """Connect to Claude API"""
+    import streamlit as st
+
+    try:
+        with st.spinner("Connecting..."):
+            api_manager = ClaudeAPIManager(api_key)
+            if api_manager.validate_connection():
+                st.success("Connected to Claude AI")
+                st.session_state['api_manager'] = api_manager
+                return api_manager
+            else:
+                st.error("Connection validation failed")
+    except Exception as e:
+        st.error(f"Connection error: {str(e)}")
+
+    return None
+
+def _render_data_upload_tab(tab) -> None:  # ✅ FIX #5
+    """Render data upload tab"""
+    import streamlit as st
+
+    with tab:
         st.markdown("## Data & Game Configuration")
 
         col1, col2 = st.columns([2, 1])
@@ -5822,141 +6223,182 @@ def main():
                 st.success("Sample data loaded")
 
         with col2:
-            st.markdown("### File Requirements")
-            st.write("Required columns:")
-            st.write("• Player names")
-            st.write("• Position")
-            st.write("• Team")
-            st.write("• Salary")
-            st.write("• Projected Points")
+            _display_file_requirements()
 
         if uploaded_file is not None or (
             'df' in st.session_state and not st.session_state['df'].empty
         ):
-            try:
-                if uploaded_file is not None:
-                    raw_df = pd.read_csv(uploaded_file)
-                    df, validation = validate_and_process_dataframe(raw_df)
-                else:
-                    df = st.session_state['df']
-                    validation = {
-                        'is_valid': True,
-                        'errors': [],
-                        'warnings': []
-                    }
+            _process_uploaded_data(uploaded_file)
 
-                # Display validation
-                if validation['errors']:
-                    st.error("Validation Errors:")
-                    for error in validation['errors']:
-                        st.write(f"  • {error}")
+def _display_file_requirements() -> None:  # ✅ FIX #5
+    """Display file requirements"""
+    import streamlit as st
 
-                if validation['warnings']:
-                    st.warning("Warnings:")
-                    for warning in validation['warnings']:
-                        st.write(f"  • {warning}")
+    st.markdown("### File Requirements")
+    st.write("Required columns:")
+    st.write("• Player names")
+    st.write("• Position")
+    st.write("• Team")
+    st.write("• Salary")
+    st.write("• Projected Points")
 
-                if validation.get('fixes_applied'):
-                    with st.expander("Automatic Fixes Applied", expanded=False):
-                        for fix in validation['fixes_applied']:
-                            st.write(f"• {fix}")
+def _process_uploaded_data(uploaded_file) -> None:  # ✅ FIX #5
+    """Process uploaded data file"""
+    import streamlit as st
 
-                if not validation['is_valid']:
-                    st.error("Cannot proceed due to validation errors")
-                    st.stop()
+    try:
+        if uploaded_file is not None:
+            raw_df = pd.read_csv(uploaded_file)
+            df, validation = validate_and_process_dataframe(raw_df)
+        else:
+            df = st.session_state['df']
+            validation = {
+                'is_valid': True,
+                'errors': [],
+                'warnings': []
+            }
 
-                st.session_state['df'] = df
-                st.success(f"Loaded {len(df)} players successfully")
+        # Display validation results
+        _display_validation_results(validation)
 
-                # Game configuration
-                st.markdown("### Game Setup")
-                col1, col2, col3, col4 = st.columns(4)
+        if not validation['is_valid']:
+            st.error("Cannot proceed due to validation errors")
+            st.stop()
 
-                teams = df['Team'].unique()
-                with col1:
-                    team_display = (
-                        f"{teams[0]} vs {teams[1]}"
-                        if len(teams) >= 2 else "Teams"
-                    )
-                    game_teams = st.text_input("Teams", team_display)
+        st.session_state['df'] = df
+        st.success(f"Loaded {len(df)} players successfully")
 
-                with col2:
-                    total = st.number_input("O/U Total", 30.0, 70.0, 48.5, 0.5)
+        # Game configuration
+        _configure_game_settings(df)
 
-                with col3:
-                    spread = st.number_input("Spread", -20.0, 20.0, -3.0, 0.5)
+    except Exception as e:
+        st.error(f"Error processing file: {str(e)}")
+        get_logger().log_exception(e, "data_upload")
 
-                with col4:
-                    weather = st.selectbox(
-                        "Weather",
-                        ["Clear", "Wind", "Rain", "Snow"]
-                    )
+def _display_validation_results(validation: Dict) -> None:  # ✅ FIX #5
+    """Display validation results"""
+    import streamlit as st
 
-                game_info = {
-                    'teams': game_teams,
-                    'total': total,
-                    'spread': spread,
-                    'weather': weather
-                }
+    if validation['errors']:
+        st.error("Validation Errors:")
+        for error in validation['errors']:
+            st.write(f"  • {error}")
 
-                st.session_state['game_info'] = game_info
+    if validation['warnings']:
+        st.warning("Warnings:")
+        for warning in validation['warnings']:
+            st.write(f"  • {warning}")
 
-                # Display summary
-                with st.expander("View Player Pool", expanded=False):
-                    st.dataframe(
-                        df[['Player', 'Position', 'Team', 'Salary',
-                           'Projected_Points', 'Ownership']],
-                        use_container_width=True
-                    )
+    if validation.get('fixes_applied'):
+        with st.expander("Automatic Fixes Applied", expanded=False):
+            for fix in validation['fixes_applied']:
+                st.write(f"• {fix}")
 
-            except Exception as e:
-                st.error(f"Error processing file: {str(e)}")
-                get_logger().log_exception(e, "data_upload")
+def _configure_game_settings(df: pd.DataFrame) -> None:  # ✅ FIX #5
+    """Configure game settings"""
+    import streamlit as st
 
-    with tab2:
+    st.markdown("### Game Setup")
+    col1, col2, col3, col4 = st.columns(4)
+
+    teams = df['Team'].unique()
+
+    with col1:
+        team_display = (
+            f"{teams[0]} vs {teams[1]}"
+            if len(teams) >= 2 else "Teams"
+        )
+        game_teams = st.text_input("Teams", team_display)
+
+    with col2:
+        total = st.number_input("O/U Total", 30.0, 70.0, 48.5, 0.5)
+
+    with col3:
+        spread = st.number_input("Spread", -20.0, 20.0, -3.0, 0.5)
+
+    with col4:
+        weather = st.selectbox(
+            "Weather",
+            ["Clear", "Wind", "Rain", "Snow"]
+        )
+
+    game_info = {
+        'teams': game_teams,
+        'total': total,
+        'spread': spread,
+        'weather': weather
+    }
+
+    st.session_state['game_info'] = game_info
+
+    # Display summary
+    with st.expander("View Player Pool", expanded=False):
+        st.dataframe(
+            df[['Player', 'Position', 'Team', 'Salary',
+               'Projected_Points', 'Ownership']],
+            use_container_width=True
+        )
+
+def _render_ai_analysis_tab(tab, field_size: str, use_api: bool,
+                            api_manager) -> None:  # ✅ FIX #5
+    """Render AI analysis tab"""
+    import streamlit as st
+
+    with tab:
         st.markdown("## AI Strategic Analysis")
 
         if 'df' not in st.session_state or st.session_state['df'].empty:
             st.warning("Please upload data first")
             st.stop()
 
+        if st.button("Generate AI Strategies", type="primary"):
+            _generate_ai_strategies(field_size, use_api, api_manager)
+
+def _generate_ai_strategies(field_size: str, use_api: bool,
+                            api_manager) -> None:  # ✅ FIX #5
+    """Generate AI strategies"""
+    import streamlit as st
+
+    try:
         df = st.session_state['df']
         game_info = st.session_state.get('game_info', {})
 
-        if st.button("Generate AI Strategies", type="primary"):
-            try:
-                optimizer = AIChefGPPOptimizer(
-                    df, game_info, field_size, api_manager
+        optimizer = AIChefGPPOptimizer(
+            df, game_info, field_size, api_manager
+        )
+
+        with st.spinner("Consulting AI System..."):
+            ai_recommendations = optimizer.get_triple_ai_strategies(
+                use_api=use_api
+            )
+
+        if ai_recommendations:
+            st.session_state['ai_recommendations'] = ai_recommendations
+            st.session_state['optimizer'] = optimizer
+
+            display_ai_recommendations(ai_recommendations)
+
+            with st.spinner("Synthesizing strategies..."):
+                ai_strategy = optimizer.synthesize_ai_strategies(
+                    ai_recommendations
                 )
 
-                with st.spinner("Consulting AI System..."):
-                    ai_recommendations = optimizer.get_triple_ai_strategies(
-                        use_api=use_api
-                    )
+            st.session_state['ai_synthesis'] = ai_strategy['synthesis']
+            st.session_state['ai_strategy'] = ai_strategy
 
-                if ai_recommendations:
-                    st.session_state['ai_recommendations'] = ai_recommendations
-                    st.session_state['optimizer'] = optimizer
+            display_ai_synthesis(ai_strategy['synthesis'])
 
-                    display_ai_recommendations(ai_recommendations)
+            st.success("AI Analysis Complete")
 
-                    with st.spinner("Synthesizing strategies..."):
-                        ai_strategy = optimizer.synthesize_ai_strategies(
-                            ai_recommendations
-                        )
+    except Exception as e:
+        st.error(f"Error during AI analysis: {str(e)}")
+        get_logger().log_exception(e, "ai_analysis")
 
-                    st.session_state['ai_synthesis'] = ai_strategy['synthesis']
-                    st.session_state['ai_strategy'] = ai_strategy
+def _render_generate_lineups_tab(tab) -> None:  # ✅ FIX #5
+    """Render generate lineups tab"""
+    import streamlit as st
 
-                    display_ai_synthesis(ai_strategy['synthesis'])
-
-                    st.success("AI Analysis Complete")
-
-            except Exception as e:
-                st.error(f"Error during AI analysis: {str(e)}")
-                get_logger().log_exception(e, "ai_analysis")
-
-    with tab3:
+    with tab:
         st.markdown("## Generate AI-Driven Lineups")
 
         if 'ai_strategy' not in st.session_state:
@@ -5972,46 +6414,56 @@ def main():
         )
 
         if st.button("Generate Lineups", type="primary"):
-            try:
-                optimizer = st.session_state.get('optimizer')
-                ai_strategy = st.session_state.get('ai_strategy')
+            _generate_lineups(num_lineups)
 
-                if not optimizer or not ai_strategy:
-                    st.error("Missing optimizer or strategy")
-                    st.stop()
+def _generate_lineups(num_lineups: int) -> None:  # ✅ FIX #5
+    """Generate lineups"""
+    import streamlit as st
 
-                with st.spinner(f"Building {num_lineups} lineups..."):
-                    lineups_df = optimizer.generate_ai_driven_lineups(
-                        num_lineups, ai_strategy
+    try:
+        optimizer = st.session_state.get('optimizer')
+        ai_strategy = st.session_state.get('ai_strategy')
+
+        if not optimizer or not ai_strategy:
+            st.error("Missing optimizer or strategy")
+            st.stop()
+
+        with st.spinner(f"Building {num_lineups} lineups..."):
+            lineups_df = optimizer.generate_ai_driven_lineups(
+                num_lineups, ai_strategy
+            )
+
+        if not lineups_df.empty:
+            st.session_state['lineups_df'] = lineups_df
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Lineups Generated", len(lineups_df))
+            with col2:
+                st.metric(
+                    "Unique Captains",
+                    lineups_df['Captain'].nunique()
+                )
+            with col3:
+                if 'Total_Ownership' in lineups_df.columns:
+                    st.metric(
+                        "Avg Ownership",
+                        f"{lineups_df['Total_Ownership'].mean():.1f}%"
                     )
 
-                if not lineups_df.empty:
-                    st.session_state['lineups_df'] = lineups_df
+            st.success(f"Generated {len(lineups_df)} lineups")
+        else:
+            st.error("No lineups generated")
 
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Lineups Generated", len(lineups_df))
-                    with col2:
-                        st.metric(
-                            "Unique Captains",
-                            lineups_df['Captain'].nunique()
-                        )
-                    with col3:
-                        if 'Total_Ownership' in lineups_df.columns:
-                            st.metric(
-                                "Avg Ownership",
-                                f"{lineups_df['Total_Ownership'].mean():.1f}%"
-                            )
+    except Exception as e:
+        st.error(f"Generation error: {str(e)}")
+        get_logger().log_exception(e, "lineup_generation")
 
-                    st.success(f"Generated {len(lineups_df)} lineups")
-                else:
-                    st.error("No lineups generated")
+def _render_results_tab(tab, field_size: str) -> None:  # ✅ FIX #5
+    """Render results tab"""
+    import streamlit as st
 
-            except Exception as e:
-                st.error(f"Generation error: {str(e)}")
-                get_logger().log_exception(e, "lineup_generation")
-
-    with tab4:
+    with tab:
         st.markdown("## Results & Analysis")
 
         if 'lineups_df' not in st.session_state or (
@@ -6026,7 +6478,11 @@ def main():
 
         display_lineup_analysis(lineups_df, df, synthesis, field_size)
 
-    with tab5:
+def _render_export_tab(tab) -> None:  # ✅ FIX #5
+    """Render export tab"""
+    import streamlit as st
+
+    with tab:
         st.markdown("## Export Options")
 
         if 'lineups_df' not in st.session_state or (
@@ -6072,7 +6528,3 @@ if __name__ == "__main__":
         import streamlit as st
         st.error(f"Critical error: {str(e)}")
         get_logger().log_exception(e, "main_entry", critical=True)
-
-# ============================================================================
-# END OF PART 7 - SCRIPT COMPLETE
-# ============================================================================
