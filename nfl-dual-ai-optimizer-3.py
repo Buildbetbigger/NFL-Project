@@ -1,4 +1,5 @@
 
+"""
 NFL DFS AI-Driven Optimizer with ML Enhancements
 Enhanced Version - No Historical Data Required
 """
@@ -5133,7 +5134,7 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
         return data
 
 # ============================================================================
-# PART 6: MAIN OPTIMIZER ENGINE (WITH STREAMLIT PROGRESS SUPPORT)
+# PART 6: MAIN OPTIMIZER ENGINE (COMPLETE & CORRECTED)
 # ============================================================================
 
 class ShowdownOptimizer:
@@ -5988,7 +5989,7 @@ class ShowdownOptimizer:
         Args:
             lineups_df: DataFrame of lineups
             filename: Output filename
-            format: Export format ('csv', 'dk_csv', 'excel')
+            format: Export format (csv, dk_csv, excel)
 
         Returns:
             Path to exported file
