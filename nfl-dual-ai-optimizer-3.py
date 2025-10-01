@@ -4603,7 +4603,9 @@ class AIChefGPPOptimizer:
         self.lineup_generation_stats = {
             'attempts': 0,
             'successes': 0,
-            'failures_by_reason': defaultdict(int)
+            'failures_by_reason': defaultdict(int),
+            'relaxation_triggered': 0,
+            'final_relaxation_level': 0
         }
 
         # Threading for parallel generation
@@ -4836,6 +4838,8 @@ class AIChefGPPOptimizer:
             'success_rate': stats['successes'] / max(stats['attempts'], 1),
             'failures_by_reason': dict(stats['failures_by_reason']),
             'unique_lineups': len(self._lineup_signatures),
+            'relaxation_triggered': stats['relaxation_triggered'],
+            'final_relaxation_level': stats['final_relaxation_level'],
             'error_summary': get_logger().get_error_summary()
         }
 
@@ -5169,22 +5173,35 @@ class AIChefGPPOptimizer:
     def _generate_lineups_sequential(self, lineup_tasks: List[Tuple], opt_data: Dict,
                                     enforcement_rules: Dict, synthesis: Dict,
                                     used_captains: Set[str]) -> List[Dict]:
-        """Sequential lineup generation with captain reuse"""
+        """
+        Sequential lineup generation with auto-relaxing constraints
+
+        DFS Value: CRITICAL - Progressively relaxes AI constraints when stuck
+        """
         all_lineups = []
-        captain_reuse_threshold = 8  # Allow captain reuse after 8 unique lineups
+        captain_reuse_threshold = 8
+
+        # Track consecutive failures for auto-relaxation
+        consecutive_failures = 0
+        relaxation_level = 0  # 0 = full, 1 = moderate, 2 = minimal, 3 = none
 
         for lineup_num, strategy_name in lineup_tasks:
-            # Allow captain reuse if we have enough unique lineups
+            # Allow captain reuse if needed
             effective_used_captains = (
                 used_captains if len(all_lineups) < captain_reuse_threshold
                 else set()
+            )
+
+            # Apply relaxation level to enforcement rules
+            adjusted_rules = self._apply_relaxation_level(
+                enforcement_rules, relaxation_level
             )
 
             lineup = self._build_ai_enforced_lineup(
                 lineup_num=lineup_num,
                 strategy=strategy_name,
                 opt_data=opt_data,
-                enforcement_rules=enforcement_rules,
+                enforcement_rules=adjusted_rules,
                 synthesis=synthesis,
                 used_captains=effective_used_captains
             )
@@ -5192,17 +5209,107 @@ class AIChefGPPOptimizer:
             if lineup:
                 is_valid, violations = (
                     self.enforcement_engine.validate_lineup_against_ai(
-                        lineup, enforcement_rules
+                        lineup, adjusted_rules
                     )
                 )
 
                 if is_valid or len(all_lineups) < len(lineup_tasks) * 0.5:
                     all_lineups.append(lineup)
-                    # Only track unique captains for first N lineups
                     if len(all_lineups) < captain_reuse_threshold:
                         used_captains.add(lineup['Captain'])
 
+                    # Reset failure counter on success
+                    consecutive_failures = 0
+                else:
+                    consecutive_failures += 1
+            else:
+                consecutive_failures += 1
+
+            # Auto-relax constraints if stuck (every 5 consecutive failures)
+            if consecutive_failures >= 5:
+                previous_level = relaxation_level
+                relaxation_level += 1
+                consecutive_failures = 0
+
+                self.lineup_generation_stats['relaxation_triggered'] += 1
+                self.lineup_generation_stats['final_relaxation_level'] = relaxation_level
+
+                if relaxation_level == 1:
+                    self.logger.log(
+                        f"AUTO-RELAX Level 1: Dropped soft constraints after {len(all_lineups)} lineups",
+                        "INFO"
+                    )
+                elif relaxation_level == 2:
+                    self.logger.log(
+                        f"AUTO-RELAX Level 2: Kept only captain constraints after {len(all_lineups)} lineups",
+                        "INFO"
+                    )
+                elif relaxation_level == 3:
+                    self.logger.log(
+                        f"AUTO-RELAX Level 3: Dropped all AI constraints after {len(all_lineups)} lineups",
+                        "INFO"
+                    )
+                elif relaxation_level > 3:
+                    # Can't relax further
+                    self.logger.log(
+                        f"Cannot generate more unique lineups. Generated {len(all_lineups)} total.",
+                        "WARNING"
+                    )
+                    break
+
         return all_lineups
+
+    def _apply_relaxation_level(self, enforcement_rules: Dict,
+                                relaxation_level: int) -> Dict:
+        """
+        Apply relaxation level to AI constraints
+
+        DFS Value: CRITICAL - Progressively loosens constraints to enable more lineups
+
+        Relaxation Levels:
+        0 = Full AI constraints (all hard + soft + stacking)
+        1 = Drop soft constraints, keep hard constraints
+        2 = Keep only captain constraints, drop must-include/exclude
+        3 = Drop all AI constraints (only DK rules remain)
+        """
+        if relaxation_level == 0:
+            # Full constraints - return as-is
+            return enforcement_rules
+
+        relaxed_rules = {
+            'hard_constraints': [],
+            'soft_constraints': [],
+            'stacking_rules': [],
+            'ownership_rules': [],
+            'correlation_rules': []
+        }
+
+        if relaxation_level == 1:
+            # Level 1: Keep hard constraints, drop everything else
+            relaxed_rules['hard_constraints'] = enforcement_rules.get('hard_constraints', []).copy()
+            self.logger.log(
+                f"Relaxation L1: Kept {len(relaxed_rules['hard_constraints'])} hard constraints",
+                "DEBUG"
+            )
+
+        elif relaxation_level == 2:
+            # Level 2: Keep only captain constraints
+            hard_constraints = enforcement_rules.get('hard_constraints', [])
+            captain_constraints = [
+                c for c in hard_constraints
+                if 'captain' in c.get('rule', '').lower()
+            ]
+            relaxed_rules['hard_constraints'] = captain_constraints
+            self.logger.log(
+                f"Relaxation L2: Kept only {len(captain_constraints)} captain constraints",
+                "DEBUG"
+            )
+
+        elif relaxation_level >= 3:
+            # Level 3+: No AI constraints at all (only DK rules remain in solver)
+            self.logger.log("Relaxation L3: Dropped all AI constraints", "DEBUG")
+
+        return relaxed_rules
 
     def _build_ai_enforced_lineup(self, lineup_num: int, strategy: str,
                                   opt_data: Dict, enforcement_rules: Dict,
@@ -5211,7 +5318,7 @@ class AIChefGPPOptimizer:
         """
         Build lineup with three-tier constraint relaxation
 
-        CRITICAL FIX: Adds explicit constraints to prevent duplicate lineups
+        Uses uniqueness constraints at solver level + randomization for diversity
         """
         max_attempts = 3
         last_status = None
