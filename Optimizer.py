@@ -5507,9 +5507,7 @@ class ShowdownOptimizer:
                 self.logger.log(f"Progress callback error: {e}", "WARNING")
 
     def _validate_and_prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Comprehensive data validation and preparation
-        """
+        """Comprehensive data validation and preparation"""
         self.perf_monitor.start_timer("data_validation")
 
         # Check required columns
