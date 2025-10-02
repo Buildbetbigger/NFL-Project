@@ -146,14 +146,11 @@ def print_dependency_status():
 # ============================================================================
 
 class OptimizerConfig:
-    """
-    Enhanced configuration with ML/simulation parameters
-    STATUS: COMPLETE - All settings from original
-    """
+    """Enhanced configuration with ML/simulation parameters"""
 
-    # Core DraftKings Showdown constraints
+    # Core constraints - MODIFIED for $200-$12,000 range
     SALARY_CAP = 50000
-    MIN_SALARY = 100
+    MIN_SALARY = 200    # Changed from 3000
     MAX_SALARY = 12000
     CAPTAIN_MULTIPLIER = 1.5
     ROSTER_SIZE = 6
