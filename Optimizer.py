@@ -4,6 +4,7 @@ NFL DFS AI-Driven Optimizer - Part 1: COMPLETE IMPORTS & CONFIGURATION
 Enhanced Version - No Historical Data Required
 Python 3.8+ Required
 """
+
 from __future__ import annotations
 
 # ============================================================================
@@ -5191,7 +5192,14 @@ Use EXACT player names. Find the narrative that makes sub-5% plays optimal."""
 
 class ShowdownOptimizer:
     """
-    OPTIMIZED: Main optimizer with comprehensive error handling and validation
+    OPTIMIZED: Main optimizer with comprehensive error handling, diagnostics, and validation
+
+    This is the core orchestration engine that coordinates:
+    - AI strategist recommendations
+    - Constraint enforcement
+    - Linear programming / genetic algorithm optimization
+    - Monte Carlo simulation
+    - Result post-processing
     """
 
     __slots__ = ('logger', 'perf_monitor', 'ai_tracker', 'api_manager',
@@ -5201,30 +5209,36 @@ class ShowdownOptimizer:
                  'mc_engine', 'ga_optimizer', 'data_processor')
 
     def __init__(self, api_key: Optional[str] = None):
+        """Initialize optimizer with all subsystems"""
         self.logger = get_logger()
         self.perf_monitor = get_performance_monitor()
         self.ai_tracker = get_ai_tracker()
 
+        # API manager (optional)
         self.api_manager = ClaudeAPIManager(api_key) if api_key else None
 
+        # AI strategists
         self.game_theory_ai = GPPGameTheoryStrategist(self.api_manager)
         self.correlation_ai = GPPCorrelationStrategist(self.api_manager)
         self.contrarian_ai = GPPContrarianNarrativeStrategist(self.api_manager)
 
+        # Enforcement and analysis engines
         self.enforcement_engine = AIEnforcementEngine()
         self.bucket_manager = AIOwnershipBucketManager(self.enforcement_engine)
         self.synthesis_engine = AISynthesisEngine()
 
+        # State
         self.df = None
         self.game_info = {}
         self.lineups_generated = []
         self.optimization_metadata = {}
 
+        # ML engines (initialized on demand)
         self.mc_engine = None
         self.ga_optimizer = None
         self.data_processor = None
 
-        self.logger.log("ShowdownOptimizer initialized", "INFO")
+        self.logger.log("ShowdownOptimizer initialized successfully", "INFO")
 
     def optimize(self,
                 df: pd.DataFrame,
@@ -5238,37 +5252,50 @@ class ShowdownOptimizer:
                 use_simulation: bool = True,
                 progress_callback: Optional[Callable[[float, str], None]] = None) -> pd.DataFrame:
         """
-        OPTIMIZED: Main optimization workflow with comprehensive error handling
+        Main optimization workflow with comprehensive error handling
+
+        Args:
+            df: Player data with required columns
+            game_info: Game context (teams, total, spread, weather)
+            num_lineups: Number of lineups to generate
+            field_size: Contest type determining strategy
+            ai_enforcement_level: How strictly to enforce AI recommendations
+            use_api: Whether to use Claude API for AI analysis
+            randomness: Projection variance for diversity
+            use_genetic: Use genetic algorithm vs linear programming
+            use_simulation: Run Monte Carlo simulations
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            DataFrame with generated lineups in DK format
         """
         try:
             self.perf_monitor.start_timer("total_optimization")
-
             self._update_progress(progress_callback, 0.0, "Initializing...")
 
-            # Data validation
+            # Phase 1: Data validation
             self._update_progress(progress_callback, 0.05, "Validating data...")
             df = self._validate_and_prepare_data(df)
             self.df = df
             self.game_info = game_info
 
-            # ML engine initialization
+            # Phase 2: ML engine initialization
             if use_simulation:
                 self._update_progress(progress_callback, 0.15, "Initializing ML engines...")
                 self._initialize_ml_engines(df, game_info)
 
-            # AI recommendations
+            # Phase 3: AI recommendations
             self._update_progress(progress_callback, 0.25, "Getting AI recommendations...")
             recommendations = self._get_ai_recommendations(df, game_info, field_size, use_api)
 
-            # Enforcement rules
+            # Phase 4: Enforcement rules
             self._update_progress(progress_callback, 0.40, "Creating enforcement rules...")
             enforcement_rules = self._create_enforcement_rules(recommendations, ai_enforcement_level)
 
-            # Determine optimization method
+            # Phase 5: Optimization
             field_config = OptimizerConfig.get_field_config(field_size)
             use_genetic = use_genetic or field_config.get('use_genetic', False)
 
-            # Run optimization
             if use_genetic:
                 self._update_progress(progress_callback, 0.50, "Running genetic algorithm...")
                 lineups = self._optimize_with_ga(
@@ -5282,28 +5309,27 @@ class ShowdownOptimizer:
                     randomness, recommendations, progress_callback
                 )
 
-            # Validate we got results
+            # Fallback if optimization failed
             if not lineups:
-                self.logger.log("Optimization produced no lineups - creating fallback", "WARNING")
+                self.logger.log("Primary optimization failed, generating fallback lineups", "WARNING")
                 lineups = self._generate_fallback_lineups(df, num_lineups)
 
-            # Post-processing
+            # Phase 6: Post-processing
             self._update_progress(progress_callback, 0.85, "Post-processing lineups...")
             lineups_df = self._post_process_lineups(lineups, df, recommendations, use_simulation)
 
-            # Final validation
+            # Validate results
             if lineups_df.empty:
                 self.logger.log("Post-processing resulted in empty DataFrame", "ERROR")
                 raise ValueError("Optimization failed to produce valid lineups")
 
-            # Store results
+            # Phase 7: Finalization
             self._update_progress(progress_callback, 0.95, "Finalizing...")
             self.lineups_generated = lineups
             self._store_metadata(num_lineups, field_size, ai_enforcement_level,
                                use_genetic, recommendations)
 
             elapsed = self.perf_monitor.stop_timer("total_optimization")
-
             self._update_progress(
                 progress_callback, 1.0,
                 f"Complete! {len(lineups_df)} lineups in {elapsed:.1f}s"
@@ -5320,7 +5346,7 @@ class ShowdownOptimizer:
             self.logger.log_exception(e, "optimize")
             self._update_progress(progress_callback, 1.0, f"Error: {str(e)}")
 
-            # Return empty DataFrame with proper structure
+            # Return properly structured empty DataFrame
             return pd.DataFrame(columns=[
                 'Lineup', 'CPT', 'FLEX1', 'FLEX2', 'FLEX3', 'FLEX4', 'FLEX5',
                 'Total_Salary', 'Remaining', 'Projected', 'Total_Own', 'Avg_Own', 'Strategy'
@@ -5328,25 +5354,36 @@ class ShowdownOptimizer:
 
     def _update_progress(self, callback: Optional[Callable],
                         progress: float, message: str) -> None:
-        """Helper to update progress"""
+        """Update progress via callback if provided"""
         if callback:
-            callback(progress, message)
+            try:
+                callback(progress, message)
+            except Exception as e:
+                self.logger.log(f"Progress callback error: {e}", "WARNING")
 
     def _validate_and_prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        OPTIMIZED: Comprehensive data validation
+        Comprehensive data validation and preparation
+
+        Validates:
+        - Required columns exist
+        - Minimum player count
+        - Data types and ranges
+        - Team diversity requirements
         """
         self.perf_monitor.start_timer("data_validation")
 
+        # Check required columns
         required = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
         missing = [col for col in required if col not in df.columns]
-
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
 
+        # Check for data
         if df.empty:
             raise ValueError("Empty DataFrame provided")
 
+        # Copy to avoid modifying original
         df = df.copy()
 
         # Handle missing ownership
@@ -5366,26 +5403,34 @@ class ShowdownOptimizer:
         if (df['Projected_Points'] > 50).any():
             self.logger.log("Unusually high projections detected", "WARNING")
 
-        # Validate minimum player count
+        # Critical validations
         if len(df) < 6:
             raise ValueError(f"Insufficient players: need at least 6, got {len(df)}")
+
+        if len(df['Team'].unique()) < 2:
+            raise ValueError(
+                f"Insufficient team diversity: need at least 2 teams, got {len(df['Team'].unique())}"
+            )
 
         # Initialize data processor
         self.data_processor = OptimizedDataProcessor(df)
 
         self.perf_monitor.stop_timer("data_validation")
+        self.logger.log(f"Data validation complete: {len(df)} players from {len(df['Team'].unique())} teams", "INFO")
 
         return df
 
     def _initialize_ml_engines(self, df: pd.DataFrame, game_info: Dict) -> None:
-        """Initialize ML engines with error handling"""
+        """Initialize ML engines with comprehensive error handling"""
         try:
             self.perf_monitor.start_timer("ml_initialization")
 
+            # Monte Carlo engine
             self.mc_engine = MonteCarloSimulationEngine(
                 df, game_info, n_simulations=OptimizerConfig.MC_SIMULATIONS
             )
 
+            # Initialize MC for each AI strategist
             self.game_theory_ai.initialize_mc_engine(df, game_info)
             self.correlation_ai.initialize_mc_engine(df, game_info)
             self.contrarian_ai.initialize_mc_engine(df, game_info)
@@ -5396,12 +5441,11 @@ class ShowdownOptimizer:
         except Exception as e:
             self.logger.log_exception(e, "ml_initialization")
             self.mc_engine = None
+            self.logger.log("Continuing without ML engines", "WARNING")
 
     def _get_ai_recommendations(self, df: pd.DataFrame, game_info: Dict,
                                field_size: str, use_api: bool) -> Dict[AIStrategistType, AIRecommendation]:
-        """
-        OPTIMIZED: Get all AI recommendations with fallbacks
-        """
+        """Get recommendations from all AI strategists with fallbacks"""
         self.perf_monitor.start_timer("ai_analysis")
         recommendations = {}
 
@@ -5416,10 +5460,14 @@ class ShowdownOptimizer:
                 recommendations[ai_type] = strategist.get_recommendation(
                     df, game_info, field_size, use_api
                 )
-                self.logger.log(f"{ai_type.value} AI: Success", "INFO")
+                self.logger.log(
+                    f"{ai_type.value} AI: Success (confidence={recommendations[ai_type].confidence:.2f})",
+                    "INFO"
+                )
             except Exception as e:
                 self.logger.log_exception(e, f"{ai_type.value}_ai")
                 recommendations[ai_type] = strategist._get_fallback_recommendation(df, field_size)
+                self.logger.log(f"{ai_type.value} AI: Using fallback", "WARNING")
 
         self.perf_monitor.stop_timer("ai_analysis")
         return recommendations
@@ -5430,15 +5478,22 @@ class ShowdownOptimizer:
         self.perf_monitor.start_timer("enforcement_rules")
 
         self.enforcement_engine.enforcement_level = enforcement_level
-
         rules = self.enforcement_engine.create_enforcement_rules(recommendations)
 
+        # Validate rules
         validation = AIConfigValidator.validate_ai_requirements(rules, self.df)
 
         if not validation['is_valid']:
-            self.logger.log(f"Validation errors: {validation['errors']}", "WARNING")
+            self.logger.log(f"Validation warnings: {validation['errors']}", "WARNING")
             for suggestion in validation['suggestions']:
-                self.logger.log(f"Suggestion: {suggestion}", "INFO")
+                self.logger.log(f"  Suggestion: {suggestion}", "INFO")
+
+        hard_count = len(rules.get('hard_constraints', []))
+        soft_count = len(rules.get('soft_constraints', []))
+        self.logger.log(
+            f"Enforcement rules created: {hard_count} hard, {soft_count} soft",
+            "INFO"
+        )
 
         self.perf_monitor.stop_timer("enforcement_rules")
         return rules
@@ -5446,9 +5501,7 @@ class ShowdownOptimizer:
     def _optimize_with_ga(self, num_lineups: int, field_size: str,
                          enforcement_rules: Dict, recommendations: Dict,
                          progress_callback: Optional[Callable]) -> List[Dict]:
-        """
-        OPTIMIZED: Genetic algorithm optimization
-        """
+        """Genetic algorithm optimization with fallback"""
         self.logger.log("Using Genetic Algorithm optimization", "INFO")
 
         try:
@@ -5464,7 +5517,6 @@ class ShowdownOptimizer:
             )
 
             fitness_mode = self._determine_fitness_mode(field_size)
-
             self._update_progress(progress_callback, 0.55, "Evolving population...")
 
             ga_results = self.ga_optimizer.optimize(
@@ -5476,9 +5528,9 @@ class ShowdownOptimizer:
             self._update_progress(progress_callback, 0.80, "GA complete")
 
             if not ga_results:
-                self.logger.log("GA produced no results, falling back to LP", "WARNING")
-                raise ValueError("GA optimization failed")
+                raise ValueError("GA produced no results")
 
+            # Convert GA results to standard format
             lineups = []
             for i, result in enumerate(ga_results):
                 lineups.append({
@@ -5503,7 +5555,7 @@ class ShowdownOptimizer:
             )
 
     def _determine_fitness_mode(self, field_size: str) -> FitnessMode:
-        """Determine GA fitness mode based on field size"""
+        """Determine optimal fitness mode based on field size"""
         mode_map = {
             FieldSize.SMALL.value: FitnessMode.MEAN,
             FieldSize.MEDIUM.value: FitnessMode.SHARPE,
@@ -5518,17 +5570,22 @@ class ShowdownOptimizer:
                          recommendations: Dict,
                          progress_callback: Optional[Callable]) -> List[Dict]:
         """
-        OPTIMIZED: Linear programming with three-tier relaxation and comprehensive error handling
+        Linear programming optimization with three-tier constraint relaxation
+
+        Tier 1: All constraints (strictest)
+        Tier 2: Relaxed tier-2 constraints
+        Tier 3: Relaxed tier-2 and tier-3 constraints (most permissive)
         """
         self.logger.log("Using Linear Programming optimization", "INFO")
 
         lineups = []
         used_players = set()
 
+        # Distribute lineups across tiers
         tier_targets = [
-            num_lineups // 2,
-            num_lineups // 3,
-            num_lineups - (num_lineups // 2 + num_lineups // 3)
+            num_lineups // 2,                                    # Tier 1: 50%
+            num_lineups // 3,                                    # Tier 2: 33%
+            num_lineups - (num_lineups // 2 + num_lineups // 3) # Tier 3: 17%
         ]
 
         total_target = sum(tier_targets)
@@ -5538,9 +5595,12 @@ class ShowdownOptimizer:
             tier_target = tier_targets[tier]
             tier_generated = 0
             tier_attempts = 0
-            max_tier_attempts = tier_target * 5  # Increased attempts
+            max_tier_attempts = tier_target * 5
 
-            self.logger.log(f"Tier {tier + 1}: Attempting {tier_target} lineups", "INFO")
+            self.logger.log(
+                f"Tier {tier + 1}: Attempting {tier_target} lineups (max {max_tier_attempts} attempts)",
+                "INFO"
+            )
 
             while tier_generated < tier_target and tier_attempts < max_tier_attempts:
                 tier_attempts += 1
@@ -5554,39 +5614,35 @@ class ShowdownOptimizer:
                     tier_generated += 1
                     lineups_so_far += 1
 
+                    # Update progress
                     progress = 0.50 + (lineups_so_far / total_target) * 0.30
                     self._update_progress(
                         progress_callback, progress,
                         f"Generated {lineups_so_far}/{num_lineups} (Tier {tier+1})"
                     )
 
+                    # Track used players for diversity
                     lineup_players = [lineup['Captain']] + lineup['FLEX']
                     used_players.update(lineup_players)
 
                 # Increase randomness if struggling
-                if tier_attempts % 5 == 0 and tier_generated == 0:
-                    randomness = min(0.30, randomness * 1.2)
+                if tier_attempts % 10 == 0 and tier_generated < tier_attempts // 10:
+                    randomness = min(0.30, randomness * 1.15)
 
             self.logger.log(
                 f"Tier {tier + 1} complete: {tier_generated}/{tier_target} "
-                f"({tier_attempts} attempts)",
+                f"(success rate: {tier_generated/max(tier_attempts, 1):.1%})",
                 "INFO"
             )
 
+            # Early exit if we have enough
             if len(lineups) >= num_lineups:
                 break
 
-        # Detailed failure logging
+        # Handle complete failure
         if not lineups:
-            self.logger.log("NO LINEUPS GENERATED - LP optimization failed", "ERROR")
-            self.logger.log(f"Player pool size: {len(self.df)}", "ERROR")
-            self.logger.log(f"Hard constraints: {len(enforcement_rules.get('hard_constraints', []))}", "ERROR")
-            self.logger.log(f"Total attempts: {sum(tier_targets) * 5}", "ERROR")
-
-            # Log constraint details
-            for i, rule in enumerate(enforcement_rules.get('hard_constraints', [])[:5]):
-                self.logger.log(f"Constraint {i+1}: {rule.get('rule')} - {rule.get('players', 'N/A')}", "ERROR")
-
+            self.logger.log("NO LINEUPS GENERATED - Running diagnostics", "ERROR")
+            self._diagnose_constraint_failure(self.df, enforcement_rules)
             return []
 
         # Finalize lineups
@@ -5594,18 +5650,20 @@ class ShowdownOptimizer:
             lineup['Lineup'] = i + 1
             lineup['optimization_method'] = 'linear_programming'
 
-        self.logger.log(f"LP optimization complete: {len(lineups)} lineups generated", "INFO")
+        self.logger.log(
+            f"LP optimization complete: {len(lineups)}/{num_lineups} lineups generated",
+            "INFO"
+        )
         return lineups[:num_lineups]
 
     def _generate_single_lineup_lp(self, enforcement_rules: Dict,
                                    used_players: Set[str], randomness: float,
                                    tier: int) -> Optional[Dict]:
-        """
-        OPTIMIZED: Single lineup generation with PuLP and enhanced error handling
-        """
+        """Generate single lineup using PuLP with tier-based constraint relaxation"""
         try:
             prob = pulp.LpProblem("Showdown", pulp.LpMaximize)
 
+            # Create variables
             player_vars = {
                 p: pulp.LpVariable(f"player_{i}", cat='Binary')
                 for i, p in enumerate(self.df['Player'].values)
@@ -5616,34 +5674,34 @@ class ShowdownOptimizer:
                 for i, p in enumerate(self.df['Player'].values)
             }
 
-            # Apply randomness to projections
+            # Apply randomness for diversity
             projections = self.df['Projected_Points'].values * (
                 1 + np.random.uniform(-randomness, randomness, len(self.df))
             )
             proj_dict = dict(zip(self.df['Player'].values, projections))
 
-            # Objective function
+            # Objective function: maximize projected points
             prob += pulp.lpSum([
                 captain_vars[p] * proj_dict[p] * OptimizerConfig.CAPTAIN_MULTIPLIER +
                 player_vars[p] * proj_dict[p]
                 for p in player_vars
             ])
 
-            # Base constraints
+            # Add base DraftKings constraints
             self._add_base_constraints(prob, player_vars, captain_vars)
 
-            # Tier-specific AI constraints
+            # Add tier-specific AI constraints
             self._add_tier_constraints(prob, player_vars, captain_vars,
                                       enforcement_rules, tier)
 
-            # Diversity constraint
+            # Add diversity constraint
             if used_players:
                 prob += pulp.lpSum([
                     captain_vars[p] + player_vars[p]
                     for p in used_players if p in player_vars
                 ]) <= 4  # Allow up to 4 overlapping players
 
-            # Solve
+            # Solve with timeout
             prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=15))
 
             # Extract solution
@@ -5657,35 +5715,32 @@ class ShowdownOptimizer:
             return None
 
         except Exception as e:
-            self.logger.log(f"LP generation error: {str(e)[:100]}", "DEBUG")
+            # Silent failure - this is expected during exploration
             return None
 
-    def _add_base_constraints(self, prob, player_vars: Dict,
-                             captain_vars: Dict) -> None:
-        """
-        OPTIMIZED: Add base DraftKings constraints
-        """
+    def _add_base_constraints(self, prob, player_vars: Dict, captain_vars: Dict) -> None:
+        """Add mandatory DraftKings Showdown constraints"""
         players = list(player_vars.keys())
 
         # Exactly 1 captain
-        prob += pulp.lpSum(captain_vars.values()) == 1
+        prob += pulp.lpSum(captain_vars.values()) == 1, "one_captain"
 
         # Exactly 5 FLEX
-        prob += pulp.lpSum(player_vars.values()) == 5
+        prob += pulp.lpSum(player_vars.values()) == 5, "five_flex"
 
-        # Player can't be both captain and flex
+        # Player cannot be both captain and flex
         for p in players:
-            prob += captain_vars[p] + player_vars[p] <= 1
+            prob += captain_vars[p] + player_vars[p] <= 1, f"unique_{p}"
 
-        # Salary cap
+        # Salary cap (with captain multiplier)
         player_salaries = self.df.set_index('Player')['Salary'].to_dict()
         prob += pulp.lpSum([
             captain_vars[p] * player_salaries[p] * 1.5 +
             player_vars[p] * player_salaries[p]
             for p in players
-        ]) <= OptimizerConfig.SALARY_CAP
+        ]) <= OptimizerConfig.SALARY_CAP, "salary_cap"
 
-        # Team diversity
+        # Team diversity constraints
         player_teams = self.df.set_index('Player')['Team'].to_dict()
 
         # Max players per team
@@ -5693,74 +5748,184 @@ class ShowdownOptimizer:
             team_players = [p for p in players if player_teams[p] == team]
             prob += pulp.lpSum([
                 captain_vars[p] + player_vars[p] for p in team_players
-            ]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM
+            ]) <= OptimizerConfig.MAX_PLAYERS_PER_TEAM, f"max_team_{team}"
 
-        # Minimum teams (at least 2 teams represented)
-        teams = self.df['Team'].unique()
-        if len(teams) >= 2:
-            for team in teams:
-                team_players = [p for p in players if player_teams[p] == team]
-                team_used = pulp.LpVariable(f"team_{team}", cat='Binary')
-
-                # If any player from team is used, team_used = 1
-                prob += pulp.lpSum([
-                    captain_vars[p] + player_vars[p] for p in team_players
-                ]) >= team_used
-
-                prob += pulp.lpSum([
-                    captain_vars[p] + player_vars[p] for p in team_players
-                ]) <= len(team_players) * team_used
+        # Minimum 2 teams represented (critical for DK Showdown)
+        # This is implicitly enforced by max_players_per_team if there are 2+ teams
 
     def _add_tier_constraints(self, prob, player_vars: Dict, captain_vars: Dict,
                              enforcement_rules: Dict, tier: int) -> None:
-        """
-        OPTIMIZED: Add tier-specific AI constraints
-        """
+        """Add tier-specific AI constraints with progressive relaxation"""
+        constraint_count = 0
+
         for rule in enforcement_rules.get('hard_constraints', []):
+            # Check if this constraint should apply at this tier
             if not self.enforcement_engine.should_apply_constraint(rule, tier):
                 continue
 
             rule_type = rule.get('rule')
+            rule_name = f"{rule_type}_{constraint_count}"
 
-            if rule_type in ['captain_from_list', 'consensus_captain_list']:
-                players = rule.get('players', [])
-                if players:
+            try:
+                if rule_type in ['captain_from_list', 'consensus_captain_list']:
+                    players = rule.get('players', [])
                     valid_players = [p for p in players if p in captain_vars]
+
                     if valid_players:
                         prob += pulp.lpSum([
                             captain_vars[p] for p in valid_players
-                        ]) >= 1
+                        ]) >= 1, rule_name
+                        constraint_count += 1
 
-            elif rule_type == 'must_include':
-                player = rule.get('player')
-                if player and player in player_vars:
-                    prob += captain_vars[player] + player_vars[player] >= 1
+                elif rule_type == 'must_include':
+                    player = rule.get('player')
+                    if player and player in player_vars:
+                        prob += captain_vars[player] + player_vars[player] >= 1, rule_name
+                        constraint_count += 1
 
-            elif rule_type == 'must_exclude':
-                player = rule.get('player')
-                if player and player in player_vars:
-                    prob += captain_vars[player] + player_vars[player] == 0
+                elif rule_type == 'must_exclude':
+                    player = rule.get('player')
+                    if player and player in player_vars:
+                        prob += captain_vars[player] + player_vars[player] == 0, rule_name
+                        constraint_count += 1
+
+            except Exception as e:
+                self.logger.log(f"Error adding constraint {rule_name}: {e}", "DEBUG")
+                continue
+
+    def _diagnose_constraint_failure(self, df: pd.DataFrame, enforcement_rules: Dict) -> None:
+        """Comprehensive diagnostic when optimization fails"""
+        self.logger.log("=" * 60, "ERROR")
+        self.logger.log("CONSTRAINT FAILURE DIAGNOSTICS", "ERROR")
+        self.logger.log("=" * 60, "ERROR")
+
+        # Player pool analysis
+        self.logger.log(f"Total players available: {len(df)}", "ERROR")
+        self.logger.log(f"Teams: {list(df['Team'].unique())}", "ERROR")
+
+        team_counts = df['Team'].value_counts()
+        self.logger.log(f"Players per team: {team_counts.to_dict()}", "ERROR")
+
+        # Salary feasibility
+        cheapest_6 = df.nsmallest(6, 'Salary')
+        min_salary = cheapest_6['Salary'].sum()
+        most_expensive_6 = df.nlargest(6, 'Salary')
+        max_salary = most_expensive_6['Salary'].sum()
+
+        self.logger.log(f"Cheapest possible lineup: ${min_salary:,}", "ERROR")
+        self.logger.log(f"Most expensive possible lineup: ${max_salary:,}", "ERROR")
+        self.logger.log(f"Salary cap: ${OptimizerConfig.SALARY_CAP:,}", "ERROR")
+
+        if min_salary > OptimizerConfig.SALARY_CAP:
+            self.logger.log("CRITICAL: Even cheapest lineup exceeds salary cap!", "ERROR")
+
+        # Team diversity check
+        if len(df['Team'].unique()) < 2:
+            self.logger.log(
+                "CRITICAL: Only 1 team available - DK requires at least 2 teams!",
+                "ERROR"
+            )
+
+        # AI constraint analysis
+        hard_constraints = enforcement_rules.get('hard_constraints', [])
+        self.logger.log(f"Active hard constraints: {len(hard_constraints)}", "ERROR")
+
+        for i, rule in enumerate(hard_constraints[:10]):
+            players = rule.get('players', [rule.get('player', 'N/A')])
+            if isinstance(players, str):
+                players = [players]
+            self.logger.log(
+                f"  Constraint {i+1}: {rule.get('rule')} - {players[:3]}",
+                "ERROR"
+            )
+
+        # Test basic lineup generation
+        self.logger.log("\nAttempting basic lineup without AI constraints...", "ERROR")
+        simple_lineup = self._try_simple_lineup()
+
+        if simple_lineup:
+            self.logger.log("SUCCESS: Can generate basic lineup", "ERROR")
+            self.logger.log(f"  Captain: {simple_lineup['Captain']}", "ERROR")
+            self.logger.log(f"  FLEX: {simple_lineup['FLEX'][:3]}...", "ERROR")
+            self.logger.log("  Conclusion: AI constraints are too restrictive", "ERROR")
+        else:
+            self.logger.log("FAILED: Cannot generate even a basic lineup!", "ERROR")
+            self.logger.log("  Conclusion: Fundamental constraint violation", "ERROR")
+
+        self.logger.log("=" * 60, "ERROR")
+
+    def _try_simple_lineup(self) -> Optional[Dict]:
+        """Attempt to generate one simple lineup with only base constraints"""
+        try:
+            prob = pulp.LpProblem("SimpleTest", pulp.LpMaximize)
+
+            player_vars = {
+                p: pulp.LpVariable(f"p_{i}", cat='Binary')
+                for i, p in enumerate(self.df['Player'].values)
+            }
+
+            captain_vars = {
+                p: pulp.LpVariable(f"c_{i}", cat='Binary')
+                for i, p in enumerate(self.df['Player'].values)
+            }
+
+            # Simple objective
+            proj_dict = dict(zip(self.df['Player'].values, self.df['Projected_Points'].values))
+            prob += pulp.lpSum([
+                captain_vars[p] * proj_dict[p] * 1.5 + player_vars[p] * proj_dict[p]
+                for p in player_vars
+            ])
+
+            # Only base constraints
+            self._add_base_constraints(prob, player_vars, captain_vars)
+
+            # Solve
+            prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=10))
+
+            if prob.status == pulp.LpStatusOptimal:
+                captain = next((p for p in captain_vars if captain_vars[p].varValue > 0.5), None)
+                flex = [p for p in player_vars if player_vars[p].varValue > 0.5]
+
+                if captain and len(flex) == 5:
+                    return {'Captain': captain, 'FLEX': flex}
+
+            return None
+
+        except Exception as e:
+            self.logger.log(f"Simple lineup test error: {e}", "ERROR")
+            return None
 
     def _generate_fallback_lineups(self, df: pd.DataFrame, num_lineups: int) -> List[Dict]:
-        """
-        Generate simple fallback lineups when optimization fails
-        """
-        self.logger.log("Generating fallback lineups", "WARNING")
+        """Generate simple value-based fallback lineups when optimization fails"""
+        self.logger.log("Generating value-based fallback lineups", "WARNING")
 
         lineups = []
 
-        # Sort by value (projection / salary)
+        # Calculate value score
         df_sorted = df.copy()
         df_sorted['Value'] = df_sorted['Projected_Points'] / (df_sorted['Salary'] / 1000)
         df_sorted = df_sorted.sort_values('Value', ascending=False)
 
-        for i in range(min(num_lineups, len(df) - 5)):
+        # Generate diverse lineups
+        for i in range(min(num_lineups, len(df_sorted) - 5)):
             captain_idx = i % len(df_sorted)
             captain = df_sorted.iloc[captain_idx]['Player']
 
-            # Get top 5 value plays that aren't the captain
+            # Get top value plays excluding captain
             flex_candidates = df_sorted[df_sorted['Player'] != captain]
-            flex = flex_candidates.head(5)['Player'].tolist()
+
+            # Ensure team diversity
+            captain_team = df_sorted.iloc[captain_idx]['Team']
+            other_team_players = flex_candidates[flex_candidates['Team'] != captain_team]
+
+            if len(other_team_players) >= 1:
+                # Take some from other team for diversity
+                flex = (
+                    other_team_players.head(2)['Player'].tolist() +
+                    flex_candidates.head(5)['Player'].tolist()
+                )[:5]
+            else:
+                flex = flex_candidates.head(5)['Player'].tolist()
 
             if len(flex) == 5:
                 lineups.append({
@@ -5773,62 +5938,59 @@ class ShowdownOptimizer:
 
     def _post_process_lineups(self, lineups: List[Dict], df: pd.DataFrame,
                              recommendations: Dict, use_simulation: bool) -> pd.DataFrame:
-        """
-        OPTIMIZED: Post-process with comprehensive error handling
-        """
+        """Post-process lineups with metrics, simulation, and formatting"""
         self.perf_monitor.start_timer("post_processing")
 
         if not lineups:
             self.logger.log("No lineups to post-process", "ERROR")
             return pd.DataFrame()
 
-        # Calculate metrics
+        # Calculate base metrics
         lineups_df = self.data_processor.calculate_lineup_metrics_batch(lineups)
 
         if lineups_df.empty:
-            self.logger.log("Metric calculation produced empty DataFrame", "ERROR")
+            self.logger.log("Metric calculation failed", "ERROR")
             return pd.DataFrame()
 
-        # Add AI strategy
+        # Add AI strategy classification
         lineups_df['AI_Strategy'] = [
             self._determine_lineup_strategy(lu, recommendations)
             for lu in lineups
         ]
 
-        # Add simulation metrics
+        # Add simulation metrics if enabled
         if use_simulation and self.mc_engine:
-            lineups_df = self._add_simulation_metrics(lineups_df, lineups)
+            try:
+                lineups_df = self._add_simulation_metrics(lineups_df, lineups)
+            except Exception as e:
+                self.logger.log(f"Simulation metrics failed: {e}", "WARNING")
 
         # Convert to export format
         lineups_df = self._convert_to_export_format(lineups_df)
 
         if lineups_df.empty:
-            self.logger.log("Export format conversion produced empty DataFrame", "ERROR")
+            self.logger.log("Export conversion failed", "ERROR")
             return pd.DataFrame()
 
         # Add rankings
         lineups_df = self._add_rankings(lineups_df, use_simulation)
 
         self.perf_monitor.stop_timer("post_processing")
-
         return lineups_df
 
-    def _determine_lineup_strategy(self, lineup: Dict,
-                                   recommendations: Dict) -> str:
-        """Determine which AI strategy the lineup follows"""
+    def _determine_lineup_strategy(self, lineup: Dict, recommendations: Dict) -> str:
+        """Classify lineup by dominant AI strategy"""
         captain = lineup['Captain']
 
         for ai_type, rec in recommendations.items():
             if captain in rec.captain_targets[:3]:
                 return ai_type.value
 
-        return 'balanced'
+        return 'Balanced'
 
     def _add_simulation_metrics(self, lineups_df: pd.DataFrame,
                                lineups: List[Dict]) -> pd.DataFrame:
-        """
-        OPTIMIZED: Add simulation metrics efficiently
-        """
+        """Add Monte Carlo simulation metrics to lineups"""
         try:
             sim_results = self.mc_engine.evaluate_multiple_lineups(lineups, parallel=True)
 
@@ -5841,38 +6003,36 @@ class ShowdownOptimizer:
                     lineups_df.loc[idx, 'Sim_Win_Prob'] = results.win_probability
 
         except Exception as e:
-            self.logger.log(f"Simulation metrics error: {e}", "WARNING")
+            self.logger.log(f"Simulation error: {e}", "WARNING")
 
         return lineups_df
 
     def _convert_to_export_format(self, lineups_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        OPTIMIZED: Convert to DraftKings-compatible format with robust error handling
-        """
+        """Convert internal format to DraftKings-compatible export format"""
         if lineups_df.empty:
-            self.logger.log("Cannot convert empty DataFrame to export format", "ERROR")
+            self.logger.log("Cannot convert empty DataFrame", "ERROR")
             return pd.DataFrame()
 
-        # Verify required columns exist
+        # Validate required columns
         required = ['Captain', 'FLEX', 'Total_Salary', 'Projected', 'Total_Ownership', 'Avg_Ownership']
         missing = [col for col in required if col not in lineups_df.columns]
 
         if missing:
-            self.logger.log(f"Missing columns for export: {missing}", "ERROR")
-            self.logger.log(f"Available columns: {list(lineups_df.columns)}", "ERROR")
+            self.logger.log(f"Missing columns: {missing}", "ERROR")
+            self.logger.log(f"Available: {list(lineups_df.columns)}", "ERROR")
             return pd.DataFrame()
 
         export_data = []
 
         for idx, row in lineups_df.iterrows():
             try:
-                # Handle FLEX players
+                # Handle different FLEX formats
                 if isinstance(row['FLEX'], str):
                     flex_players = row['FLEX'].split(', ')
                 elif isinstance(row['FLEX'], list):
                     flex_players = row['FLEX']
                 else:
-                    self.logger.log(f"Unexpected FLEX type for lineup {idx}: {type(row['FLEX'])}", "WARNING")
+                    self.logger.log(f"Invalid FLEX type at {idx}: {type(row['FLEX'])}", "WARNING")
                     continue
 
                 export_data.append({
@@ -5888,30 +6048,34 @@ class ShowdownOptimizer:
                     'Projected': row['Projected'],
                     'Total_Own': row['Total_Ownership'],
                     'Avg_Own': row['Avg_Ownership'],
-                    'Strategy': row.get('AI_Strategy', 'balanced')
+                    'Strategy': row.get('AI_Strategy', 'Balanced')
                 })
+
             except Exception as e:
                 self.logger.log(f"Error converting lineup {idx}: {e}", "WARNING")
                 continue
 
         if not export_data:
-            self.logger.log("No data successfully converted to export format", "ERROR")
+            self.logger.log("No lineups successfully converted", "ERROR")
             return pd.DataFrame()
 
         return pd.DataFrame(export_data)
 
     def _add_rankings(self, df: pd.DataFrame, use_simulation: bool) -> pd.DataFrame:
-        """Add ranking columns"""
+        """Add ranking columns for sorting and analysis"""
         if df.empty:
             return df
 
+        # Basic rankings
         df['Proj_Rank'] = df['Projected'].rank(ascending=False, method='min').astype(int)
         df['Own_Rank'] = df['Total_Own'].rank(ascending=True, method='min').astype(int)
 
+        # Simulation rankings
         if use_simulation and 'Sim_Ceiling_90th' in df.columns:
             df['Ceiling_Rank'] = df['Sim_Ceiling_90th'].rank(ascending=False, method='min').astype(int)
             df['Sharpe_Rank'] = df['Sim_Sharpe'].rank(ascending=False, method='min').astype(int)
 
+            # GPP composite score
             df['GPP_Score'] = (
                 df['Sim_Ceiling_90th'] * 0.4 +
                 df['Sim_Win_Prob'] * 100 * 0.3 +
@@ -5925,7 +6089,7 @@ class ShowdownOptimizer:
     def _store_metadata(self, num_lineups: int, field_size: str,
                        enforcement_level: AIEnforcementLevel,
                        used_genetic: bool, recommendations: Dict) -> None:
-        """Store optimization metadata"""
+        """Store comprehensive optimization metadata"""
         self.optimization_metadata = {
             'timestamp': datetime.now(),
             'num_lineups_requested': num_lineups,
@@ -5946,9 +6110,7 @@ class ShowdownOptimizer:
 
     def export_lineups(self, lineups_df: pd.DataFrame, filename: str = None,
                       format: str = 'csv') -> str:
-        """
-        OPTIMIZED: Export lineups with better error handling
-        """
+        """Export lineups to file in specified format"""
         try:
             if lineups_df.empty:
                 self.logger.log("No lineups to export", "WARNING")
@@ -5997,7 +6159,7 @@ class ShowdownOptimizer:
         return report
 
     def clear_cache(self) -> None:
-        """Clear all caches"""
+        """Clear all caches for fresh optimization"""
         self.game_theory_ai.response_cache.clear()
         self.correlation_ai.response_cache.clear()
         self.contrarian_ai.response_cache.clear()
