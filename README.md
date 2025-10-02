@@ -1,15 +1,19 @@
 # NFL DFS Showdown Optimizer
 
-AI-powered DFS lineup optimizer with ML/simulation capabilities.
+AI-powered optimizer for DraftKings Showdown contests.
 
-## Features
-- 3 AI strategists (Game Theory, Correlation, Contrarian)
-- Linear Programming & Genetic Algorithm optimization
-- Monte Carlo simulation for ceiling/floor analysis
-- Streamlit web interface
+## Setup
 
-## Installation
+1. Add your Anthropic API key in Streamlit secrets
+2. Upload player projections CSV
+3. Configure game settings
+4. Generate optimized lineups
 
-### Local Development
-```bash
-pip install -r requirements.txt
+## Required CSV Format
+
+- Player
+- Position
+- Team
+- Salary
+- Projected_Points
+- Ownership (optional)
