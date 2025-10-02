@@ -1,119 +1,88 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from datetime import datetime
-
-# Import your optimizer (assuming the main file is named optimizer.py)
-from your_main_file import ShowdownOptimizer, AIEnforcementLevel
+import pulp
 
 st.set_page_config(page_title="NFL Showdown Optimizer", layout="wide")
 
-st.title("🏈 NFL Showdown Optimizer")
+st.title("NFL Showdown Optimizer")
 
-# Sidebar configuration
-with st.sidebar:
-    st.header("⚙️ Configuration")
+# Simple optimizer function (no AI, just linear programming)
+def optimize_lineups(df, num_lineups=20):
+    """Generate lineups using linear programming"""
+    lineups = []
     
-    # API Key input
-    api_key = st.text_input("Claude API Key (optional)", type="password")
+    for i in range(num_lineups):
+        prob = pulp.LpProblem(f"Showdown_{i}", pulp.LpMaximize)
+        
+        # Variables
+        player_vars = {p: pulp.LpVariable(f"p_{j}_{i}", cat='Binary') 
+                      for j, p in enumerate(df['Player'])}
+        captain_vars = {p: pulp.LpVariable(f"c_{j}_{i}", cat='Binary') 
+                       for j, p in enumerate(df['Player'])}
+        
+        # Objective: maximize projections with randomness
+        proj_dict = dict(zip(df['Player'], df['Projected_Points'] * 
+                            (1 + np.random.uniform(-0.1, 0.1, len(df)))))
+        
+        prob += pulp.lpSum([
+            captain_vars[p] * proj_dict[p] * 1.5 + player_vars[p] * proj_dict[p]
+            for p in player_vars
+        ])
+        
+        # Constraints
+        prob += pulp.lpSum(captain_vars.values()) == 1  # 1 captain
+        prob += pulp.lpSum(player_vars.values()) == 5   # 5 flex
+        
+        for p in player_vars:
+            prob += captain_vars[p] + player_vars[p] <= 1  # No overlap
+        
+        # Salary cap
+        salary_dict = dict(zip(df['Player'], df['Salary']))
+        prob += pulp.lpSum([
+            captain_vars[p] * salary_dict[p] * 1.5 + player_vars[p] * salary_dict[p]
+            for p in player_vars
+        ]) <= 50000
+        
+        # Solve
+        prob.solve(pulp.PULP_CBC_CMD(msg=0))
+        
+        if prob.status == pulp.LpStatusOptimal:
+            captain = next((p for p in captain_vars if captain_vars[p].varValue > 0.5), None)
+            flex = [p for p in player_vars if player_vars[p].varValue > 0.5]
+            
+            if captain and len(flex) == 5:
+                lineups.append({
+                    'Lineup': i + 1,
+                    'CPT': captain,
+                    'FLEX1': flex[0],
+                    'FLEX2': flex[1],
+                    'FLEX3': flex[2],
+                    'FLEX4': flex[3],
+                    'FLEX5': flex[4]
+                })
     
-    # Upload CSV
-    uploaded_file = st.file_uploader("Upload Player Projections CSV", type=['csv'])
-    
-    # Game info
-    st.subheader("Game Information")
-    teams = st.text_input("Teams", "Team1 vs Team2")
-    total = st.number_input("Game Total", value=47.5, step=0.5)
-    spread = st.number_input("Spread", value=-3.5, step=0.5)
-    
-    # Optimization settings
-    st.subheader("Optimization Settings")
-    num_lineups = st.slider("Number of Lineups", 5, 150, 20)
-    field_size = st.selectbox("Field Size", 
-        ['small_field', 'medium_field', 'large_field', 
-         'large_field_aggressive', 'milly_maker'])
-    
-    use_genetic = st.checkbox("Use Genetic Algorithm", value=False)
-    use_simulation = st.checkbox("Use Monte Carlo Simulation", value=True)
-    
-    optimize_button = st.button("🚀 Optimize Lineups", type="primary")
+    return pd.DataFrame(lineups)
 
-# Main content area
-if uploaded_file is not None:
-    # Load data
+# UI
+uploaded_file = st.file_uploader("Upload Player Projections CSV", type=['csv'])
+
+if uploaded_file:
     df = pd.read_csv(uploaded_file)
     
-    # Show preview
-    st.subheader("📊 Player Pool Preview")
-    st.dataframe(df.head(10), use_container_width=True)
+    st.subheader("Player Pool")
+    st.dataframe(df.head(10))
     
-    # Optimize when button clicked
-    if optimize_button:
-        with st.spinner("Optimizing lineups..."):
-            try:
-                # Create game info dict
-                game_info = {
-                    'teams': teams,
-                    'total': total,
-                    'spread': spread,
-                    'weather': 'Clear'
-                }
-                
-                # Initialize optimizer
-                optimizer = ShowdownOptimizer(api_key=api_key if api_key else None)
-                
-                # Progress bar
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                def update_progress(pct, msg):
-                    progress_bar.progress(pct)
-                    status_text.text(msg)
-                
-                # Run optimization
-                lineups = optimizer.optimize(
-                    df=df,
-                    game_info=game_info,
-                    num_lineups=num_lineups,
-                    field_size=field_size,
-                    use_api=(api_key is not None and api_key != ""),
-                    use_genetic=use_genetic,
-                    use_simulation=use_simulation,
-                    progress_callback=update_progress
-                )
-                
-                # Clear progress
-                progress_bar.empty()
-                status_text.empty()
-                
-                # Display results
-                if not lineups.empty:
-                    st.success(f"✅ Generated {len(lineups)} lineups!")
-                    
-                    # Metrics
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Lineups", len(lineups))
-                    col2.metric("Avg Projection", f"{lineups['Projected'].mean():.2f}")
-                    col3.metric("Avg Ownership", f"{lineups['Total_Own'].mean():.1f}%")
-                    col4.metric("Unique Captains", lineups['CPT'].nunique())
-                    
-                    # Show lineups
-                    st.subheader("📋 Generated Lineups")
-                    st.dataframe(lineups, use_container_width=True)
-                    
-                    # Download button
-                    csv = lineups.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download Lineups CSV",
-                        data=csv,
-                        file_name=f"showdown_lineups_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime='text/csv'
-                    )
-                else:
-                    st.error("❌ No lineups generated. Check your settings.")
-                    
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
-                with st.expander("See error details"):
-                    st.exception(e)
-else:
-    st.info("👆 Upload a CSV file to get started")
+    num_lineups = st.slider("Number of Lineups", 5, 150, 20)
+    
+    if st.button("Generate Lineups", type="primary"):
+        with st.spinner("Optimizing..."):
+            lineups = optimize_lineups(df, num_lineups)
+            
+            st.success(f"Generated {len(lineups)} lineups")
+            st.dataframe(lineups)
+            
+            csv = lineups.to_csv(index=False)
+            st.download_button("Download CSV", csv, 
+                             f"lineups_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
