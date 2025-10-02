@@ -1,21 +1,12 @@
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
 venv/
-.env
-
-# Streamlit
-.streamlit/secrets.toml
-
-# Output files
 *.csv
 *.xlsx
-lineups_*.csv
-
-# IDE
-.vscode/
-.idea/
-*.swp
+*.log
+.DS_Store
+.streamlit/secrets.toml
