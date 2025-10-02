@@ -47,7 +47,7 @@ with st.sidebar:
 
     # Try to get from secrets
     try:
-        default_api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        ANTHROPIC_API_KEY = "your-api-key-here"
         if default_api_key:
             st.success("API key loaded from secrets")
             api_key = default_api_key
