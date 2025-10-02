@@ -5234,6 +5234,50 @@ class ShowdownOptimizer:
 
         self.logger.log("ShowdownOptimizer initialized successfully", "INFO")
 
+    def _transform_csv_format(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Transform various CSV formats to expected column names
+        
+        Handles:
+        - first_name/last_name -> Player
+        - lowercase position/team/salary -> Capitalized versions
+        - point_projection -> Projected_Points
+        """
+        df = df.copy()
+        
+        # Handle split name columns
+        if 'first_name' in df.columns and 'last_name' in df.columns:
+            df['Player'] = df['first_name'].astype(str) + ' ' + df['last_name'].astype(str)
+            self.logger.log("Combined first_name + last_name -> Player", "INFO")
+        elif 'player' in df.columns:
+            df['Player'] = df['player']
+        
+        # Handle lowercase column names
+        column_mapping = {
+            'position': 'Position',
+            'team': 'Team',
+            'salary': 'Salary',
+            'point_projection': 'Projected_Points',
+            'projected_points': 'Projected_Points',
+            'ownership': 'Ownership'
+        }
+        
+        for old_col, new_col in column_mapping.items():
+            if old_col in df.columns and new_col not in df.columns:
+                df[new_col] = df[old_col]
+                self.logger.log(f"Mapped {old_col} -> {new_col}", "INFO")
+        
+        # Ensure Position and Team are uppercase
+        if 'Position' in df.columns:
+            df['Position'] = df['Position'].str.upper()
+        if 'Team' in df.columns:
+            df['Team'] = df['Team'].str.upper()
+        
+        return df
+
+    def optimize(self,
+                df: pd.DataFrame,
+
     def optimize(self,
             df: pd.DataFrame,
             game_info: Dict,
