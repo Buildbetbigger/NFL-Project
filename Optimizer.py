@@ -1,4 +1,5 @@
 
+"""
 NFL DFS AI-Driven Optimizer - Part 1: COMPLETE IMPORTS & CONFIGURATION
 Enhanced Version - No Historical Data Required
 Python 3.8+ Required
@@ -3875,24 +3876,29 @@ class ClaudeAPIManager:
     """
 
     __slots__ = ('_api_key_hash', '_client', '_request_times', '_cache',
-                 '_lock', '_max_requests_per_minute', '_stats', '_cache_ttl')
+                 '_lock', '_max_requests_per_minute', '_stats', '_cache_ttl', 'logger')
 
     def __init__(self, api_key: str, max_requests_per_minute: int = 50):
-        # Initialize logger FIRST
+        """Initialize API manager with proper initialization order"""
+        # CRITICAL: Initialize logger FIRST - before any methods that might log
         self.logger = get_logger()
 
+        # Validate API key format
         self._api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         if not api_key or not api_key.startswith('sk-'):
             raise ValueError("Invalid API key format")
 
+        # Initialize rate limiting structures
         self._max_requests_per_minute = max_requests_per_minute
         self._request_times: Deque[datetime] = deque(maxlen=max_requests_per_minute)
         self._lock = threading.RLock()
 
+        # Initialize cache structures
         self._cache: Dict[str, Tuple[str, datetime]] = {}
         self._cache_ttl = timedelta(hours=1)
 
+        # Initialize statistics tracking
         self._stats = {
             'requests': 0,
             'errors': 0,
@@ -3903,7 +3909,7 @@ class ClaudeAPIManager:
             })
         }
 
-        # Initialize client after logger is set up
+        # Initialize client LAST - after logger is available
         self._client = self._init_client_safe(api_key)
 
     def _init_client_safe(self, api_key: str):
