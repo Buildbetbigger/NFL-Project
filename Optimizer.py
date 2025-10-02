@@ -1,12 +1,8 @@
 
-# ============================================================================
-# FUTURE IMPORTS (Must be first)
-# ============================================================================
-from __future__ import annotations
-
-# ============================================================================
-# STANDARD LIBRARY IMPORTS
-# ============================================================================
+NFL DFS AI-Driven Optimizer - Part 1: COMPLETE IMPORTS & CONFIGURATION
+Enhanced Version - No Historical Data Required
+Python 3.8+ Required
+"""
 
 # ============================================================================
 # STANDARD LIBRARY IMPORTS
@@ -3882,12 +3878,13 @@ class ClaudeAPIManager:
                  '_lock', '_max_requests_per_minute', '_stats', '_cache_ttl')
 
     def __init__(self, api_key: str, max_requests_per_minute: int = 50):
+        # Initialize logger FIRST
+        self.logger = get_logger()
+
         self._api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         if not api_key or not api_key.startswith('sk-'):
             raise ValueError("Invalid API key format")
-
-        self._client = self._init_client_safe(api_key)
 
         self._max_requests_per_minute = max_requests_per_minute
         self._request_times: Deque[datetime] = deque(maxlen=max_requests_per_minute)
@@ -3906,7 +3903,8 @@ class ClaudeAPIManager:
             })
         }
 
-        self.logger = get_logger()
+        # Initialize client after logger is set up
+        self._client = self._init_client_safe(api_key)
 
     def _init_client_safe(self, api_key: str):
         """OPTIMIZED: Safe client initialization with better error handling"""
