@@ -1,3 +1,5 @@
+if __name__ == "__main__":
+    print("Optimizer.py syntax OK")
 
 NFL DFS AI-Driven Optimizer - Part 1: COMPLETE IMPORTS & CONFIGURATION
 Enhanced Version - No Historical Data Required
