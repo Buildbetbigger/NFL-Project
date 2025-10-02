@@ -1,9 +1,12 @@
 
-"""
-NFL DFS AI-Driven Optimizer - Part 1: COMPLETE IMPORTS & CONFIGURATION
-Enhanced Version - No Historical Data Required
-Python 3.8+ Required
-"""
+# ============================================================================
+# FUTURE IMPORTS (Must be first)
+# ============================================================================
+from __future__ import annotations
+
+# ============================================================================
+# STANDARD LIBRARY IMPORTS
+# ============================================================================
 
 # ============================================================================
 # STANDARD LIBRARY IMPORTS
