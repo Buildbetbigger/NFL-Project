@@ -47,7 +47,7 @@ with st.sidebar:
 
     # Try to get from secrets
     try:
-        ANTHROPIC_API_KEY = "your-api-key-here"
+        default_api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
         if default_api_key:
             st.success("API key loaded from secrets")
             api_key = default_api_key
@@ -247,6 +247,11 @@ else:
     # Drop rows with NaN values
     df_mapped = df_mapped.dropna()
 
+    # Check if we have any data left
+    if df_mapped.empty:
+        st.error("No valid data after cleaning. Please check your CSV for missing or invalid values.")
+        st.stop()
+
     # Update df reference
     df = df_mapped
 
@@ -309,6 +314,15 @@ else:
                     progress_callback=update_progress
                 )
 
+                # DEBUG: Check what we got back
+                with st.expander("🔍 Debug Info"):
+                    st.write("Lineups type:", type(lineups))
+                    st.write("Lineups shape:", lineups.shape if hasattr(lineups, 'shape') else "N/A")
+                    if hasattr(lineups, 'columns'):
+                        st.write("Lineups columns:", list(lineups.columns))
+                    if hasattr(lineups, 'empty') and not lineups.empty:
+                        st.write("First row:", lineups.head(1))
+
                 st.session_state.lineups = lineups
                 st.session_state.optimization_complete = True
 
@@ -316,8 +330,11 @@ else:
                 progress_bar.empty()
                 status_text.empty()
 
-                st.success(f"✅ Successfully generated {len(lineups)} lineups!")
-                st.balloons()
+                if lineups is not None and not lineups.empty:
+                    st.success(f"✅ Successfully generated {len(lineups)} lineups!")
+                    st.balloons()
+                else:
+                    st.error("❌ No lineups generated. Please try different settings.")
 
             except Exception as e:
                 st.error(f"❌ Optimization failed: {str(e)}")
@@ -327,6 +344,22 @@ else:
 # Display Results
 if st.session_state.optimization_complete and st.session_state.lineups is not None:
     lineups = st.session_state.lineups
+
+    # Validate lineups DataFrame
+    if lineups.empty:
+        st.error("No lineups were generated. Check your settings and try again.")
+        st.stop()
+
+    # Check for required columns
+    required_cols = ['Projected', 'Total_Own', 'CPT', 'Total_Salary']
+    missing_cols = [col for col in required_cols if col not in lineups.columns]
+
+    if missing_cols:
+        st.error(f"Missing columns in results: {missing_cols}")
+        st.write("Available columns:", list(lineups.columns))
+        st.write("Full DataFrame:")
+        st.dataframe(lineups.head())
+        st.stop()
 
     st.divider()
     st.header("📈 Results")
@@ -369,7 +402,9 @@ if st.session_state.optimization_complete and st.session_state.lineups is not No
                     st.markdown(f"**Captain:** {lineup['CPT']}")
                     st.markdown("**FLEX:**")
                     for i in range(1, 6):
-                        st.markdown(f"- {lineup[f'FLEX{i}']}")
+                        flex_col = f'FLEX{i}'
+                        if flex_col in lineup:
+                            st.markdown(f"- {lineup[flex_col]}")
 
                 with col2:
                     st.metric("Salary", f"${lineup['Total_Salary']:,.0f}")
