@@ -154,7 +154,7 @@ class OptimizerConfig:
     # Core DraftKings Showdown constraints
     SALARY_CAP = 50000
     MIN_SALARY = 0
-    MAX_SALARY = 12000
+    MAX_SALARY = 12500
     CAPTAIN_MULTIPLIER = 1.5
     ROSTER_SIZE = 6
     FLEX_SPOTS = 5
