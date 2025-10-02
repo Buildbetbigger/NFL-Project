@@ -5534,9 +5534,9 @@ class ShowdownOptimizer:
         df['Projected_Points'] = df['Projected_Points'].fillna(0.0)
 
         # Validate data ranges
-        if (df['Salary'] < 1000).any() or (df['Salary'] > 15000).any():
+        if (df['Salary'] < 200).any() or (df['Salary'] > 12000).any():
             self.logger.log("Unusual salary values detected", "WARNING")
-
+        
         if (df['Projected_Points'] > 50).any():
             self.logger.log("Unusually high projections detected", "WARNING")
 
