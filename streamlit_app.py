@@ -26,6 +26,14 @@ if 'lineups' not in st.session_state:
 if 'optimization_complete' not in st.session_state:
     st.session_state.optimization_complete = False
 
+# Helper Functions
+def _find_col_index(columns, search_terms):
+    """Find best matching column index"""
+    for i, col in enumerate(columns):
+        if col and any(term.lower() in col.lower() for term in search_terms):
+            return i
+    return 0
+
 # Title
 st.title("🏈 NFL Showdown Optimizer")
 st.markdown("### AI-Powered DFS Lineup Generator with Triple-AI Analysis")
@@ -34,13 +42,29 @@ st.markdown("### AI-Powered DFS Lineup Generator with Triple-AI Analysis")
 with st.sidebar:
     st.header("⚙️ Configuration")
 
-    # API Key
+    # API Key - try secrets first, then manual input
     st.subheader("🔑 Claude API Key")
-    api_key = st.text_input(
-        "Enter your Anthropic API key",
-        type="password",
-        help="Get your API key from console.anthropic.com"
-    )
+
+    # Try to get from secrets
+    try:
+        default_api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        if default_api_key:
+            st.success("API key loaded from secrets")
+            api_key = default_api_key
+            use_secrets = True
+        else:
+            use_secrets = False
+    except:
+        use_secrets = False
+        default_api_key = ""
+
+    # Manual input option
+    if not use_secrets:
+        api_key = st.text_input(
+            "Enter your Anthropic API key",
+            type="password",
+            help="Get your API key from console.anthropic.com"
+        )
 
     if api_key:
         st.success("API key provided - AI analysis enabled")
@@ -55,7 +79,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader(
         "Upload Player Projections CSV",
         type=['csv'],
-        help="Must include: Player, Position, Team, Salary, Projected_Points"
+        help="CSV with player data"
     )
 
     if uploaded_file:
@@ -127,23 +151,28 @@ with st.sidebar:
 if uploaded_file is None:
     st.info("👆 Upload a CSV file in the sidebar to get started")
 
-    with st.expander("📋 Required CSV Format"):
+    with st.expander("📋 CSV Format Guide"):
         st.markdown("""
-        Your CSV must include these columns:
-        - **Player**: Player name
-        - **Position**: QB, RB, WR, TE, DST
-        - **Team**: Team abbreviation
-        - **Salary**: DraftKings salary
-        - **Projected_Points**: Your projections
-        - **Ownership** (optional): Projected ownership %
+        Your CSV needs these columns (names can vary):
 
-        Example:
+        **Required:**
+        - **Player/Name**: Player name
+        - **Position/Pos**: QB, RB, WR, TE, DST
+        - **Team**: Team abbreviation
+        - **Salary/DK Salary**: DraftKings salary
+        - **Projected Points/FPTS**: Your projections
+
+        **Optional:**
+        - **Ownership/Own%**: Projected ownership %
+
+        Example CSV:
 
 Player,Position,Team,Salary,Projected_Points,Ownership
     Patrick Mahomes,QB,KC,11500,25.5,35.2
     Travis Kelce,TE,KC,9000,18.3,28.5
 
-""")
+The app will help you map columns if they have different names.
+        """)
 
     with st.expander("🤖 How the AI Analysis Works"):
         st.markdown("""
@@ -169,11 +198,61 @@ else:
     # Load and preview data
     df = pd.read_csv(uploaded_file)
 
-    # Detect columns
-    cols = df.columns.str.lower()
-    player_col = next((c for c in df.columns if 'player' in c.lower() or 'name' in c.lower()), None)
+    st.subheader("📊 Data Preview & Column Mapping")
 
-    st.subheader("📊 Player Pool Preview")
+    # Show raw data
+    with st.expander("🔍 View Raw Data"):
+        st.dataframe(df.head(10), use_container_width=True)
+
+    # Column mapping interface
+    st.caption("Map your CSV columns to required fields")
+
+    col1, col2 = st.columns(2)
+
+    csv_columns = [''] + list(df.columns)
+
+    with col1:
+        player_col = st.selectbox("Player Name →", csv_columns,
+                                  index=_find_col_index(csv_columns, ['player', 'name']))
+        position_col = st.selectbox("Position →", csv_columns,
+                                   index=_find_col_index(csv_columns, ['position', 'pos']))
+        team_col = st.selectbox("Team →", csv_columns,
+                               index=_find_col_index(csv_columns, ['team']))
+
+    with col2:
+        salary_col = st.selectbox("Salary →", csv_columns,
+                                 index=_find_col_index(csv_columns, ['salary', 'dk salary']))
+        proj_col = st.selectbox("Projected Points →", csv_columns,
+                               index=_find_col_index(csv_columns, ['fpts', 'projection', 'points', 'projected']))
+        own_col = st.selectbox("Ownership % (optional) →", csv_columns,
+                              index=_find_col_index(csv_columns, ['ownership', 'own']))
+
+    # Validate mapping
+    required_mapped = all([player_col, position_col, team_col, salary_col, proj_col])
+
+    if not required_mapped:
+        st.warning("⚠️ Please map all required columns")
+        st.stop()
+
+    # Create mapped dataframe
+    df_mapped = pd.DataFrame({
+        'Player': df[player_col],
+        'Position': df[position_col],
+        'Team': df[team_col],
+        'Salary': pd.to_numeric(df[salary_col], errors='coerce'),
+        'Projected_Points': pd.to_numeric(df[proj_col], errors='coerce'),
+        'Ownership': pd.to_numeric(df[own_col], errors='coerce') if own_col else 10.0
+    })
+
+    # Drop rows with NaN values
+    df_mapped = df_mapped.dropna()
+
+    # Update df reference
+    df = df_mapped
+
+    st.success("✅ Columns mapped successfully!")
+
+    # Show mapped data
     st.dataframe(df.head(10), use_container_width=True)
 
     col1, col2, col3, col4 = st.columns(4)
