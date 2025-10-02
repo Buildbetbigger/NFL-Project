@@ -5235,28 +5235,32 @@ class ShowdownOptimizer:
         self.logger.log("ShowdownOptimizer initialized successfully", "INFO")
 
     def optimize(self,
-                df: pd.DataFrame,
-                game_info: Dict,
-                num_lineups: int = 20,
-                field_size: str = 'large_field',
-                ai_enforcement_level: AIEnforcementLevel = AIEnforcementLevel.STRONG,
-                use_api: bool = True,
-                randomness: float = 0.15,
-                use_genetic: bool = False,
-                use_simulation: bool = True,
-                progress_callback: Optional[Callable[[float, str], None]] = None) -> pd.DataFrame:
-        """
-        Main optimization workflow with dynamic enforcement scaling
-        """
-        try:
-            self.perf_monitor.start_timer("total_optimization")
-            self._update_progress(progress_callback, 0.0, "Initializing...")
+            df: pd.DataFrame,
+            game_info: Dict,
+            num_lineups: int = 20,
+            field_size: str = 'large_field',
+            ai_enforcement_level: AIEnforcementLevel = AIEnforcementLevel.STRONG,
+            use_api: bool = True,
+            randomness: float = 0.15,
+            use_genetic: bool = False,
+            use_simulation: bool = True,
+            progress_callback: Optional[Callable[[float, str], None]] = None) -> pd.DataFrame:
+    """
+    Main optimization workflow with dynamic enforcement scaling
+    """
+    try:
+        self.perf_monitor.start_timer("total_optimization")
+        self._update_progress(progress_callback, 0.0, "Initializing...")
 
-            # Phase 1: Data validation
-            self._update_progress(progress_callback, 0.05, "Validating data...")
-            df = self._validate_and_prepare_data(df)
-            self.df = df
-            self.game_info = game_info
+        # Phase 1: Data validation
+        self._update_progress(progress_callback, 0.05, "Validating data...")
+        
+        # ADDED: Transform CSV columns to expected format
+        df = self._transform_csv_format(df)
+        
+        df = self._validate_and_prepare_data(df)
+        self.df = df
+        self.game_info = game_info
 
             # ENHANCED: Dynamic enforcement level determination
             original_enforcement = ai_enforcement_level
