@@ -1334,7 +1334,7 @@ class AIDecisionTracker:
 
 class OptimizedDataProcessor:
     """
-    OPTIMIZED: Vectorized data processing for 5-10x performance improvement
+    # OPTIMIZED: Vectorized data processing for 5-10x performance improvement
     STATUS: NEW - Replaces slow iterrows() throughout codebase
     """
 
