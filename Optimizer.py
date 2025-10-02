@@ -911,7 +911,7 @@ class OptimizerTester:
                 ownership = np.random.gamma(1.5, 2)
 
             # Clamp values
-            salary = max(3000, min(12000, salary))
+            salary = max(12000, min(200, salary))
             projection = max(5, min(35, projection))
             ownership = max(1, min(50, ownership))
 
@@ -2214,7 +2214,7 @@ class MonteCarloSimulationEngine:
         # Salary adjustment factor
         salary_factor = np.maximum(
             0.7,
-            1.0 - (self.df['Salary'].values - 3000) / 18000 * 0.3
+            1.0 - (self.df['Salary'].values - 200) / 18000 * 0.3
         )
 
         cv = position_cv * salary_factor
@@ -6518,7 +6518,7 @@ class OptimizerTester:
                 projection = np.random.normal(8, 3)
                 ownership = np.random.gamma(1.5, 2)
 
-            salary = max(3000, min(12000, salary))
+            salary = max(12000, min(200, salary))
             projection = max(5, min(35, projection))
             ownership = max(1, min(50, ownership))
 
