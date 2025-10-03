@@ -5581,9 +5581,41 @@ class ShowdownOptimizer:
         # Fill missing projections
         df['Projected_Points'] = df['Projected_Points'].fillna(0.0)
 
-        # Validate data ranges
-        if (df['Salary'] < 200).any() or (df['Salary'] > 12000).any():
-            self.logger.log("Unusual salary values detected", "WARNING")
+        # Validate and normalize salary ranges
+        min_salary = df['Salary'].min()
+        max_salary = df['Salary'].max()
+
+        # Detect if salaries are in wrong format and fix
+        if max_salary < 200:
+            # Salaries appear to be in thousands format (like 5.5 instead of 5500)
+            df['Salary'] = (df['Salary'] * 1000).astype(int)
+            self.logger.log(f"Converted salaries from thousands to dollars (x1000)", "INFO")
+            min_salary = df['Salary'].min()
+            max_salary = df['Salary'].max()
+        elif max_salary > 50000:
+            # Salaries might be in cents or wrong format
+            self.logger.log(
+                f"ERROR: Salaries too high. Max={max_salary}. DK range is $200-$12,000",
+                "ERROR"
+            )
+            raise ValueError(
+                f"Salary values outside valid DraftKings range. "
+                f"Found: ${min_salary:,}-${max_salary:,}. "
+                f"Expected: $200-$12,000. Check your CSV salary column."
+            )
+
+        # Log the actual salary range
+        self.logger.log(
+            f"Salary range: ${min_salary:,} to ${max_salary:,}",
+            "INFO"
+        )
+
+        # Validate reasonable range
+        if min_salary < 200 or max_salary > 12000:
+            self.logger.log(
+                f"WARNING: Unusual salaries detected. Min=${min_salary}, Max=${max_salary}",
+                "WARNING"
+            )
         
         if (df['Projected_Points'] > 50).any():
             self.logger.log("Unusually high projections detected", "WARNING")
