@@ -1,179 +1,60 @@
 
 """
-NFL Showdown Optimizer - Streamlit Interface
-Enhanced with Dynamic Enforcement Integration & Robust Data Validation
+NFL DFS AI-Driven Optimizer - Streamlit Application
+Production-Ready UI with Comprehensive Error Handling
+
+IMPROVEMENTS:
+- Robust session state management
+- Comprehensive input validation
+- Better error messaging
+- Progress tracking
+- Safe file handling
+- Memory management
 """
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from typing import Dict, List, Any, Optional, Tuple
 import io
 import traceback
-import numpy as np
+from datetime import datetime
+import warnings
 
-# Import from your optimizer file
-from Optimizer import (
-    ShowdownOptimizer,
-    AIEnforcementLevel,
-    OptimizerConfig,
-    get_logger,
-    FieldSize
-)
+# Suppress warnings in UI
+warnings.filterwarnings('ignore')
 
 # ============================================================================
 # PAGE CONFIGURATION
 # ============================================================================
 
 st.set_page_config(
-    page_title="NFL Showdown Optimizer - AI Powered",
+    page_title="NFL DFS AI Optimizer",
     page_icon="🏈",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/yourusername/nfl-dfs-optimizer',
+        'Report a bug': 'https://github.com/yourusername/nfl-dfs-optimizer/issues',
+        'About': """
+        # NFL DFS AI-Driven Optimizer
+
+        Advanced DFS lineup optimization powered by triple-AI strategic analysis.
+
+        **Version:** 2.0.0
+        **Features:**
+        - Triple AI strategist consensus
+        - Monte Carlo simulation
+        - Genetic algorithm optimization
+        - Game theory analysis
+        - Correlation stacking
+        - Contrarian angle detection
+        """
+    }
 )
-
-# ============================================================================
-# SESSION STATE INITIALIZATION
-# ============================================================================
-
-if 'optimizer' not in st.session_state:
-    st.session_state.optimizer = None
-if 'lineups' not in st.session_state:
-    st.session_state.lineups = None
-if 'optimization_complete' not in st.session_state:
-    st.session_state.optimization_complete = False
-if 'optimization_metadata' not in st.session_state:
-    st.session_state.optimization_metadata = None
-if 'show_advanced' not in st.session_state:
-    st.session_state.show_advanced = False
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def _find_col_index(columns, search_terms):
-    """Find best matching column index"""
-    for i, col in enumerate(columns):
-        if col and any(term.lower() in str(col).lower() for term in search_terms):
-            return i
-    return 0
-
-def transform_salary_values(df, salary_col_name='Salary'):
-    """
-    Intelligently transform salary values to DraftKings format ($200-$12,000)
-
-    Handles:
-    - Thousands format (5.5 -> 5500)
-    - Already correct format (5500 -> 5500)
-    - Cents format (550000 -> 5500)
-    """
-    df = df.copy()
-
-    salaries = df[salary_col_name]
-    min_sal = salaries.min()
-    max_sal = salaries.max()
-
-    # Log original range
-    st.info(f"📊 Original salary range: ${min_sal:,.2f} - ${max_sal:,.2f}")
-
-    # Case 1: Values are in thousands (like 5.5, 7.2, 10.0)
-    if max_sal <= 20:
-        df[salary_col_name] = (salaries * 1000).astype(int)
-        st.success(f"✅ Converted salaries from thousands format (x1000)")
-
-    # Case 2: Values are in cents or too high (like 550000)
-    elif max_sal > 50000:
-        df[salary_col_name] = (salaries / 100).astype(int)
-        st.warning(f"⚠️ Converted salaries by dividing by 100")
-
-    # Case 3: Values look correct (between 200-15000)
-    elif min_sal >= 200 and max_sal <= 15000:
-        df[salary_col_name] = salaries.astype(int)
-        st.success(f"✅ Salary format looks correct")
-
-    # Case 4: Unclear format - try to infer
-    else:
-        st.error(f"❌ Unable to determine salary format. Min=${min_sal}, Max=${max_sal}")
-        st.error("Expected DraftKings range: $200-$12,000")
-        raise ValueError(
-            f"Salary values unclear. Found: ${min_sal:,.0f} - ${max_sal:,.0f}. "
-            f"Expected: $200-$12,000"
-        )
-
-    # Validate final range
-    final_min = df[salary_col_name].min()
-    final_max = df[salary_col_name].max()
-
-    st.info(f"📊 Final salary range: ${final_min:,} - ${final_max:,}")
-
-    if final_min < 200 or final_max > 15000:
-        st.error(
-            f"⚠️ WARNING: Salaries outside typical DK range. "
-            f"Min=${final_min:,}, Max=${final_max:,}"
-        )
-
-    return df
-
-def validate_player_pool(df):
-    """
-    Comprehensive player pool validation
-    Returns: (critical_issues, warnings, info_messages)
-    """
-    critical = []
-    warnings = []
-    info = []
-
-    player_count = len(df)
-    team_count = df['Team'].nunique()
-
-    # Critical issues (will block optimization)
-    if player_count < 6:
-        critical.append(f"Only {player_count} players - need at least 6")
-    elif player_count < 12:
-        critical.append(f"Only {player_count} players - optimization will use Advisory enforcement")
-
-    if team_count < 2:
-        critical.append("Only 1 team - DraftKings requires players from 2+ teams")
-
-    # Salary validation
-    min_possible = df.nsmallest(6, 'Salary')['Salary'].sum()
-    max_possible = df.nlargest(6, 'Salary')['Salary'].sum()
-
-    if min_possible > 50000:
-        critical.append(f"Cheapest possible lineup (${min_possible:,}) exceeds salary cap")
-
-    if (df['Salary'] > 15000).any():
-        warnings.append("Salary values over $15,000 detected - verify data accuracy")
-    if (df['Salary'] < 200).any():
-        warnings.append("Salary values under $200 detected - verify data accuracy")
-
-    # Warnings (optimization will proceed with adjustments)
-    if player_count < 18:
-        warnings.append(f"Small pool ({player_count} players) - enforcement will auto-adjust to Advisory")
-    elif player_count < 25:
-        warnings.append(f"Limited pool ({player_count} players) - enforcement capped at Moderate")
-
-    team_counts = df['Team'].value_counts()
-    for team, count in team_counts.items():
-        if count < 3:
-            warnings.append(f"Only {count} players from {team} - limits lineup diversity")
-
-    # Informational
-    info.append(f"Player pool: {player_count} players from {team_count} teams")
-    info.append(f"Salary range: ${df['Salary'].min():,} - ${df['Salary'].max():,}")
-    info.append(f"Projection range: {df['Projected_Points'].min():.1f} - {df['Projected_Points'].max():.1f} pts")
-
-    return critical, warnings, info
-
-def get_enforcement_recommendation(player_count):
-    """Get recommended enforcement level based on pool size"""
-    if player_count < 18:
-        return "Advisory", "⚠️ Small pool"
-    elif player_count < 25:
-        return "Moderate", "✓ Limited pool"
-    elif player_count < 35:
-        return "Strong", "✓✓ Good pool size"
-    else:
-        return "Strong or Mandatory", "✓✓✓ Large pool"
 
 # ============================================================================
 # CUSTOM CSS
@@ -181,816 +62,1250 @@ def get_enforcement_recommendation(player_count):
 
 st.markdown("""
 <style>
-    .stAlert > div {
-        padding: 10px;
+    /* Main container */
+    .main {
+        padding: 0rem 1rem;
     }
-    .metric-container {
+
+    /* Headers */
+    h1 {
+        color: #1f77b4;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #1f77b4;
+    }
+
+    h2 {
+        color: #ff7f0e;
+        margin-top: 20px;
+    }
+
+    h3 {
+        color: #2ca02c;
+    }
+
+    /* Metrics */
+    .stMetric {
         background-color: #f0f2f6;
         padding: 10px;
         border-radius: 5px;
-        margin: 5px 0;
+        border-left: 4px solid #1f77b4;
     }
-    .enforcement-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-weight: bold;
-        font-size: 0.9em;
-    }
-    .enforcement-adjusted {
-        background-color: #ffd700;
-        color: #000;
-    }
-    .enforcement-normal {
-        background-color: #90EE90;
-        color: #000;
-    }
-    .data-issue {
-        background-color: #fff3cd;
-        border-left: 4px solid #ffc107;
-        padding: 10px;
+
+    /* Success/Error boxes */
+    .success-box {
+        padding: 15px;
+        background-color: #d4edda;
+        border-left: 5px solid #28a745;
+        border-radius: 5px;
         margin: 10px 0;
+    }
+
+    .error-box {
+        padding: 15px;
+        background-color: #f8d7da;
+        border-left: 5px solid #dc3545;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+
+    .warning-box {
+        padding: 15px;
+        background-color: #fff3cd;
+        border-left: 5px solid #ffc107;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+
+    .info-box {
+        padding: 15px;
+        background-color: #d1ecf1;
+        border-left: 5px solid #17a2b8;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+
+    /* Buttons */
+    .stButton > button {
+        width: 100%;
+        background-color: #1f77b4;
+        color: white;
+        font-weight: bold;
+        border-radius: 5px;
+        padding: 10px;
+        border: none;
+        transition: all 0.3s;
+    }
+
+    .stButton > button:hover {
+        background-color: #155a8a;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    /* Sidebar */
+    .css-1d391kg {
+        background-color: #f8f9fa;
+    }
+
+    /* DataFrames */
+    .dataframe {
+        font-size: 12px;
+    }
+
+    /* Progress bar */
+    .stProgress > div > div > div {
+        background-color: #1f77b4;
+    }
+
+    /* Expanders */
+    .streamlit-expanderHeader {
+        background-color: #f0f2f6;
+        border-radius: 5px;
+        font-weight: bold;
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 20px;
+        background-color: #f0f2f6;
+        border-radius: 5px 5px 0 0;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: #1f77b4;
+        color: white;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================================
-# HEADER
-# ============================================================================
-
-st.title("🏈 NFL Showdown Optimizer")
-st.markdown("### AI-Powered DFS Lineup Generator with Dynamic Enforcement")
 
 # ============================================================================
-# SIDEBAR - CONFIGURATION
+# SESSION STATE INITIALIZATION
 # ============================================================================
 
-with st.sidebar:
-    st.header("⚙️ Configuration")
+class SessionStateManager:
+    """
+    OPTIMIZED: Centralized session state management
 
-    # API Key Section
-    st.subheader("🔑 Claude API Key")
+    IMPROVEMENTS:
+    - Safe initialization
+    - Type checking
+    - Default values
+    - Reset functionality
+    """
 
-    try:
-        default_api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
-        if default_api_key:
-            st.success("✓ API key loaded from secrets")
-            api_key = default_api_key
-            use_secrets = True
-        else:
-            use_secrets = False
-    except:
-        use_secrets = False
-        default_api_key = ""
+    @staticmethod
+    def initialize():
+        """Initialize all session state variables with safe defaults"""
 
-    if not use_secrets:
-        api_key = st.text_input(
-            "Enter Claude API key",
-            type="password",
-            help="Get your API key from console.anthropic.com"
-        )
+        # Core data
+        if 'player_df' not in st.session_state:
+            st.session_state.player_df = None
 
-    if api_key:
-        st.success("✓ AI analysis enabled")
-        with st.expander("Active AI Strategists"):
-            st.markdown("- **Game Theory AI**: Ownership leverage")
-            st.markdown("- **Correlation AI**: Stacking analysis")
-            st.markdown("- **Contrarian AI**: Unique narratives")
-    else:
-        st.warning("No API key - using statistical mode")
+        if 'game_info' not in st.session_state:
+            st.session_state.game_info = {
+                'teams': 'Team A vs Team B',
+                'total': 45.0,
+                'spread': 0.0,
+                'weather': 'Clear',
+                'primetime': False,
+                'injury_count': 0
+            }
 
-    st.divider()
+        # AI components
+        if 'api_manager' not in st.session_state:
+            st.session_state.api_manager = None
 
-    # File Upload
-    st.subheader("📁 Player Data")
-    uploaded_file = st.file_uploader(
-        "Upload CSV",
-        type=['csv'],
-        help="CSV with player projections"
-    )
+        if 'game_theory_ai' not in st.session_state:
+            st.session_state.game_theory_ai = None
 
-    if uploaded_file:
-        st.divider()
+        if 'correlation_ai' not in st.session_state:
+            st.session_state.correlation_ai = None
 
-        # Game Information
-        st.subheader("🏟️ Game Context")
-        teams = st.text_input("Matchup", "Team1 vs Team2")
+        if 'contrarian_ai' not in st.session_state:
+            st.session_state.contrarian_ai = None
 
-        col1, col2 = st.columns(2)
-        with col1:
-            game_total = st.number_input("Total", value=47.5, step=0.5)
-        with col2:
-            spread = st.number_input("Spread", value=-3.5, step=0.5)
+        # AI recommendations
+        if 'ai_recommendations' not in st.session_state:
+            st.session_state.ai_recommendations = {}
 
-        weather = st.selectbox(
-            "Weather",
-            ["Clear", "Dome", "Rain", "Snow", "Wind"]
-        )
+        if 'synthesis' not in st.session_state:
+            st.session_state.synthesis = None
 
-        st.divider()
+        # Optimization results
+        if 'optimized_lineups' not in st.session_state:
+            st.session_state.optimized_lineups = None
 
-        # Optimization Settings
-        st.subheader("🎯 Settings")
+        if 'simulation_results' not in st.session_state:
+            st.session_state.simulation_results = {}
 
-        num_lineups = st.slider(
-            "Number of Lineups",
-            min_value=5,
-            max_value=150,
-            value=20,
-            step=5
-        )
+        if 'genetic_results' not in st.session_state:
+            st.session_state.genetic_results = None
 
-        field_size = st.selectbox(
-            "Field Size",
-            options=[
-                'small_field',
-                'medium_field',
-                'large_field',
-                'large_field_aggressive',
-                'milly_maker'
-            ],
-            index=2,
-            format_func=lambda x: {
-                'small_field': '3-Max / 5-Max',
-                'medium_field': '20-Max',
-                'large_field': 'Large GPP',
-                'large_field_aggressive': 'Very Large GPP',
-                'milly_maker': 'Milly Maker'
-            }[x]
-        )
+        # Configuration
+        if 'config' not in st.session_state:
+            st.session_state.config = {
+                'num_lineups': 20,
+                'field_size': FieldSize.LARGE.value,
+                'use_api': True,
+                'api_key': '',
+                'enforcement_level': AIEnforcementLevel.STRONG.value,
+                'run_simulation': True,
+                'use_genetic': False,
+                'num_simulations': 5000,
+                'genetic_generations': 50,
+                'ownership_focus': 'balanced',
+                'stack_preference': 'moderate',
+                'min_salary': 49000,
+                'max_ownership_total': 150
+            }
 
-        # AI Enforcement with recommendation
-        st.markdown("**AI Enforcement**")
+        # UI state
+        if 'optimization_complete' not in st.session_state:
+            st.session_state.optimization_complete = False
 
-        # Show recommendation in expander
-        with st.expander("ℹ️ Enforcement Guide"):
-            st.markdown("""
-            **Advisory**: AI recommendations as preferences only
-            - Best for: < 18 players
-            - AI influence: ~25%
+        if 'analysis_complete' not in st.session_state:
+            st.session_state.analysis_complete = False
 
-            **Moderate**: High-confidence AI rules enforced
-            - Best for: 18-25 players
-            - AI influence: ~55%
-
-            **Strong**: Most AI recommendations enforced
-            - Best for: 25-35 players
-            - AI influence: ~80%
-
-            **Mandatory**: All AI rules strictly enforced
-            - Best for: 35+ players
-            - AI influence: ~95%
-
-            *Note: System will auto-adjust if pool size is insufficient*
-            """)
-
-        ai_enforcement = st.select_slider(
-            "Level",
-            options=['Advisory', 'Moderate', 'Strong', 'Mandatory'],
-            value='Moderate',
-            help="Will auto-adjust based on player pool size"
-        )
-
-        st.divider()
-
-        # Advanced Options
-        if st.checkbox("⚡ Advanced Options"):
-            st.session_state.show_advanced = True
-        else:
+        if 'show_advanced' not in st.session_state:
             st.session_state.show_advanced = False
 
-        if st.session_state.show_advanced:
-            col1, col2 = st.columns(2)
+        if 'current_step' not in st.session_state:
+            st.session_state.current_step = 1
 
-            with col1:
-                use_genetic = st.checkbox(
-                    "Genetic Algorithm",
-                    help="Better diversity, slower"
-                )
-            with col2:
-                use_simulation = st.checkbox(
-                    "Monte Carlo Sim",
-                    value=True,
-                    help="Calculate ceiling/floor"
-                )
+        # Performance tracking
+        if 'execution_times' not in st.session_state:
+            st.session_state.execution_times = {}
 
-            randomness = st.slider(
-                "Projection Variance",
-                0.0, 0.30, 0.15, 0.05,
-                help="Higher = more lineup diversity"
-            )
+        if 'error_log' not in st.session_state:
+            st.session_state.error_log = []
+
+        # Export settings
+        if 'export_format' not in st.session_state:
+            st.session_state.export_format = 'csv'
+
+    @staticmethod
+    def reset_optimization():
+        """Reset optimization-related state"""
+        st.session_state.ai_recommendations = {}
+        st.session_state.synthesis = None
+        st.session_state.optimized_lineups = None
+        st.session_state.simulation_results = {}
+        st.session_state.genetic_results = None
+        st.session_state.optimization_complete = False
+        st.session_state.analysis_complete = False
+        st.session_state.execution_times = {}
+
+    @staticmethod
+    def reset_all():
+        """Complete reset of session state"""
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        SessionStateManager.initialize()
+
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+class UIHelpers:
+    """
+    OPTIMIZED: UI helper functions with error handling
+    """
+
+    @staticmethod
+    def show_success(message: str):
+        """Display success message"""
+        st.markdown(f'<div class="success-box">✅ {message}</div>', unsafe_allow_html=True)
+
+    @staticmethod
+    def show_error(message: str):
+        """Display error message"""
+        st.markdown(f'<div class="error-box">❌ {message}</div>', unsafe_allow_html=True)
+
+    @staticmethod
+    def show_warning(message: str):
+        """Display warning message"""
+        st.markdown(f'<div class="warning-box">⚠️ {message}</div>', unsafe_allow_html=True)
+
+    @staticmethod
+    def show_info(message: str):
+        """Display info message"""
+        st.markdown(f'<div class="info-box">ℹ️ {message}</div>', unsafe_allow_html=True)
+
+    @staticmethod
+    def create_metric_card(label: str, value: Any, delta: Optional[Any] = None):
+        """Create a metric display card"""
+        st.metric(label=label, value=value, delta=delta)
+
+    @staticmethod
+    def format_currency(value: float) -> str:
+        """Format value as currency"""
+        return f"${value:,.0f}"
+
+    @staticmethod
+    def format_percentage(value: float) -> str:
+        """Format value as percentage"""
+        return f"{value:.1f}%"
+
+    @staticmethod
+    def format_duration(seconds: float) -> str:
+        """Format duration in human-readable format"""
+        if seconds < 1:
+            return f"{seconds*1000:.0f}ms"
+        elif seconds < 60:
+            return f"{seconds:.1f}s"
         else:
-            use_genetic = False
-            use_simulation = True
-            randomness = 0.15
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}m {secs}s"
 
-        st.divider()
+    @staticmethod
+    def safe_division(numerator: float, denominator: float, default: float = 0.0) -> float:
+        """Safe division with default value"""
+        try:
+            if denominator == 0:
+                return default
+            return numerator / denominator
+        except:
+            return default
 
-        # Generate Button
-        optimize_button = st.button(
-            "🚀 Generate Lineups",
-            type="primary",
-            use_container_width=True
+    @staticmethod
+    def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> Tuple[bool, List[str]]:
+        """
+        Validate DataFrame has required columns
+
+        Returns:
+            Tuple of (is_valid, missing_columns)
+        """
+        if df is None or df.empty:
+            return False, required_columns
+
+        missing = [col for col in required_columns if col not in df.columns]
+        return len(missing) == 0, missing
+
+
+# ============================================================================
+# FILE UPLOAD AND VALIDATION
+# ============================================================================
+
+class FileHandler:
+    """
+    OPTIMIZED: Secure file handling with validation
+
+    IMPROVEMENTS:
+    - Size limits
+    - Format validation
+    - Column validation
+    - Safe parsing
+    """
+
+    REQUIRED_COLUMNS = [
+        'Player', 'Position', 'Team', 'Salary', 'Projected_Points', 'Ownership'
+    ]
+
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+    @staticmethod
+    def validate_csv_file(uploaded_file) -> Tuple[bool, str]:
+        """
+        Validate uploaded CSV file
+
+        Returns:
+            Tuple of (is_valid, message)
+        """
+        if uploaded_file is None:
+            return False, "No file uploaded"
+
+        # Check file size
+        file_size = uploaded_file.size
+        if file_size > FileHandler.MAX_FILE_SIZE:
+            return False, f"File too large: {file_size/1024/1024:.1f}MB (max 10MB)"
+
+        # Check file extension
+        if not uploaded_file.name.endswith('.csv'):
+            return False, "File must be a CSV file"
+
+        return True, "File validation passed"
+
+    @staticmethod
+    def load_csv(uploaded_file) -> Tuple[Optional[pd.DataFrame], str]:
+        """
+        Load and validate CSV file
+
+        Returns:
+            Tuple of (dataframe, message)
+        """
+        try:
+            # Validate file first
+            is_valid, message = FileHandler.validate_csv_file(uploaded_file)
+            if not is_valid:
+                return None, message
+
+            # Try to load CSV
+            df = pd.read_csv(uploaded_file)
+
+            if df.empty:
+                return None, "CSV file is empty"
+
+            # Validate columns
+            is_valid, missing_cols = UIHelpers.validate_dataframe(
+                df, FileHandler.REQUIRED_COLUMNS
+            )
+
+            if not is_valid:
+                return None, f"Missing required columns: {', '.join(missing_cols)}"
+
+            # Validate data types and ranges
+            validation_result = FileHandler.validate_data(df)
+            if not validation_result['valid']:
+                return None, f"Data validation failed: {validation_result['message']}"
+
+            # Clean and prepare data
+            df = FileHandler.clean_dataframe(df)
+
+            return df, f"Successfully loaded {len(df)} players"
+
+        except pd.errors.EmptyDataError:
+            return None, "CSV file is empty or corrupted"
+        except pd.errors.ParserError as e:
+            return None, f"CSV parsing error: {str(e)}"
+        except Exception as e:
+            return None, f"Error loading file: {str(e)}"
+
+    @staticmethod
+    def validate_data(df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Validate data types and ranges
+
+        Returns:
+            Dictionary with validation results
+        """
+        try:
+            # Check salary range
+            invalid_salaries = (
+                (df['Salary'] < OptimizerConfig.MIN_SALARY) |
+                (df['Salary'] > OptimizerConfig.MAX_SALARY * 1.5)
+            )
+
+            if invalid_salaries.any():
+                return {
+                    'valid': False,
+                    'message': f"{invalid_salaries.sum()} players have invalid salaries"
+                }
+
+            # Check ownership range
+            invalid_ownership = (df['Ownership'] < 0) | (df['Ownership'] > 100)
+            if invalid_ownership.any():
+                return {
+                    'valid': False,
+                    'message': f"{invalid_ownership.sum()} players have invalid ownership %"
+                }
+
+            # Check projected points
+            invalid_projections = (df['Projected_Points'] < 0) | (df['Projected_Points'] > 100)
+            if invalid_projections.any():
+                return {
+                    'valid': False,
+                    'message': f"{invalid_projections.sum()} players have invalid projections"
+                }
+
+            # Check for required positions
+            valid_positions = {'QB', 'RB', 'WR', 'TE', 'DST', 'K', 'FLEX'}
+            invalid_positions = ~df['Position'].isin(valid_positions)
+
+            if invalid_positions.any():
+                unique_invalid = df.loc[invalid_positions, 'Position'].unique()
+                return {
+                    'valid': False,
+                    'message': f"Invalid positions found: {', '.join(unique_invalid)}"
+                }
+
+            # Check for minimum players per position
+            position_counts = df['Position'].value_counts()
+
+            min_requirements = {'QB': 2, 'RB': 3, 'WR': 3, 'TE': 2}
+
+            for pos, min_count in min_requirements.items():
+                if position_counts.get(pos, 0) < min_count:
+                    return {
+                        'valid': False,
+                        'message': f"Need at least {min_count} {pos} players (found {position_counts.get(pos, 0)})"
+                    }
+
+            return {'valid': True, 'message': 'All validations passed'}
+
+        except Exception as e:
+            return {'valid': False, 'message': f"Validation error: {str(e)}"}
+
+    @staticmethod
+    def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Clean and prepare DataFrame
+
+        Args:
+            df: Raw DataFrame
+
+        Returns:
+            Cleaned DataFrame
+        """
+        df = df.copy()
+
+        # Remove duplicates
+        df = df.drop_duplicates(subset=['Player'], keep='first')
+
+        # Strip whitespace from string columns
+        string_cols = ['Player', 'Position', 'Team']
+        for col in string_cols:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+
+        # Ensure numeric columns
+        numeric_cols = ['Salary', 'Projected_Points', 'Ownership']
+        for col in numeric_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # Fill NaN ownership with default
+        df['Ownership'] = df['Ownership'].fillna(10.0)
+
+        # Remove rows with invalid data
+        df = df.dropna(subset=['Player', 'Position', 'Salary', 'Projected_Points'])
+
+        # Sort by projected points
+        df = df.sort_values('Projected_Points', ascending=False).reset_index(drop=True)
+
+        return df
+
+    @staticmethod
+    def create_sample_csv() -> pd.DataFrame:
+        """
+        Create sample CSV template
+
+        Returns:
+            Sample DataFrame
+        """
+        sample_data = {
+            'Player': [
+                'Patrick Mahomes', 'Travis Kelce', 'Tyreek Hill',
+                'Derrick Henry', 'Justin Jefferson', 'Mark Andrews',
+                'Josh Allen', 'Stefon Diggs', 'Christian McCaffrey',
+                'Cooper Kupp', 'Austin Ekeler', 'Davante Adams'
+            ],
+            'Position': [
+                'QB', 'TE', 'WR', 'RB', 'WR', 'TE',
+                'QB', 'WR', 'RB', 'WR', 'RB', 'WR'
+            ],
+            'Team': [
+                'KC', 'KC', 'MIA', 'TEN', 'MIN', 'BAL',
+                'BUF', 'BUF', 'SF', 'LAR', 'LAC', 'LV'
+            ],
+            'Salary': [
+                11000, 8500, 9000, 9500, 8800, 7500,
+                10500, 8000, 10000, 8500, 8800, 8200
+            ],
+            'Projected_Points': [
+                25.5, 18.2, 19.8, 21.3, 19.5, 16.8,
+                24.8, 17.9, 22.7, 18.5, 20.1, 17.6
+            ],
+            'Ownership': [
+                35.2, 28.5, 22.1, 18.7, 25.3, 15.9,
+                32.8, 20.4, 30.1, 24.7, 19.3, 16.2
+            ]
+        }
+
+        return pd.DataFrame(sample_data)
+
+
+# ============================================================================
+# DATA PREVIEW COMPONENT
+# ============================================================================
+
+def render_data_preview(df: pd.DataFrame):
+    """
+    Render data preview with statistics
+
+    Args:
+        df: Player DataFrame
+    """
+    st.subheader("📊 Data Preview & Statistics")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        UIHelpers.create_metric_card(
+            "Total Players",
+            len(df)
         )
 
-# ============================================================================
-# MAIN CONTENT AREA
-# ============================================================================
+    with col2:
+        UIHelpers.create_metric_card(
+            "Avg Salary",
+            UIHelpers.format_currency(df['Salary'].mean())
+        )
 
-if uploaded_file is None:
-    # Welcome Screen
-    st.info("👆 Upload a CSV file in the sidebar to begin")
+    with col3:
+        UIHelpers.create_metric_card(
+            "Avg Projection",
+            f"{df['Projected_Points'].mean():.1f}"
+        )
 
+    with col4:
+        UIHelpers.create_metric_card(
+            "Avg Ownership",
+            UIHelpers.format_percentage(df['Ownership'].mean())
+        )
+
+    # Position breakdown
+    st.markdown("#### Position Breakdown")
+
+    position_stats = df.groupby('Position').agg({
+        'Player': 'count',
+        'Salary': 'mean',
+        'Projected_Points': 'mean',
+        'Ownership': 'mean'
+    }).round(1)
+
+    position_stats.columns = ['Count', 'Avg Salary', 'Avg Proj', 'Avg Own%']
+    position_stats['Avg Salary'] = position_stats['Avg Salary'].apply(
+        lambda x: UIHelpers.format_currency(x)
+    )
+
+    st.dataframe(position_stats, use_container_width=True)
+
+    # Top players by projection
     col1, col2 = st.columns(2)
 
     with col1:
-        with st.expander("📋 Required CSV Format"):
-            st.markdown("""
-            **Required Columns:**
-            - Player/Name (or first_name + last_name)
-            - Position (QB, RB, WR, TE, DST)
-            - Team
-            - Salary (DraftKings format)
-            - Projected Points
-
-            **Optional:**
-            - Ownership % (will default to 10%)
-
-            **Salary Formats Supported:**
-            - Dollars: 5500, 7200, 9800
-            - Thousands: 5.5, 7.2, 9.8
-            - The app will auto-detect and convert
-            """)
+        st.markdown("#### Top 10 Projected")
+        top_proj = df.nlargest(10, 'Projected_Points')[
+            ['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']
+        ].copy()
+        top_proj['Salary'] = top_proj['Salary'].apply(UIHelpers.format_currency)
+        top_proj.columns = ['Player', 'Pos', 'Salary', 'Proj', 'Own%']
+        st.dataframe(top_proj, hide_index=True, use_container_width=True)
 
     with col2:
-        with st.expander("🤖 How AI Optimization Works"):
-            st.markdown("""
-            **Triple-AI Analysis:**
+        st.markdown("#### Highest Value (Proj/Salary)")
+        df_value = df.copy()
+        df_value['Value'] = df_value['Projected_Points'] / (df_value['Salary'] / 1000)
+        top_value = df_value.nlargest(10, 'Value')[
+            ['Player', 'Position', 'Salary', 'Projected_Points', 'Value']
+        ].copy()
+        top_value['Salary'] = top_value['Salary'].apply(UIHelpers.format_currency)
+        top_value['Value'] = top_value['Value'].round(2)
+        top_value.columns = ['Player', 'Pos', 'Salary', 'Proj', 'Value']
+        st.dataframe(top_value, hide_index=True, use_container_width=True)
 
-            1. **Game Theory AI** analyzes ownership inefficiencies
-            2. **Correlation AI** builds optimal stacks
-            3. **Contrarian AI** finds unique winning angles
 
-            The system automatically adjusts constraint enforcement based on your player pool size to ensure feasibility while maximizing AI strategic impact.
-            """)
-
-    st.stop()
-
-# ============================================================================
-# FILE UPLOADED - SHOW DATA MAPPING
-# ============================================================================
-
-try:
-    df_raw = pd.read_csv(uploaded_file)
-except Exception as e:
-    st.error(f"❌ Failed to read CSV: {str(e)}")
-    st.stop()
-
-st.subheader("📊 Data Preview & Mapping")
-
-with st.expander("🔍 Raw Data (first 10 rows)", expanded=False):
-    st.dataframe(df_raw.head(10), use_container_width=True)
-
-# Column Mapping
-st.markdown("**Map CSV columns to required fields:**")
-
-col1, col2, col3 = st.columns(3)
-
-csv_columns = [''] + list(df_raw.columns)
-
-with col1:
-    # Check for split name columns
-    has_first_last = ('first_name' in df_raw.columns and 'last_name' in df_raw.columns)
-
-    if has_first_last:
-        st.info("📌 Detected first_name + last_name columns")
-        player_col = 'first_name'  # Will be combined later
-        combine_names = True
-    else:
-        player_col = st.selectbox(
-            "Player Name",
-            csv_columns,
-            index=_find_col_index(csv_columns, ['player', 'name', 'full_name'])
-        )
-        combine_names = False
-
-    position_col = st.selectbox(
-        "Position",
-        csv_columns,
-        index=_find_col_index(csv_columns, ['position', 'pos'])
-    )
-
-with col2:
-    team_col = st.selectbox(
-        "Team",
-        csv_columns,
-        index=_find_col_index(csv_columns, ['team'])
-    )
-
-    salary_col = st.selectbox(
-        "Salary",
-        csv_columns,
-        index=_find_col_index(csv_columns, ['salary', 'dk salary', 'draftkings'])
-    )
-
-with col3:
-    proj_col = st.selectbox(
-        "Projected Points",
-        csv_columns,
-        index=_find_col_index(csv_columns, ['fpts', 'projection', 'points', 'projected', 'point_projection'])
-    )
-
-    own_col = st.selectbox(
-        "Ownership % (optional)",
-        csv_columns,
-        index=_find_col_index(csv_columns, ['ownership', 'own', 'projected_ownership'])
-    )
-
-# Validate mapping
-if combine_names:
-    required_mapped = all([position_col, team_col, salary_col, proj_col])
-else:
-    required_mapped = all([player_col, position_col, team_col, salary_col, proj_col])
-
-if not required_mapped:
-    st.warning("⚠️ Please map all required columns")
-    st.stop()
-
-# Create mapped dataframe
-try:
-    if combine_names:
-        # Combine first and last name
-        df_mapped = pd.DataFrame({
-            'Player': df_raw['first_name'].astype(str) + ' ' + df_raw['last_name'].astype(str),
-            'Position': df_raw[position_col],
-            'Team': df_raw[team_col],
-            'Salary': pd.to_numeric(df_raw[salary_col], errors='coerce'),
-            'Projected_Points': pd.to_numeric(df_raw[proj_col], errors='coerce'),
-            'Ownership': pd.to_numeric(df_raw[own_col], errors='coerce') if own_col else 10.0
-        })
-        st.success("✅ Combined first_name + last_name → Player")
-    else:
-        df_mapped = pd.DataFrame({
-            'Player': df_raw[player_col],
-            'Position': df_raw[position_col],
-            'Team': df_raw[team_col],
-            'Salary': pd.to_numeric(df_raw[salary_col], errors='coerce'),
-            'Projected_Points': pd.to_numeric(df_raw[proj_col], errors='coerce'),
-            'Ownership': pd.to_numeric(df_raw[own_col], errors='coerce') if own_col else 10.0
-        })
-
-    # Clean data
-    df_mapped = df_mapped.dropna(subset=['Player', 'Position', 'Team', 'Salary', 'Projected_Points'])
-
-    if df_mapped.empty:
-        st.error("❌ No valid data after cleaning. Check your CSV for missing/invalid values.")
-        st.stop()
-
-    # Standardize position and team formatting
-    df_mapped['Position'] = df_mapped['Position'].astype(str).str.upper()
-    df_mapped['Team'] = df_mapped['Team'].astype(str).str.upper()
-
-    # Fill missing ownership
-    df_mapped['Ownership'] = df_mapped['Ownership'].fillna(10.0)
-
-    st.success("✅ Data mapped successfully")
-
-except Exception as e:
-    st.error(f"❌ Error mapping columns: {str(e)}")
-    st.exception(e)
-    st.stop()
-
-# Transform salary values
-st.markdown("### 💰 Salary Validation & Transformation")
-try:
-    df_mapped = transform_salary_values(df_mapped, 'Salary')
-except Exception as e:
-    st.error(f"❌ Salary transformation failed: {str(e)}")
-    with st.expander("🔧 Manual Fix Required"):
-        st.markdown("""
-        Your salary values couldn't be auto-converted. Please:
-        1. Check your CSV salary column
-        2. Ensure values are in one of these formats:
-           - **Dollars**: 3000, 5500, 8200 (recommended)
-           - **Thousands**: 3.0, 5.5, 8.2
-        3. Re-upload the corrected CSV
-        """)
-    st.stop()
-
-df = df_mapped
-
-# Show processed data
-st.markdown("### ✅ Processed Data")
-st.dataframe(df.head(10), use_container_width=True)
-
-# Summary metrics
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Players", len(df))
-col2.metric("Teams", df['Team'].nunique())
-col3.metric("Avg Salary", f"${df['Salary'].mean():,.0f}")
-col4.metric("Avg Projection", f"{df['Projected_Points'].mean():.2f}")
-
-st.divider()
+# Initialize session state
+SessionStateManager.initialize()
 
 # ============================================================================
-# VALIDATION & RECOMMENDATIONS
+# PART 2: SIDEBAR CONFIGURATION & DATA UPLOAD
 # ============================================================================
 
-critical, warnings, info = validate_player_pool(df)
+# ============================================================================
+# SIDEBAR: API CONFIGURATION
+# ============================================================================
 
-# Show enforcement recommendation
-recommended_level, rec_icon = get_enforcement_recommendation(len(df))
-st.info(
-    f"{rec_icon} **Recommended Enforcement:** {recommended_level} "
-    f"(based on {len(df)} player pool)"
-)
+def render_api_configuration():
+    """
+    Render API configuration section in sidebar
+    """
+    st.sidebar.header("🔑 API Configuration")
 
-# Critical issues - block optimization
-if critical:
-    st.error("**⛔ Critical Issues - Cannot Optimize:**")
-    for issue in critical:
-        st.error(f"• {issue}")
+    use_api = st.sidebar.checkbox(
+        "Use AI Analysis",
+        value=st.session_state.config.get('use_api', True),
+        help="Enable Claude AI for strategic analysis. Requires API key."
+    )
 
-    st.markdown("**Solutions:**")
-    st.markdown("- Add more players to your CSV")
-    st.markdown("- Ensure you have players from at least 2 teams")
-    st.markdown("- Verify salary values are in DraftKings format ($200-$12,000)")
-    st.stop()
+    st.session_state.config['use_api'] = use_api
 
-# Warnings - show but allow optimization
-if warnings:
-    with st.expander("⚠️ Warnings (optimization will auto-adjust)", expanded=True):
-        for warning in warnings:
-            st.warning(f"• {warning}")
-
-        st.info(
-            "The optimizer will automatically adjust AI enforcement if needed. "
-            "You'll see a notification if this occurs."
+    if use_api:
+        api_key = st.sidebar.text_input(
+            "Anthropic API Key",
+            value=st.session_state.config.get('api_key', ''),
+            type="password",
+            help="Enter your Anthropic API key (starts with 'sk-ant-')",
+            placeholder="sk-ant-..."
         )
 
-# Info messages
-if info:
-    with st.expander("ℹ️ Pool Analysis"):
-        for msg in info:
-            st.caption(msg)
+        st.session_state.config['api_key'] = api_key
 
-# ============================================================================
-# RUN OPTIMIZATION
-# ============================================================================
+        if api_key:
+            if api_key.startswith('sk-ant-'):
+                # Try to initialize API manager
+                if st.session_state.api_manager is None:
+                    try:
+                        with st.spinner("Validating API key..."):
+                            st.session_state.api_manager = ClaudeAPIManager(api_key)
 
-if optimize_button:
-    st.divider()
-    st.subheader("⚙️ Optimization in Progress")
+                            # Initialize AI strategists
+                            st.session_state.game_theory_ai = GPPGameTheoryStrategist(
+                                st.session_state.api_manager
+                            )
+                            st.session_state.correlation_ai = GPPCorrelationStrategist(
+                                st.session_state.api_manager
+                            )
+                            st.session_state.contrarian_ai = GPPContrarianNarrativeStrategist(
+                                st.session_state.api_manager
+                            )
 
-    # Reset state
-    st.session_state.optimization_complete = False
-    st.session_state.lineups = None
-    st.session_state.optimization_metadata = None
-
-    # Create game info
-    game_info = {
-        'teams': teams,
-        'total': game_total,
-        'spread': spread,
-        'weather': weather
-    }
-
-    # Map enforcement level
-    enforcement_map = {
-        'Advisory': AIEnforcementLevel.ADVISORY,
-        'Moderate': AIEnforcementLevel.MODERATE,
-        'Strong': AIEnforcementLevel.STRONG,
-        'Mandatory': AIEnforcementLevel.MANDATORY
-    }
-
-    try:
-        # Initialize optimizer
-        with st.spinner("Initializing optimizer..."):
-            optimizer = ShowdownOptimizer(api_key=api_key if api_key else None)
-            st.session_state.optimizer = optimizer
-
-        # Progress tracking
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        def update_progress(pct, msg):
-            progress_bar.progress(pct)
-            status_text.text(f"[{int(pct*100)}%] {msg}")
-
-        # Run optimization
-        lineups = optimizer.optimize(
-            df=df,
-            game_info=game_info,
-            num_lineups=num_lineups,
-            field_size=field_size,
-            ai_enforcement_level=enforcement_map[ai_enforcement],
-            use_api=(api_key is not None and api_key != ""),
-            randomness=randomness,
-            use_genetic=use_genetic,
-            use_simulation=use_simulation,
-            progress_callback=update_progress
-        )
-
-        # Store results
-        st.session_state.lineups = lineups
-        st.session_state.optimization_metadata = optimizer.get_optimization_report()
-
-        # Clear progress
-        progress_bar.empty()
-        status_text.empty()
-
-        # Check for enforcement adjustment
-        metadata = st.session_state.optimization_metadata.get('metadata', {})
-        enforcement_adjusted = metadata.get('enforcement_was_adjusted', False)
-        actual_enforcement = metadata.get('enforcement_level', ai_enforcement)
-
-        if lineups is not None and not lineups.empty:
-            st.session_state.optimization_complete = True
-
-            # Success message with enforcement info
-            if enforcement_adjusted:
-                st.warning(
-                    f"✅ Generated {len(lineups)} lineups | "
-                    f"⚠️ Enforcement auto-adjusted: {ai_enforcement} → {actual_enforcement}"
-                )
-                st.info(
-                    "Enforcement was automatically adjusted based on your player pool size "
-                    "to ensure lineup generation feasibility while maintaining AI strategic influence."
-                )
+                            UIHelpers.show_success("API key validated successfully!")
+                    except Exception as e:
+                        UIHelpers.show_error(f"API validation failed: {str(e)}")
+                        st.session_state.api_manager = None
+                else:
+                    st.sidebar.success("✅ API connected")
             else:
-                st.success(f"✅ Successfully generated {len(lineups)} lineups!")
-        else:
-            st.error("❌ No lineups generated")
+                UIHelpers.show_warning("API key should start with 'sk-ant-'")
 
-            # Show diagnostics
-            logger = get_logger()
-            error_summary = logger.get_error_summary()
+        if not api_key:
+            UIHelpers.show_info(
+                "AI analysis requires an Anthropic API key. "
+                "Get one at: https://console.anthropic.com"
+            )
+    else:
+        st.sidebar.info("Using statistical fallback mode (no API)")
+        st.session_state.api_manager = None
 
-            with st.expander("🔍 Diagnostic Information", expanded=True):
-                col1, col2, col3 = st.columns(3)
-
-                col1.metric("Total Errors", error_summary['total_errors'])
-                col2.metric("Constraint Issues",
-                           error_summary['error_categories'].get('constraint', 0))
-                col3.metric("Validation Errors",
-                           error_summary['error_categories'].get('validation', 0))
-
-                st.markdown("**Suggested Solutions:**")
-                st.info("1. Your player pool may be too small for the requested enforcement level")
-                st.info("2. Try reducing enforcement to Advisory")
-                st.info("3. Reduce the number of lineups requested")
-                st.info("4. Add more players to your CSV if possible")
-
-                if error_summary['recent_errors']:
-                    st.markdown("**Recent Errors:**")
-                    for err in error_summary['recent_errors'][-3:]:
-                        st.code(err['message'])
-
-    except Exception as e:
-        st.error(f"❌ Optimization failed: {str(e)}")
-
-        with st.expander("🔧 Error Details"):
-            st.exception(e)
-            st.code(traceback.format_exc())
-
-        st.markdown("**Troubleshooting:**")
-        st.markdown("1. Verify your CSV data is valid")
-        st.markdown("2. Try with fewer lineups")
-        st.markdown("3. Lower enforcement level to Advisory")
-        st.markdown("4. Disable AI (remove API key) to test with statistical mode")
 
 # ============================================================================
-# DISPLAY RESULTS
+# SIDEBAR: OPTIMIZATION SETTINGS
 # ============================================================================
 
-if st.session_state.optimization_complete and st.session_state.lineups is not None:
-    lineups = st.session_state.lineups
-    metadata = st.session_state.optimization_metadata
+def render_optimization_settings():
+    """
+    Render optimization settings in sidebar
+    """
+    st.sidebar.header("⚙️ Optimization Settings")
 
-    st.divider()
-    st.header("📈 Optimization Results")
+    # Number of lineups
+    num_lineups = st.sidebar.number_input(
+        "Number of Lineups",
+        min_value=1,
+        max_value=150,
+        value=st.session_state.config.get('num_lineups', 20),
+        step=1,
+        help="Number of unique lineups to generate"
+    )
+    st.session_state.config['num_lineups'] = num_lineups
 
-    # Show enforcement badge
-    if metadata:
-        meta_data = metadata.get('metadata', {})
-        enforcement_adjusted = meta_data.get('enforcement_was_adjusted', False)
-        actual_enforcement = meta_data.get('enforcement_level', 'Unknown')
-        original_enforcement = meta_data.get('original_enforcement_level', actual_enforcement)
+    # Field size
+    field_size_options = [
+        FieldSize.SMALL.value,
+        FieldSize.MEDIUM.value,
+        FieldSize.LARGE.value,
+        FieldSize.LARGE_AGGRESSIVE.value,
+        FieldSize.MILLY_MAKER.value
+    ]
 
-        if enforcement_adjusted:
-            st.markdown(
-                f'<div class="enforcement-badge enforcement-adjusted">'
-                f'Enforcement: {original_enforcement} → {actual_enforcement} (auto-adjusted)'
-                f'</div>',
-                unsafe_allow_html=True
+    field_size = st.sidebar.selectbox(
+        "Tournament Size",
+        options=field_size_options,
+        index=field_size_options.index(
+            st.session_state.config.get('field_size', FieldSize.LARGE.value)
+        ),
+        help="Adjust strategy based on tournament size"
+    )
+    st.session_state.config['field_size'] = field_size
+
+    # AI Enforcement Level
+    if st.session_state.config.get('use_api', True):
+        enforcement_options = [
+            AIEnforcementLevel.MANDATORY.value,
+            AIEnforcementLevel.STRONG.value,
+            AIEnforcementLevel.MODERATE.value,
+            AIEnforcementLevel.ADVISORY.value
+        ]
+
+        enforcement_level = st.sidebar.select_slider(
+            "AI Enforcement Level",
+            options=enforcement_options,
+            value=st.session_state.config.get(
+                'enforcement_level',
+                AIEnforcementLevel.STRONG.value
+            ),
+            help=(
+                "MANDATORY: All AI decisions enforced\n"
+                "STRONG: High-confidence as hard constraints\n"
+                "MODERATE: Consensus enforced, rest as soft\n"
+                "ADVISORY: All as soft preferences"
             )
-        else:
-            st.markdown(
-                f'<div class="enforcement-badge enforcement-normal">'
-                f'Enforcement: {actual_enforcement}'
-                f'</div>',
-                unsafe_allow_html=True
+        )
+        st.session_state.config['enforcement_level'] = enforcement_level
+
+    # Advanced settings expander
+    with st.sidebar.expander("🔧 Advanced Settings"):
+
+        # Monte Carlo simulation
+        run_simulation = st.checkbox(
+            "Enable Monte Carlo Simulation",
+            value=st.session_state.config.get('run_simulation', True),
+            help="Run simulations to estimate lineup variance and ceiling"
+        )
+        st.session_state.config['run_simulation'] = run_simulation
+
+        if run_simulation:
+            num_simulations = st.slider(
+                "Simulations per Lineup",
+                min_value=1000,
+                max_value=10000,
+                value=st.session_state.config.get('num_simulations', 5000),
+                step=1000,
+                help="More simulations = more accurate but slower"
             )
+            st.session_state.config['num_simulations'] = num_simulations
 
-    # Summary metrics
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Lineups", len(lineups))
-    col2.metric("Avg Projection", f"{lineups['Projected'].mean():.2f}")
-    col3.metric("Avg Ownership", f"{lineups['Total_Own'].mean():.1f}%")
-    col4.metric("Unique Captains", lineups['CPT'].nunique())
-    col5.metric("Avg Salary", f"${lineups['Total_Salary'].mean():,.0f}")
+        # Genetic algorithm
+        use_genetic = st.checkbox(
+            "Use Genetic Algorithm",
+            value=st.session_state.config.get('use_genetic', False),
+            help="Evolutionary optimization (slower but can find unique lineups)"
+        )
+        st.session_state.config['use_genetic'] = use_genetic
 
-    # Simulation metrics
-    if 'Sim_Ceiling_90th' in lineups.columns:
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Avg Ceiling (90th)", f"{lineups['Sim_Ceiling_90th'].mean():.2f}")
-        col2.metric("Avg Sharpe", f"{lineups['Sim_Sharpe'].mean():.2f}")
-        col3.metric("Avg Win Prob", f"{lineups['Sim_Win_Prob'].mean():.1%}")
-        col4.metric("Top Ceiling", f"{lineups['Sim_Ceiling_90th'].max():.2f}")
+        if use_genetic:
+            genetic_generations = st.slider(
+                "GA Generations",
+                min_value=20,
+                max_value=100,
+                value=st.session_state.config.get('genetic_generations', 50),
+                step=10,
+                help="More generations = better optimization but slower"
+            )
+            st.session_state.config['genetic_generations'] = genetic_generations
 
-    st.divider()
+        st.markdown("---")
 
-    # Tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📋 All Lineups",
-        "🏆 Top Performers",
-        "🤖 AI Analysis",
-        "📊 Insights",
-        "💾 Export"
-    ])
+        # Ownership focus
+        ownership_focus = st.selectbox(
+            "Ownership Focus",
+            options=['chalk', 'balanced', 'leverage', 'contrarian'],
+            index=['chalk', 'balanced', 'leverage', 'contrarian'].index(
+                st.session_state.config.get('ownership_focus', 'balanced')
+            ),
+            help=(
+                "chalk: Higher ownership, safer\n"
+                "balanced: Mix of ownership levels\n"
+                "leverage: Lower ownership plays\n"
+                "contrarian: Maximum differentiation"
+            )
+        )
+        st.session_state.config['ownership_focus'] = ownership_focus
 
-    with tab1:
-        st.dataframe(
-            lineups,
-            use_container_width=True,
-            height=600
+        # Stack preference
+        stack_preference = st.selectbox(
+            "Stacking Preference",
+            options=['minimal', 'moderate', 'aggressive'],
+            index=['minimal', 'moderate', 'aggressive'].index(
+                st.session_state.config.get('stack_preference', 'moderate')
+            ),
+            help="How aggressively to stack correlated players"
+        )
+        st.session_state.config['stack_preference'] = stack_preference
+
+        st.markdown("---")
+
+        # Salary constraints
+        min_salary = st.slider(
+            "Minimum Total Salary",
+            min_value=45000,
+            max_value=50000,
+            value=st.session_state.config.get('min_salary', 49000),
+            step=500,
+            help="Minimum salary to use (higher = less punt plays)"
+        )
+        st.session_state.config['min_salary'] = min_salary
+
+        # Ownership constraint
+        max_ownership = st.slider(
+            "Max Total Ownership %",
+            min_value=100,
+            max_value=250,
+            value=st.session_state.config.get('max_ownership_total', 150),
+            step=10,
+            help="Maximum combined ownership percentage"
+        )
+        st.session_state.config['max_ownership_total'] = max_ownership
+
+
+# ============================================================================
+# SIDEBAR: ACTIONS
+# ============================================================================
+
+def render_sidebar_actions():
+    """
+    Render action buttons in sidebar
+    """
+    st.sidebar.markdown("---")
+    st.sidebar.header("🎯 Actions")
+
+    # Reset button
+    if st.sidebar.button("🔄 Reset All", use_container_width=True):
+        SessionStateManager.reset_all()
+        st.rerun()
+
+    # Download sample CSV
+    if st.sidebar.button("📥 Download Sample CSV", use_container_width=True):
+        sample_df = FileHandler.create_sample_csv()
+        csv = sample_df.to_csv(index=False)
+
+        st.sidebar.download_button(
+            label="💾 Download Template",
+            data=csv,
+            file_name="nfl_dfs_template.csv",
+            mime="text/csv",
+            use_container_width=True
         )
 
-    with tab2:
-        st.subheader("Top 10 Lineups by Projection")
 
-        sort_col = st.selectbox(
-            "Sort by:",
-            ['Projected', 'Sim_Ceiling_90th', 'Sim_Win_Prob'] if 'Sim_Ceiling_90th' in lineups.columns else ['Projected']
+# ============================================================================
+# SIDEBAR: HELP & INFO
+# ============================================================================
+
+def render_sidebar_help():
+    """
+    Render help section in sidebar
+    """
+    st.sidebar.markdown("---")
+
+    with st.sidebar.expander("❓ Help & Information"):
+        st.markdown("""
+        ### Quick Start Guide
+
+        1. **Upload CSV**: Upload your player pool CSV
+        2. **Configure Game**: Set game info (total, spread)
+        3. **API Key**: Add Anthropic API key for AI analysis
+        4. **Settings**: Adjust optimization parameters
+        5. **Analyze**: Click "Run AI Analysis"
+        6. **Optimize**: Click "Generate Lineups"
+        7. **Export**: Download your lineups
+
+        ### Required CSV Columns
+
+        - `Player`: Player name
+        - `Position`: QB, RB, WR, TE, etc.
+        - `Team`: Team abbreviation
+        - `Salary`: DraftKings salary
+        - `Projected_Points`: Fantasy points projection
+        - `Ownership`: Projected ownership %
+
+        ### AI Strategists
+
+        - **Game Theory**: Finds leverage plays and optimal captain selection
+        - **Correlation**: Identifies profitable stacking combinations
+        - **Contrarian**: Discovers unique winning angles
+
+        ### Support
+
+        - GitHub: [Report Issues](https://github.com/yourusername/nfl-dfs-optimizer)
+        - Docs: [Full Documentation](#)
+        """)
+
+
+# ============================================================================
+# MAIN: HEADER
+# ============================================================================
+
+def render_header():
+    """
+    Render main application header
+    """
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.title("🏈 NFL DFS AI-Driven Optimizer")
+        st.markdown(
+            "**Advanced DraftKings Showdown Optimizer** powered by triple-AI strategic analysis"
         )
 
-        top_lineups = lineups.nlargest(10, sort_col)
+    with col2:
+        st.markdown(f"**Version:** {__version__}")
+        st.markdown(f"**Model:** Claude Sonnet 4")
 
-        for idx, lineup in top_lineups.iterrows():
-            with st.expander(
-                f"#{lineup['Lineup']} - {lineup['Projected']:.2f} pts - "
-                f"{lineup['Total_Own']:.1f}% own"
-            ):
-                col1, col2 = st.columns([2, 1])
 
-                with col1:
-                    st.markdown(f"**Captain:** {lineup['CPT']}")
-                    st.markdown("**FLEX:**")
-                    for i in range(1, 6):
-                        if f'FLEX{i}' in lineup:
-                            st.markdown(f"- {lineup[f'FLEX{i}']}")
+# ============================================================================
+# MAIN: DATA UPLOAD
+# ============================================================================
 
-                with col2:
-                    st.metric("Projection", f"{lineup['Projected']:.2f}")
-                    st.metric("Ownership", f"{lineup['Total_Own']:.1f}%")
-                    st.metric("Salary", f"${lineup['Total_Salary']:,}")
+def render_data_upload():
+    """
+    Render data upload section
+    """
+    st.header("📂 Step 1: Upload Player Data")
 
-                    if 'Sim_Ceiling_90th' in lineup:
-                        st.metric("Ceiling", f"{lineup['Sim_Ceiling_90th']:.2f}")
-                        st.metric("Win Prob", f"{lineup['Sim_Win_Prob']:.1%}")
+    col1, col2 = st.columns([2, 1])
 
-    with tab3:
-        st.subheader("AI Strategy Analysis")
+    with col1:
+        uploaded_file = st.file_uploader(
+            "Upload DraftKings CSV Export",
+            type=['csv'],
+            help="Upload CSV with player data including salary, projections, and ownership",
+            key="player_csv_upload"
+        )
 
-        if 'Strategy' in lineups.columns:
-            strategy_counts = lineups['Strategy'].value_counts()
+        if uploaded_file is not None:
+            with st.spinner("Loading and validating data..."):
+                df, message = FileHandler.load_csv(uploaded_file)
 
-            col1, col2 = st.columns([1, 2])
+                if df is not None:
+                    st.session_state.player_df = df
+                    UIHelpers.show_success(message)
+                    st.session_state.current_step = 2
+                else:
+                    UIHelpers.show_error(message)
+                    st.session_state.player_df = None
 
-            with col1:
-                st.dataframe(
-                    strategy_counts.reset_index().rename(
-                        columns={'Strategy': 'Count', 'index': 'Strategy'}
-                    ),
-                    hide_index=True
-                )
+    with col2:
+        st.markdown("### 📋 CSV Requirements")
+        st.markdown("""
+        **Required Columns:**
+        - Player
+        - Position
+        - Team
+        - Salary
+        - Projected_Points
+        - Ownership
 
-            with col2:
-                st.bar_chart(strategy_counts)
+        **Format:**
+        - Salary: 3000-11500
+        - Ownership: 0-100
+        - Points: 0-50
+        """)
 
-            # Show examples from each strategy
-            for strategy in strategy_counts.index:
-                strategy_lineups = lineups[lineups['Strategy'] == strategy]
-                if not strategy_lineups.empty:
-                    example = strategy_lineups.iloc[0]
+        # Sample CSV download
+        sample_df = FileHandler.create_sample_csv()
+        csv = sample_df.to_csv(index=False)
 
-                    with st.expander(f"📌 {strategy} Example"):
-                        col1, col2 = st.columns(2)
+        st.download_button(
+            label="📥 Download Sample CSV",
+            data=csv,
+            file_name="nfl_dfs_sample.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
 
-                        with col1:
-                            st.markdown(f"**Captain:** {example['CPT']}")
-                            st.markdown(f"**Projection:** {example['Projected']:.2f}")
-                            st.markdown(f"**Ownership:** {example['Total_Own']:.1f}%")
+    # Show data preview if loaded
+    if st.session_state.player_df is not None:
+        st.markdown("---")
+        render_data_preview(st.session_state.player_df)
 
-                        with col2:
-                            descriptions = {
-                                'Game Theory': "Exploits ownership inefficiencies",
-                                'Correlation': "Maximizes correlated scoring",
-                                'Contrarian Narrative': "Unique tournament angle"
-                            }
-                            if strategy in descriptions:
-                                st.info(descriptions[strategy])
+
+# ============================================================================
+# MAIN: GAME INFORMATION
+# ============================================================================
+
+def render_game_information():
+    """
+    Render game information configuration
+    """
+    if st.session_state.player_df is None:
+        return
+
+    st.header("⚙️ Step 2: Configure Game Information")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        teams = st.text_input(
+            "Matchup",
+            value=st.session_state.game_info.get('teams', 'Team A vs Team B'),
+            placeholder="Chiefs vs Bills",
+            help="Enter the teams playing (e.g., 'Chiefs vs Bills')"
+        )
+        st.session_state.game_info['teams'] = teams
+
+        game_total = st.number_input(
+            "Game Total",
+            min_value=30.0,
+            max_value=65.0,
+            value=st.session_state.game_info.get('total', 45.0),
+            step=0.5,
+            help="Over/Under total for the game"
+        )
+        st.session_state.game_info['total'] = game_total
+
+    with col2:
+        spread = st.number_input(
+            "Spread",
+            min_value=-21.0,
+            max_value=21.0,
+            value=st.session_state.game_info.get('spread', 0.0),
+            step=0.5,
+            help="Point spread (negative = favorite)"
+        )
+        st.session_state.game_info['spread'] = spread
+
+        weather = st.selectbox(
+            "Weather",
+            options=['Clear', 'Dome', 'Light Rain', 'Heavy Rain', 'Snow', 'Wind'],
+            index=['Clear', 'Dome', 'Light Rain', 'Heavy Rain', 'Snow', 'Wind'].index(
+                st.session_state.game_info.get('weather', 'Clear')
+            ),
+            help="Weather conditions"
+        )
+        st.session_state.game_info['weather'] = weather
+
+    with col3:
+        primetime = st.checkbox(
+            "Primetime Game",
+            value=st.session_state.game_info.get('primetime', False),
+            help="Is this a primetime/nationally televised game?"
+        )
+        st.session_state.game_info['primetime'] = primetime
+
+        injury_count = st.number_input(
+            "Notable Injuries",
+            min_value=0,
+            max_value=10,
+            value=st.session_state.game_info.get('injury_count', 0),
+            step=1,
+            help="Number of significant injuries affecting this game"
+        )
+        st.session_state.game_info['injury_count'] = injury_count
+
+    # Game environment summary
+    st.markdown("---")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        pace = "Fast" if game_total > 48 else "Slow" if game_total < 42 else "Average"
+        st.metric("Pace", pace, help="Based on game total")
+
+    with col2:
+        game_script = "Competitive" if abs(spread) < 3 else "Blowout Risk" if abs(spread) > 7 else "Moderate"
+        st.metric("Game Script", game_script, help="Based on spread")
+
+    with col3:
+        conditions = "Ideal" if weather in ['Clear', 'Dome'] else "Challenging"
+        st.metric("Conditions", conditions, help="Based on weather")
+
+    with col4:
+        if primetime:
+            st.metric("Spotlight", "High", help="Primetime game")
         else:
-            st.info("Strategy classification not available")
+            st.metric("Spotlight", "Normal", help="Regular slot")
 
-    with tab4:
-        st.subheader("Portfolio Analysis")
+    # Advanced game info expander
+    with st.expander("🔍 Advanced Game Context"):
+        st.markdown("### Game Theory Implications")
 
-        # Captain distribution
-        st.markdown("**Captain Usage:**")
-        captain_counts = lineups['CPT'].value_counts().head(10)
-        st.bar_chart(captain_counts)
+        # Calculate implied total based on spread and total
+        favorite_implied = (game_total + abs(spread)) / 2
+        underdog_implied = (game_total - abs(spread)) / 2
 
-        # Ownership distribution
-        st.markdown("**Ownership Tiers:**")
-        ownership_bins = pd.cut(
-            lineups['Total_Own'],
-            bins=[0, 60, 80, 100, 200],
-            labels=['<60%', '60-80%', '80-100%', '>100%']
-        )
-        st.bar_chart(ownership_bins.value_counts().sort_index())
-
-        # Salary distribution
-        st.markdown("**Salary Distribution:**")
-        st.bar_chart(
-            pd.cut(
-                lineups['Total_Salary'],
-                bins=5
-            ).value_counts().sort_index()
-        )
-
-    with tab5:
-        st.subheader("Download Options")
-
-        col1, col2, col3 = st.columns(3)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        col1, col2 = st.columns(2)
 
         with col1:
-            csv = lineups.to_csv(index=False)
-            st.download_button(
-                label="📥 Full CSV",
-                data=csv,
-                file_name=f"showdown_lineups_{timestamp}.csv",
-                mime='text/csv',
-                use_container_width=True
-            )
+            st.markdown("**Scoring Environment**")
+            if game_total > 50:
+                st.markdown("🔥 **Shootout Expected** - High ceiling plays favored")
+            elif game_total < 40:
+                st.markdown("🐌 **Low Scoring** - Target TD-dependent plays")
+            else:
+                st.markdown("⚖️ **Average Total** - Balanced approach")
+
+            st.markdown(f"- Favorite Implied: {favorite_implied:.1f}")
+            st.markdown(f"- Underdog Implied: {underdog_implied:.1f}")
 
         with col2:
-            dk_cols = ['CPT', 'FLEX1', 'FLEX2', 'FLEX3', 'FLEX4', 'FLEX5']
-            if all(col in lineups.columns for col in dk_cols):
-                dk_csv = lineups[dk_cols].to_csv(index=False)
-                st.download_button(
-                    label="📥 DK Upload Format",
-                    data=dk_csv,
-                    file_name=f"dk_upload_{timestamp}.csv",
-                    mime='text/csv',
-                    use_container_width=True
-                )
+            st.markdown("**Strategic Angles**")
+            if abs(spread) > 10:
+                st.markdown("⚠️ **Blowout Risk** - Consider game script pivots")
+            elif abs(spread) < 3:
+                st.markdown("🎯 **Close Game** - Both teams in play throughout")
+            else:
+                st.markdown("📊 **Moderate Spread** - Favorite slightly favored")
 
-        with col3:
-            if metadata:
-                report_text = f"""NFL SHOWDOWN OPTIMIZATION REPORT
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            if weather not in ['Clear', 'Dome']:
+                st.markdown(f"🌧️ **Weather Impact** - {weather} may reduce passing")
 
-CONFIGURATION:
-- Lineups Requested: {metadata['metadata']['num_lineups_requested']}
-- Lineups Generated: {metadata['metadata']['num_lineups_generated']}
-- Field Size: {metadata['metadata']['field_size']}
-- Enforcement: {metadata['metadata']['original_enforcement_level']} → {metadata['metadata']['enforcement_level']}
-- Adjusted: {metadata['metadata']['enforcement_was_adjusted']}
-- Method: {metadata['metadata']['optimization_method']}
+    if st.session_state.player_df is not None:
+        st.session_state.current_step = 3
 
-RESULTS:
-- Average Projection: {lineups['Projected'].mean():.2f}
-- Average Ownership: {lineups['Total_Own'].mean():.1f}%
-- Unique Captains: {lineups['CPT'].nunique()}
-- Salary Utilization: {lineups['Total_Salary'].mean() / 50000:.1%}
-
-PERFORMANCE:
-{metadata.get('performance', 'N/A')}
-"""
-                st.download_button(
-                    label="📥 Optimization Report",
-                    data=report_text,
-                    file_name=f"report_{timestamp}.txt",
-                    mime='text/plain',
-                    use_container_width=True
-                )
 
 # ============================================================================
-# FOOTER
+# MAIN: STEP PROGRESS INDICATOR
 # ============================================================================
 
-st.divider()
-st.caption("NFL Showdown Optimizer v2.0 | Dynamic AI Enforcement | Powered by Claude")
+def render_progress_indicator():
+    """
+    Render step progress indicator
+    """
+    steps = [
+        ("📂", "Upload Data"),
+        ("⚙️", "Configure Game"),
+        ("🤖", "AI Analysis"),
+        ("🎯", "Optimize"),
+        ("📊", "Review & Export")
+    ]
+
+    current_step = st.session_state.current_step
+
+    cols = st.columns(len(steps))
+
+    for idx, (col, (icon, label)) in enumerate(zip(cols, steps), 1):
+        with col:
+            if idx < current_step:
+                st.markdown(
+                    f"<div style='text-align: center; color: green;'>"
+                    f"<h2>{icon}</h2>"
+                    f"<p style='font-size: 12px;'><b>✓ {label}</b></p>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            elif idx == current_step:
+                st.markdown(
+                    f"<div style='text-align: center; color: #1f77b4;'>"
+                    f"<h2>{icon}</h2>"
+                    f"<p style='font-size: 12px;'><b>▶ {label}</b></p>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    f"<div style='text-align: center; color: gray;'>"
+                    f"<h2>{icon}</h2>"
+                    f"<p style='font-size: 12px;'>{label}</p>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+
+# ============================================================================
+# MAIN APP RENDERING FUNCTION
+# ============================================================================
+
+def render_main_app():
+    """
+    Main app rendering orchestrator
+    """
+    # Render sidebar
+    render_api_configuration()
+    render_optimization_settings()
+    render_sidebar_actions()
+    render_sidebar_help()
+
+    # Render main content
+    render_header()
+
+    st.markdown("---")
+
+    # Progress indicator
+    render_progress_indicator()
+
+    st.markdown("---")
+
+    # Main workflow
+    render_data_upload()
+
+    if st.session_state.player_df is not None:
+        st.markdown("---")
+        render_game_information()
