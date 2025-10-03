@@ -32,7 +32,7 @@
         }
     
         # Correlation coefficients (game theory based)
-        CORRELATION_COEFFICIENTS = {
+        CORRELATION_COEFFICIENTS = 
             'qb_wr_same_team': 0.65,
             'qb_te_same_team': 0.60,
             'qb_rb_same_team': -0.15,  # Negative: passing vs rushing
