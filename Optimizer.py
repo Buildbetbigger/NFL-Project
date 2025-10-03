@@ -210,7 +210,7 @@ class OptimizerConfig:
 
     # Core constraints - DraftKings Showdown rules
     SALARY_CAP: int = 50000
-    MIN_SALARY: int = 200
+    MIN_SALARY: int = 100
     MAX_SALARY: int = 12000
     CAPTAIN_MULTIPLIER: float = 1.5
     ROSTER_SIZE: int = 6
