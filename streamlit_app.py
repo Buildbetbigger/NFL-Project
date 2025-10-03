@@ -1,7 +1,7 @@
 
 """
 NFL Showdown Optimizer - Streamlit Interface
-Enhanced with Dynamic Enforcement Integration
+Enhanced with Dynamic Enforcement Integration & Robust Data Validation
 """
 
 import streamlit as st
@@ -9,6 +9,7 @@ import pandas as pd
 from datetime import datetime
 import io
 import traceback
+import numpy as np
 
 # Import from your optimizer file
 from Optimizer import (
@@ -52,9 +53,65 @@ if 'show_advanced' not in st.session_state:
 def _find_col_index(columns, search_terms):
     """Find best matching column index"""
     for i, col in enumerate(columns):
-        if col and any(term.lower() in col.lower() for term in search_terms):
+        if col and any(term.lower() in str(col).lower() for term in search_terms):
             return i
     return 0
+
+def transform_salary_values(df, salary_col_name='Salary'):
+    """
+    Intelligently transform salary values to DraftKings format ($200-$12,000)
+
+    Handles:
+    - Thousands format (5.5 -> 5500)
+    - Already correct format (5500 -> 5500)
+    - Cents format (550000 -> 5500)
+    """
+    df = df.copy()
+
+    salaries = df[salary_col_name]
+    min_sal = salaries.min()
+    max_sal = salaries.max()
+
+    # Log original range
+    st.info(f"📊 Original salary range: ${min_sal:,.2f} - ${max_sal:,.2f}")
+
+    # Case 1: Values are in thousands (like 5.5, 7.2, 10.0)
+    if max_sal <= 20:
+        df[salary_col_name] = (salaries * 1000).astype(int)
+        st.success(f"✅ Converted salaries from thousands format (x1000)")
+
+    # Case 2: Values are in cents or too high (like 550000)
+    elif max_sal > 50000:
+        df[salary_col_name] = (salaries / 100).astype(int)
+        st.warning(f"⚠️ Converted salaries by dividing by 100")
+
+    # Case 3: Values look correct (between 200-15000)
+    elif min_sal >= 200 and max_sal <= 15000:
+        df[salary_col_name] = salaries.astype(int)
+        st.success(f"✅ Salary format looks correct")
+
+    # Case 4: Unclear format - try to infer
+    else:
+        st.error(f"❌ Unable to determine salary format. Min=${min_sal}, Max=${max_sal}")
+        st.error("Expected DraftKings range: $200-$12,000")
+        raise ValueError(
+            f"Salary values unclear. Found: ${min_sal:,.0f} - ${max_sal:,.0f}. "
+            f"Expected: $200-$12,000"
+        )
+
+    # Validate final range
+    final_min = df[salary_col_name].min()
+    final_max = df[salary_col_name].max()
+
+    st.info(f"📊 Final salary range: ${final_min:,} - ${final_max:,}")
+
+    if final_min < 200 or final_max > 15000:
+        st.error(
+            f"⚠️ WARNING: Salaries outside typical DK range. "
+            f"Min=${final_min:,}, Max=${final_max:,}"
+        )
+
+    return df
 
 def validate_player_pool(df):
     """
@@ -86,8 +143,8 @@ def validate_player_pool(df):
 
     if (df['Salary'] > 15000).any():
         warnings.append("Salary values over $15,000 detected - verify data accuracy")
-    if (df['Salary'] < 1000).any():
-        warnings.append("Salary values under $1,000 detected - verify data accuracy")
+    if (df['Salary'] < 200).any():
+        warnings.append("Salary values under $200 detected - verify data accuracy")
 
     # Warnings (optimization will proceed with adjustments)
     if player_count < 18:
@@ -147,6 +204,12 @@ st.markdown("""
     .enforcement-normal {
         background-color: #90EE90;
         color: #000;
+    }
+    .data-issue {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 10px;
+        margin: 10px 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -344,16 +407,19 @@ if uploaded_file is None:
         with st.expander("📋 Required CSV Format"):
             st.markdown("""
             **Required Columns:**
-            - Player/Name
+            - Player/Name (or first_name + last_name)
             - Position (QB, RB, WR, TE, DST)
             - Team
-            - Salary (DraftKings)
+            - Salary (DraftKings format)
             - Projected Points
 
             **Optional:**
             - Ownership % (will default to 10%)
 
-            Column names are flexible - the app will help you map them.
+            **Salary Formats Supported:**
+            - Dollars: 5500, 7200, 9800
+            - Thousands: 5.5, 7.2, 9.8
+            - The app will auto-detect and convert
             """)
 
     with col2:
@@ -374,26 +440,39 @@ if uploaded_file is None:
 # FILE UPLOADED - SHOW DATA MAPPING
 # ============================================================================
 
-df = pd.read_csv(uploaded_file)
+try:
+    df_raw = pd.read_csv(uploaded_file)
+except Exception as e:
+    st.error(f"❌ Failed to read CSV: {str(e)}")
+    st.stop()
 
 st.subheader("📊 Data Preview & Mapping")
 
 with st.expander("🔍 Raw Data (first 10 rows)", expanded=False):
-    st.dataframe(df.head(10), use_container_width=True)
+    st.dataframe(df_raw.head(10), use_container_width=True)
 
 # Column Mapping
 st.markdown("**Map CSV columns to required fields:**")
 
 col1, col2, col3 = st.columns(3)
 
-csv_columns = [''] + list(df.columns)
+csv_columns = [''] + list(df_raw.columns)
 
 with col1:
-    player_col = st.selectbox(
-        "Player Name",
-        csv_columns,
-        index=_find_col_index(csv_columns, ['player', 'name'])
-    )
+    # Check for split name columns
+    has_first_last = ('first_name' in df_raw.columns and 'last_name' in df_raw.columns)
+
+    if has_first_last:
+        st.info("📌 Detected first_name + last_name columns")
+        player_col = 'first_name'  # Will be combined later
+        combine_names = True
+    else:
+        player_col = st.selectbox(
+            "Player Name",
+            csv_columns,
+            index=_find_col_index(csv_columns, ['player', 'name', 'full_name'])
+        )
+        combine_names = False
 
     position_col = st.selectbox(
         "Position",
@@ -411,51 +490,97 @@ with col2:
     salary_col = st.selectbox(
         "Salary",
         csv_columns,
-        index=_find_col_index(csv_columns, ['salary', 'dk salary'])
+        index=_find_col_index(csv_columns, ['salary', 'dk salary', 'draftkings'])
     )
 
 with col3:
     proj_col = st.selectbox(
         "Projected Points",
         csv_columns,
-        index=_find_col_index(csv_columns, ['fpts', 'projection', 'points', 'projected'])
+        index=_find_col_index(csv_columns, ['fpts', 'projection', 'points', 'projected', 'point_projection'])
     )
 
     own_col = st.selectbox(
         "Ownership % (optional)",
         csv_columns,
-        index=_find_col_index(csv_columns, ['ownership', 'own'])
+        index=_find_col_index(csv_columns, ['ownership', 'own', 'projected_ownership'])
     )
 
 # Validate mapping
-required_mapped = all([player_col, position_col, team_col, salary_col, proj_col])
+if combine_names:
+    required_mapped = all([position_col, team_col, salary_col, proj_col])
+else:
+    required_mapped = all([player_col, position_col, team_col, salary_col, proj_col])
 
 if not required_mapped:
     st.warning("⚠️ Please map all required columns")
     st.stop()
 
 # Create mapped dataframe
-df_mapped = pd.DataFrame({
-    'Player': df[player_col],
-    'Position': df[position_col],
-    'Team': df[team_col],
-    'Salary': pd.to_numeric(df[salary_col], errors='coerce'),
-    'Projected_Points': pd.to_numeric(df[proj_col], errors='coerce'),
-    'Ownership': pd.to_numeric(df[own_col], errors='coerce') if own_col else 10.0
-})
+try:
+    if combine_names:
+        # Combine first and last name
+        df_mapped = pd.DataFrame({
+            'Player': df_raw['first_name'].astype(str) + ' ' + df_raw['last_name'].astype(str),
+            'Position': df_raw[position_col],
+            'Team': df_raw[team_col],
+            'Salary': pd.to_numeric(df_raw[salary_col], errors='coerce'),
+            'Projected_Points': pd.to_numeric(df_raw[proj_col], errors='coerce'),
+            'Ownership': pd.to_numeric(df_raw[own_col], errors='coerce') if own_col else 10.0
+        })
+        st.success("✅ Combined first_name + last_name → Player")
+    else:
+        df_mapped = pd.DataFrame({
+            'Player': df_raw[player_col],
+            'Position': df_raw[position_col],
+            'Team': df_raw[team_col],
+            'Salary': pd.to_numeric(df_raw[salary_col], errors='coerce'),
+            'Projected_Points': pd.to_numeric(df_raw[proj_col], errors='coerce'),
+            'Ownership': pd.to_numeric(df_raw[own_col], errors='coerce') if own_col else 10.0
+        })
 
-# Clean data
-df_mapped = df_mapped.dropna()
+    # Clean data
+    df_mapped = df_mapped.dropna(subset=['Player', 'Position', 'Team', 'Salary', 'Projected_Points'])
 
-if df_mapped.empty:
-    st.error("❌ No valid data after cleaning. Check your CSV for missing/invalid values.")
+    if df_mapped.empty:
+        st.error("❌ No valid data after cleaning. Check your CSV for missing/invalid values.")
+        st.stop()
+
+    # Standardize position and team formatting
+    df_mapped['Position'] = df_mapped['Position'].astype(str).str.upper()
+    df_mapped['Team'] = df_mapped['Team'].astype(str).str.upper()
+
+    # Fill missing ownership
+    df_mapped['Ownership'] = df_mapped['Ownership'].fillna(10.0)
+
+    st.success("✅ Data mapped successfully")
+
+except Exception as e:
+    st.error(f"❌ Error mapping columns: {str(e)}")
+    st.exception(e)
+    st.stop()
+
+# Transform salary values
+st.markdown("### 💰 Salary Validation & Transformation")
+try:
+    df_mapped = transform_salary_values(df_mapped, 'Salary')
+except Exception as e:
+    st.error(f"❌ Salary transformation failed: {str(e)}")
+    with st.expander("🔧 Manual Fix Required"):
+        st.markdown("""
+        Your salary values couldn't be auto-converted. Please:
+        1. Check your CSV salary column
+        2. Ensure values are in one of these formats:
+           - **Dollars**: 3000, 5500, 8200 (recommended)
+           - **Thousands**: 3.0, 5.5, 8.2
+        3. Re-upload the corrected CSV
+        """)
     st.stop()
 
 df = df_mapped
 
-st.success("✅ Data mapped successfully")
-
 # Show processed data
+st.markdown("### ✅ Processed Data")
 st.dataframe(df.head(10), use_container_width=True)
 
 # Summary metrics
@@ -489,7 +614,7 @@ if critical:
     st.markdown("**Solutions:**")
     st.markdown("- Add more players to your CSV")
     st.markdown("- Ensure you have players from at least 2 teams")
-    st.markdown("- Verify salary values are reasonable")
+    st.markdown("- Verify salary values are in DraftKings format ($200-$12,000)")
     st.stop()
 
 # Warnings - show but allow optimization
@@ -745,7 +870,7 @@ if st.session_state.optimization_complete and st.session_state.lineups is not No
             with col1:
                 st.dataframe(
                     strategy_counts.reset_index().rename(
-                        columns={'index': 'Strategy', 'Strategy': 'Count'}
+                        columns={'Strategy': 'Count', 'index': 'Strategy'}
                     ),
                     hide_index=True
                 )
