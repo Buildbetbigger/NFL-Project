@@ -1192,7 +1192,7 @@ def run_optimization():
             if config['run_simulation']:
                 mc_engine = MonteCarloSimulationEngine(df, game_info, config['num_simulations'])
             
-            ga_optimizer = GeneticAlgorithmOptimizer(df, game_info, mc_engine)
+            ga_optimizer = GeneticAlgorithmOptimizer(df, game_info, mc_engine, salary_cap=config['salary_cap'])
             ga_config = GeneticConfig(generations=config['genetic_generations'])
             ga_optimizer.config = ga_config
             
