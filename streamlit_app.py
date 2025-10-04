@@ -1098,7 +1098,7 @@ def render_optimization():
     if st.session_state.optimized_lineups is not None:
         display_optimization_results()
 
-ddef run_optimization():
+def run_optimization():
     """Execute lineup optimization with CORRECT salary cap enforcement"""
     try:
         from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpBinary, LpStatus, value
