@@ -154,7 +154,7 @@ class SessionStateManager:
         
         if 'optimized_lineups' not in st.session_state:
             st.session_state.optimized_lineups = None
-        
+
         if 'config' not in st.session_state:
             st.session_state.config = {
                 'num_lineups': 20,
@@ -166,9 +166,10 @@ class SessionStateManager:
                 'use_genetic': False,
                 'num_simulations': 5000,
                 'genetic_generations': 50,
-                'min_salary': 40000,  # Will be auto-adjusted
+                'min_salary': 45000,  # 90% of default cap
+                'salary_cap': 50000,  # DraftKings standard
                 'max_ownership_total': 150,
-                'max_overlap': 4  # Diversity setting
+                'max_overlap': 4
             }
         
         if 'optimization_complete' not in st.session_state:
@@ -560,37 +561,37 @@ def render_sidebar():
             value=AIEnforcementLevel.STRONG.value,
             help="How strictly to enforce AI recommendations"
         )
-    
+
     with st.sidebar.expander("🔧 Advanced"):
         st.session_state.config['run_simulation'] = st.checkbox(
             "Monte Carlo Simulation",
             value=st.session_state.config['run_simulation'],
             help="Run simulations to estimate variance"
         )
-        
+
         if st.session_state.config['run_simulation']:
             st.session_state.config['num_simulations'] = st.slider(
                 "Simulations",
                 1000, 10000, 5000, 1000
             )
-        
+
         st.session_state.config['use_genetic'] = st.checkbox(
             "Genetic Algorithm",
             value=st.session_state.config['use_genetic'],
             help="Evolutionary optimization (slower but unique lineups)"
         )
-        
+
         if st.session_state.config['use_genetic']:
             st.session_state.config['genetic_generations'] = st.slider(
                 "Generations",
                 20, 100, 50, 10
             )
-        
+
         st.markdown("---")
-        
+
         # Lineup Diversity Settings
         st.markdown("**Lineup Diversity**")
-        
+
         diversity_level = st.select_slider(
             "Diversity Level",
             options=['Low', 'Medium', 'High', 'Maximum'],
@@ -603,8 +604,7 @@ def render_sidebar():
                 "- Maximum: 2/6 same players allowed"
             )
         )
-        
-        # Map diversity level to max overlap
+
         diversity_map = {
             'Low': 5,
             'Medium': 4,
@@ -612,24 +612,37 @@ def render_sidebar():
             'Maximum': 2
         }
         st.session_state.config['max_overlap'] = diversity_map[diversity_level]
-        
+
         st.caption(f"Max shared players: {diversity_map[diversity_level]}/6")
-        
+
         st.markdown("---")
-        
+
+        # ========== NEW SALARY CAP SECTION ==========
+        st.markdown("**💰 Salary Cap**")
+
+        st.session_state.config['salary_cap'] = st.number_input(
+            "Total Salary Cap",
+            min_value=30000,
+            max_value=100000,
+            value=st.session_state.config.get('salary_cap', 50000),
+            step=1000,
+            help="DraftKings Showdown standard is $50,000"
+        )
+        st.caption("💡 DraftKings Showdown: $50,000")
+
+        st.markdown("---")
+        # ========== END NEW SECTION ==========
+
         # DYNAMIC MIN SALARY based on loaded data
         if st.session_state.player_df is not None:
             df = st.session_state.player_df
-            
-            # Calculate realistic bounds
-            max_possible = (
-                df['Salary'].max() * 1.5 + 
-                df['Salary'].nlargest(6).iloc[1:6].sum()
-            )
-            suggested_min = int(max_possible * 0.75)
-            min_bound = int(max_possible * 0.60)
-            max_bound = int(max_possible * 0.95)
-            
+
+            # Calculate based on salary cap
+            salary_cap = st.session_state.config.get('salary_cap', 50000)
+            suggested_min = int(salary_cap * 0.90)
+            min_bound = int(salary_cap * 0.70)
+            max_bound = int(salary_cap * 0.98)
+
             st.session_state.config['min_salary'] = st.slider(
                 "Min Total Salary",
                 min_bound,
@@ -637,16 +650,14 @@ def render_sidebar():
                 min(suggested_min, st.session_state.config.get('min_salary', suggested_min)),
                 1000
             )
-            st.caption(f"💡 Recommended: {UIHelpers.format_currency(suggested_min)}")
-            st.caption(f"📊 Max possible: {UIHelpers.format_currency(max_possible)}")
+            st.caption(f"💡 Recommended: {UIHelpers.format_currency(suggested_min)} (90% of cap)")
+            st.caption(f"📊 Salary cap: {UIHelpers.format_currency(salary_cap)}")
         else:
             st.session_state.config['min_salary'] = st.slider(
                 "Min Total Salary",
-                35000, 50000, 40000, 1000
+                35000, 50000, 45000, 1000
             )
             st.caption("Upload data to see recommended range")
-    
-    st.sidebar.markdown("---")
     
     # Actions
     if st.sidebar.button("🔄 Reset All", use_container_width=True):
@@ -1087,8 +1098,8 @@ def render_optimization():
     if st.session_state.optimized_lineups is not None:
         display_optimization_results()
 
-def run_optimization():
-    """Execute lineup optimization with smart salary detection"""
+ddef run_optimization():
+    """Execute lineup optimization with CORRECT salary cap enforcement"""
     try:
         from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpBinary, LpStatus, value
         
@@ -1102,42 +1113,60 @@ def run_optimization():
         status.text("🔧 Analyzing player pool...")
         progress_bar.progress(0.1)
         
-        # SMART SALARY CAP DETECTION
+        # SALARY CAP - Use actual DraftKings cap (or user override)
+        DRAFTKINGS_CAP = 50000  # Standard DraftKings Showdown cap
+        
+        # Get user's salary cap setting (default to DraftKings)
+        salary_cap = config.get('salary_cap', DRAFTKINGS_CAP)
+        
+        # Calculate what's theoretically possible with this player pool
         min_sal = df['Salary'].min()
         max_sal = df['Salary'].max()
-        avg_sal = df['Salary'].mean()
-        
-        # Calculate realistic salary cap based on data
-        # Max captain + top 5 FLEX salaries
-        max_possible_total = (
+        max_possible = (
             max_sal * OptimizerConfig.CAPTAIN_MULTIPLIER + 
             df.nlargest(6, 'Salary')['Salary'].iloc[1:6].sum()
         )
         
-        # Use 98% of max possible as cap (allows some flexibility)
-        calculated_cap = max_possible_total * 0.98
+        # CRITICAL: If the player pool can't even make a valid lineup under cap, warn user
+        if max_sal * OptimizerConfig.CAPTAIN_MULTIPLIER > salary_cap:
+            st.error(f"""
+            ❌ **SALARY CAP ERROR**
+            
+            Most expensive player: {UIHelpers.format_currency(max_sal)}
+            As captain (1.5x): {UIHelpers.format_currency(max_sal * 1.5)}
+            Your salary cap: {UIHelpers.format_currency(salary_cap)}
+            
+            **The most expensive player as captain exceeds your cap!**
+            
+            Either:
+            1. Increase salary cap to at least {UIHelpers.format_currency(int(max_sal * 1.5 + df['Salary'].nlargest(6).iloc[1]))}
+            2. Remove high-salary players from your CSV
+            """)
+            return
         
-        # For min salary, use 70% of max possible (ensures we use good players)
-        calculated_min = max_possible_total * 0.70
-        
-        # Override config min_salary if it's unrealistic
-        if config['min_salary'] > calculated_cap:
-            config['min_salary'] = int(calculated_min)
-            st.warning(f"⚠️ Adjusted min salary to {UIHelpers.format_currency(calculated_min)} based on your player pool")
-        
-        salary_cap = calculated_cap
+        # Set minimum salary (default to 90% of cap for competitive lineups)
+        default_min = int(salary_cap * 0.90)
+        if 'min_salary' not in config or config['min_salary'] > salary_cap:
+            config['min_salary'] = default_min
         
         # Show salary analysis
         with st.expander("📊 Salary Analysis", expanded=True):
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Player Range", f"{UIHelpers.format_currency(min_sal)} - {UIHelpers.format_currency(max_sal)}")
+                st.metric("Player Salary Range", f"{UIHelpers.format_currency(min_sal)} - {UIHelpers.format_currency(max_sal)}")
             with col2:
-                st.metric("Calculated Cap", UIHelpers.format_currency(salary_cap))
+                st.metric("**SALARY CAP**", UIHelpers.format_currency(salary_cap), 
+                         help="This is your hard budget limit")
             with col3:
-                st.metric("Minimum Target", UIHelpers.format_currency(config['min_salary']))
+                st.metric("Min Spend Target", UIHelpers.format_currency(config['min_salary']))
+            with col4:
+                cap_usage = (config['min_salary'] / salary_cap * 100)
+                st.metric("Target Usage", f"{cap_usage:.0f}%")
             
-            st.caption(f"Players available: {len(df)}")
+            st.caption(f"✅ {len(df)} players available | Theoretical max: {UIHelpers.format_currency(max_possible)}")
+            
+            if max_possible < salary_cap:
+                st.warning(f"⚠️ Even using the most expensive players, max spend is {UIHelpers.format_currency(max_possible)} (under the {UIHelpers.format_currency(salary_cap)} cap)")
         
         # Create enforcement rules if AI was used
         enforcement_rules = {}
@@ -1205,7 +1234,7 @@ def run_optimization():
             # Get diversity setting
             max_overlap = config.get('max_overlap', 4)
             
-            # Relaxation attempt counter
+            # Relaxation counters
             relaxation_level = 0
             consecutive_failures = 0
             
@@ -1237,14 +1266,14 @@ def run_optimization():
                     for i in range(len(player_list)):
                         prob += captain_vars[i] + flex_vars[i] <= 1
                     
-                    # CONSTRAINT 4: Salary cap (use calculated cap)
+                    # CONSTRAINT 4: SALARY CAP (use actual cap, not calculated)
                     prob += lpSum([
                         df.iloc[i]['Salary'] * OptimizerConfig.CAPTAIN_MULTIPLIER * captain_vars[i]
                         for i in range(len(player_list))
                     ]) + lpSum([
                         df.iloc[i]['Salary'] * flex_vars[i]
                         for i in range(len(player_list))
-                    ]) <= salary_cap
+                    ]) <= salary_cap  # THIS IS THE FIX - use actual cap
                     
                     # CONSTRAINT 5: Minimum salary (relaxed after failures)
                     current_min_salary = config['min_salary'] * (0.95 ** relaxation_level)
@@ -1325,6 +1354,11 @@ def run_optimization():
                         flex_data['Salary'].sum()
                     )
                     
+                    # VALIDATION: Ensure lineup is under cap
+                    if total_salary > salary_cap:
+                        st.warning(f"⚠️ Lineup exceeded cap ({UIHelpers.format_currency(total_salary)} > {UIHelpers.format_currency(salary_cap)}), skipping...")
+                        continue
+                    
                     total_proj = (
                         captain_data['Projected_Points'] * OptimizerConfig.CAPTAIN_MULTIPLIER +
                         flex_data['Projected_Points'].sum()
@@ -1373,19 +1407,41 @@ def run_optimization():
                     st.error(f"""
                     ❌ Could not generate lineups. **Try these fixes:**
                     
-                    1. **Lower "Min Total Salary"** in sidebar (currently {UIHelpers.format_currency(config['min_salary'])})
+                    1. **Lower "Min Total Salary"** to {UIHelpers.format_currency(int(salary_cap * 0.75))}
                     2. **Set Diversity to "Low"** for easier optimization
                     3. **Reduce number of lineups** to 5-10 initially
-                    4. **Check player pool size** ({len(df)} players - need at least 10)
+                    4. **Check player pool** ({len(df)} players - need good salary distribution)
                     """)
         
         progress_bar.progress(1.0)
         status.empty()
         
         if lineups:
-            st.session_state.optimized_lineups = pd.DataFrame(lineups)
+            # FINAL VALIDATION: Check all lineups are under cap
+            lineups_df = pd.DataFrame(lineups)
+            over_cap = lineups_df[lineups_df['Total_Salary'] > salary_cap]
+            
+            if len(over_cap) > 0:
+                st.error(f"❌ {len(over_cap)} lineups exceed salary cap! This is a bug - please report.")
+                st.dataframe(over_cap[['Lineup', 'Captain', 'Total_Salary']])
+                return
+            
+            st.session_state.optimized_lineups = lineups_df
             st.session_state.optimization_complete = True
-            UIHelpers.show_success(f"✅ Generated {len(lineups)} unique lineups!")
+            
+            # Show success with cap usage stats
+            avg_salary = lineups_df['Total_Salary'].mean()
+            max_salary = lineups_df['Total_Salary'].max()
+            min_salary = lineups_df['Total_Salary'].min()
+            
+            UIHelpers.show_success(f"""
+            ✅ Generated {len(lineups)} unique lineups!
+            
+            💰 Salary Stats:
+            - Average: {UIHelpers.format_currency(avg_salary)} ({avg_salary/salary_cap*100:.1f}% of cap)
+            - Range: {UIHelpers.format_currency(min_salary)} - {UIHelpers.format_currency(max_salary)}
+            - Cap: {UIHelpers.format_currency(salary_cap)}
+            """)
             st.rerun()
         else:
             UIHelpers.show_error("Failed to generate lineups. See suggestions above.")
