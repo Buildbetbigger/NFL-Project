@@ -11,6 +11,8 @@ from typing import Dict, List, Any, Optional
 import traceback
 import io
 import time
+import sys
+import os
 
 st.set_page_config(
     page_title="NFL DFS AI Optimizer",
@@ -20,14 +22,63 @@ st.set_page_config(
 )
 
 # ============================================================================
-# OPTIMIZER IMPORTS
+# FLEXIBLE OPTIMIZER IMPORT - TRIES MULTIPLE POSSIBLE FILENAMES
 # ============================================================================
 
-try:
-    import nfl_dfs_optimizer as optimizer
+optimizer = None
+OPTIMIZER_AVAILABLE = False
+
+# Try different possible module names
+possible_modules = [
+    'nfl_dfs_optimizer',
+    'optimizer',
+    'nfl_optimizer',
+    'dfs_optimizer'
+]
+
+import_error_details = []
+
+for module_name in possible_modules:
+    try:
+        optimizer = __import__(module_name)
+        OPTIMIZER_AVAILABLE = True
+        st.success(f"✅ Successfully imported optimizer from: {module_name}.py")
+        break
+    except ImportError as e:
+        import_error_details.append(f"  • {module_name}.py: {str(e)}")
+        continue
+
+if not OPTIMIZER_AVAILABLE:
+    st.error("❌ **Failed to import optimizer module**")
+    st.error("**Tried the following files:**")
+    for detail in import_error_details:
+        st.error(detail)
     
+    st.info("""
+    **Solution:**
+    
+    1. Ensure your optimizer file is in the same directory as streamlit_app.py
+    2. The file should be named one of:
+       - `nfl_dfs_optimizer.py` (recommended)
+       - `optimizer.py`
+       - `nfl_optimizer.py`
+       - `dfs_optimizer.py`
+    
+    **Current directory contents:**
+    """)
+    
+    # Show files in current directory
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    files = [f for f in os.listdir(current_dir) if f.endswith('.py')]
+    st.code('\n'.join(files))
+    
+    st.stop()
+
+# Now import all the components from the optimizer module
+try:
     OptimizerConfig = optimizer.OptimizerConfig
     
+    # Try to import enums with fallback
     try:
         AIEnforcementLevel = optimizer.AIEnforcementLevel
     except AttributeError:
@@ -68,6 +119,7 @@ try:
             CORRELATION = "Correlation"
             CONTRARIAN_NARRATIVE = "Contrarian Narrative"
     
+    # Import all required components
     AIRecommendation = optimizer.AIRecommendation
     LineupConstraints = optimizer.LineupConstraints
     SimulationResults = optimizer.SimulationResults
@@ -90,20 +142,18 @@ try:
     OptimizationError = optimizer.OptimizationError
     __version__ = optimizer.__version__
     
-    OPTIMIZER_AVAILABLE = True
-    
-except ImportError as e:
-    st.error(f"Failed to import optimizer: {str(e)}")
-    st.error("Ensure nfl_dfs_optimizer.py is in the same directory")
-    st.stop()
-
 except AttributeError as e:
-    st.error(f"Missing optimizer component: {str(e)}")
-    st.error("Ensure all 7 parts are combined in nfl_dfs_optimizer.py")
+    st.error(f"❌ **Missing optimizer component:** {str(e)}")
+    st.error("**This means your optimizer file is incomplete.**")
+    st.info("Please ensure all 7 parts are properly combined into one file.")
     st.stop()
 
 APP_VERSION = "2.1.1"
 OPTIMIZER_VERSION = __version__
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def safe_session_state_get(key: str, default: Any = None) -> Any:
     try:
@@ -194,6 +244,10 @@ def format_percentage(value: float) -> str:
 
 def create_download_csv(df: pd.DataFrame, filename: str) -> bytes:
     return df.to_csv(index=False).encode('utf-8')
+
+# ============================================================================
+# MAIN APP
+# ============================================================================
 
 def main():
     initialize_session_state()
@@ -381,35 +435,19 @@ def render_optimization_tab():
     col1, col2 = st.columns(2)
     
     with col1:
-        home_team = st.text_input(
-            "Home Team",
-            value=safe_session_state_get('home_team', '')
-        )
+        home_team = st.text_input("Home Team", value=safe_session_state_get('home_team', ''))
         safe_session_state_set('home_team', home_team)
         
-        game_total = st.number_input(
-            "Game Total",
-            min_value=30.0,
-            max_value=70.0,
-            value=safe_session_state_get('game_total', 47.0),
-            step=0.5
-        )
+        game_total = st.number_input("Game Total", min_value=30.0, max_value=70.0, 
+                                     value=safe_session_state_get('game_total', 47.0), step=0.5)
         safe_session_state_set('game_total', game_total)
     
     with col2:
-        away_team = st.text_input(
-            "Away Team",
-            value=safe_session_state_get('away_team', '')
-        )
+        away_team = st.text_input("Away Team", value=safe_session_state_get('away_team', ''))
         safe_session_state_set('away_team', away_team)
         
-        spread = st.number_input(
-            "Spread",
-            min_value=-20.0,
-            max_value=20.0,
-            value=safe_session_state_get('spread', 0.0),
-            step=0.5
-        )
+        spread = st.number_input("Spread", min_value=-20.0, max_value=20.0, 
+                                value=safe_session_state_get('spread', 0.0), step=0.5)
         safe_session_state_set('spread', spread)
     
     st.subheader("💰 Salary Cap Settings")
@@ -417,13 +455,9 @@ def render_optimization_tab():
     col1, col2 = st.columns(2)
     
     with col1:
-        salary_cap = st.number_input(
-            "Salary Cap",
-            min_value=30000,
-            max_value=100000,
-            value=safe_session_state_get('salary_cap', OptimizerConfig.SALARY_CAP),
-            step=1000
-        )
+        salary_cap = st.number_input("Salary Cap", min_value=30000, max_value=100000,
+                                     value=safe_session_state_get('salary_cap', OptimizerConfig.SALARY_CAP), 
+                                     step=1000)
         
         is_valid, error_msg = OptimizerConfig.validate_salary_cap(salary_cap)
         if not is_valid:
@@ -432,12 +466,8 @@ def render_optimization_tab():
             safe_session_state_set('salary_cap', salary_cap)
     
     with col2:
-        min_salary_pct = st.slider(
-            "Minimum Salary % of Cap",
-            min_value=80,
-            max_value=100,
-            value=safe_session_state_get('min_salary_pct', 90)
-        )
+        min_salary_pct = st.slider("Minimum Salary % of Cap", min_value=80, max_value=100,
+                                   value=safe_session_state_get('min_salary_pct', 90))
         safe_session_state_set('min_salary_pct', min_salary_pct)
         
         min_salary = int(salary_cap * (min_salary_pct / 100))
@@ -448,19 +478,13 @@ def render_optimization_tab():
     col1, col2 = st.columns(2)
     
     with col1:
-        locked_players = st.multiselect(
-            "Locked Players",
-            options=sorted(df['Player'].tolist()),
-            default=safe_session_state_get('locked_players', [])
-        )
+        locked_players = st.multiselect("Locked Players", options=sorted(df['Player'].tolist()),
+                                       default=safe_session_state_get('locked_players', []))
         safe_session_state_set('locked_players', locked_players)
     
     with col2:
-        banned_players = st.multiselect(
-            "Banned Players",
-            options=sorted(df['Player'].tolist()),
-            default=safe_session_state_get('banned_players', [])
-        )
+        banned_players = st.multiselect("Banned Players", options=sorted(df['Player'].tolist()),
+                                       default=safe_session_state_get('banned_players', []))
         safe_session_state_set('banned_players', banned_players)
     
     conflicts = set(locked_players) & set(banned_players)
@@ -473,7 +497,7 @@ def render_optimization_tab():
         locked_salary = locked_df['Salary'].sum()
         
         if locked_salary > salary_cap:
-            st.error(f"❌ Locked players exceed cap")
+            st.error("❌ Locked players exceed cap")
             return
         
         if len(locked_players) > 6:
@@ -485,11 +509,7 @@ def render_optimization_tab():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        optimize_button = st.button(
-            "🚀 Generate Lineups",
-            type="primary",
-            use_container_width=True
-        )
+        optimize_button = st.button("🚀 Generate Lineups", type="primary", use_container_width=True)
     
     with col2:
         if st.button("🔄 Reset", use_container_width=True):
@@ -514,7 +534,6 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         progress_bar.progress(10)
         
         logger = get_logger()
-        perf_monitor = get_performance_monitor()
         
         num_lineups = safe_session_state_get('num_lineups', 20)
         field_size = safe_session_state_get('field_size', 'large_field')
@@ -528,8 +547,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
             'spread': safe_session_state_get('spread', 0.0),
             'home_team': safe_session_state_get('home_team', ''),
             'away_team': safe_session_state_get('away_team', ''),
-            'teams': [safe_session_state_get('home_team', ''), 
-                     safe_session_state_get('away_team', '')]
+            'teams': [safe_session_state_get('home_team', ''), safe_session_state_get('away_team', '')]
         }
         
         field_config = OptimizerConfig.get_field_config(field_size)
@@ -553,11 +571,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         contra_rec = contrarian.analyze(df, game_info, field_config)
         progress_bar.progress(60)
         
-        ai_recommendations = {
-            'game_theory': gt_rec,
-            'correlation': corr_rec,
-            'contrarian': contra_rec
-        }
+        ai_recommendations = {'game_theory': gt_rec, 'correlation': corr_rec, 'contrarian': contra_rec}
         safe_session_state_set('ai_recommendations', ai_recommendations)
         
         status_text.text("🔄 Synthesizing recommendations...")
@@ -599,9 +613,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
                 mc_engine = MonteCarloSimulationEngine(df, game_info, n_simulations=1000)
             
             ga_optimizer = GeneticAlgorithmOptimizer(
-                df=df,
-                game_info=game_info,
-                mc_engine=mc_engine,
+                df=df, game_info=game_info, mc_engine=mc_engine,
                 config=GeneticConfig(population_size=100, generations=50),
                 salary_cap=salary_cap
             )
@@ -685,13 +697,10 @@ def render_results_tab():
     
     with col1:
         st.metric("Total Lineups", len(lineups_df))
-    
     with col2:
         st.metric("Avg Projection", f"{lineups_df['Projected'].mean():.2f}")
-    
     with col3:
         st.metric("Avg Salary", format_currency(lineups_df['Total_Salary'].mean()))
-    
     with col4:
         st.metric("Avg Ownership", format_percentage(lineups_df['Total_Ownership'].mean()))
     
@@ -700,21 +709,14 @@ def render_results_tab():
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        show_columns = st.multiselect(
-            "Columns to display",
-            options=list(lineups_df.columns),
-            default=['Lineup', 'Captain', 'FLEX', 'Total_Salary', 'Projected', 'Total_Ownership']
-        )
+        show_columns = st.multiselect("Columns to display", options=list(lineups_df.columns),
+            default=['Lineup', 'Captain', 'FLEX', 'Total_Salary', 'Projected', 'Total_Ownership'])
     
     with col2:
-        sort_by = st.selectbox(
-            "Sort by",
-            options=['Lineup', 'Projected', 'Total_Salary', 'Total_Ownership'],
-            index=1
-        )
+        sort_by = st.selectbox("Sort by", 
+            options=['Lineup', 'Projected', 'Total_Salary', 'Total_Ownership'], index=1)
     
     display_df = lineups_df[show_columns].sort_values(sort_by, ascending=False)
-    
     st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
     
     st.subheader("💾 Export")
@@ -723,25 +725,17 @@ def render_results_tab():
     
     with col1:
         csv_data = create_download_csv(lineups_df, "lineups.csv")
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv_data,
+        st.download_button("📥 Download CSV", data=csv_data,
             file_name=f"lineups_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+            mime="text/csv", use_container_width=True)
     
     with col2:
         dk_format = convert_to_dk_format(lineups_df, safe_session_state_get('df'))
         if dk_format is not None:
             csv_data = create_download_csv(dk_format, "dk_upload.csv")
-            st.download_button(
-                label="📥 Download DK Format",
-                data=csv_data,
+            st.download_button("📥 Download DK Format", data=csv_data,
                 file_name=f"dk_upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+                mime="text/csv", use_container_width=True)
     
     ai_recommendations = safe_session_state_get('ai_recommendations')
     
@@ -752,10 +746,8 @@ def render_results_tab():
         
         with tab1:
             display_ai_recommendation(ai_recommendations.get('game_theory'))
-        
         with tab2:
             display_ai_recommendation(ai_recommendations.get('correlation'))
-        
         with tab3:
             display_ai_recommendation(ai_recommendations.get('contrarian'))
 
@@ -827,21 +819,12 @@ def render_advanced_settings_tab():
     col1, col2 = st.columns(2)
     
     with col1:
-        max_ownership = st.number_input(
-            "Max Total Ownership %",
-            min_value=50,
-            max_value=300,
-            value=safe_session_state_get('max_ownership', 200)
-        )
+        max_ownership = st.number_input("Max Total Ownership %", min_value=50, max_value=300,
+                                       value=safe_session_state_get('max_ownership', 200))
         safe_session_state_set('max_ownership', max_ownership)
     
     with col2:
-        max_exposure = st.slider(
-            "Max Player Exposure %",
-            min_value=10,
-            max_value=100,
-            value=25
-        )
+        max_exposure = st.slider("Max Player Exposure %", min_value=10, max_value=100, value=25)
         safe_session_state_set('max_exposure', max_exposure / 100)
     
     st.info("Advanced settings will be applied on next optimization run")
