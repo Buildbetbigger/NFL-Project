@@ -2,9 +2,9 @@
 NFL DFS AI-Driven Optimizer - Streamlit Application
 Complete Production-Ready UI with Smart CSV Handling & Lineup Diversity
 
-Version: 2.0.0
+Version: 2.0.1
 Supports: DFF CSV format (first_name, last_name) with auto-ownership estimation
-Features: Multiple unique lineups with configurable diversity
+Features: Multiple unique lineups with configurable diversity & smart salary detection
 """
 
 import streamlit as st
@@ -166,9 +166,9 @@ class SessionStateManager:
                 'use_genetic': False,
                 'num_simulations': 5000,
                 'genetic_generations': 50,
-                'min_salary': 45000,
+                'min_salary': 40000,  # Will be auto-adjusted
                 'max_ownership_total': 150,
-                'max_overlap': 4  # NEW: Diversity setting
+                'max_overlap': 4  # Diversity setting
             }
         
         if 'optimization_complete' not in st.session_state:
@@ -588,7 +588,7 @@ def render_sidebar():
         
         st.markdown("---")
         
-        # NEW: Lineup Diversity Settings
+        # Lineup Diversity Settings
         st.markdown("**Lineup Diversity**")
         
         diversity_level = st.select_slider(
@@ -617,10 +617,34 @@ def render_sidebar():
         
         st.markdown("---")
         
-        st.session_state.config['min_salary'] = st.slider(
-            "Min Total Salary",
-            40000, 50000, 45000, 1000
-        )
+        # DYNAMIC MIN SALARY based on loaded data
+        if st.session_state.player_df is not None:
+            df = st.session_state.player_df
+            
+            # Calculate realistic bounds
+            max_possible = (
+                df['Salary'].max() * 1.5 + 
+                df['Salary'].nlargest(6).iloc[1:6].sum()
+            )
+            suggested_min = int(max_possible * 0.75)
+            min_bound = int(max_possible * 0.60)
+            max_bound = int(max_possible * 0.95)
+            
+            st.session_state.config['min_salary'] = st.slider(
+                "Min Total Salary",
+                min_bound,
+                max_bound,
+                min(suggested_min, st.session_state.config.get('min_salary', suggested_min)),
+                1000
+            )
+            st.caption(f"💡 Recommended: {UIHelpers.format_currency(suggested_min)}")
+            st.caption(f"📊 Max possible: {UIHelpers.format_currency(max_possible)}")
+        else:
+            st.session_state.config['min_salary'] = st.slider(
+                "Min Total Salary",
+                35000, 50000, 40000, 1000
+            )
+            st.caption("Upload data to see recommended range")
     
     st.sidebar.markdown("---")
     
@@ -1064,7 +1088,7 @@ def render_optimization():
         display_optimization_results()
 
 def run_optimization():
-    """Execute lineup optimization with proper uniqueness constraints"""
+    """Execute lineup optimization with smart salary detection"""
     try:
         from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpBinary, LpStatus, value
         
@@ -1075,8 +1099,45 @@ def run_optimization():
         progress_bar = st.progress(0)
         status = st.empty()
         
-        status.text("🔧 Setting up optimization...")
+        status.text("🔧 Analyzing player pool...")
         progress_bar.progress(0.1)
+        
+        # SMART SALARY CAP DETECTION
+        min_sal = df['Salary'].min()
+        max_sal = df['Salary'].max()
+        avg_sal = df['Salary'].mean()
+        
+        # Calculate realistic salary cap based on data
+        # Max captain + top 5 FLEX salaries
+        max_possible_total = (
+            max_sal * OptimizerConfig.CAPTAIN_MULTIPLIER + 
+            df.nlargest(6, 'Salary')['Salary'].iloc[1:6].sum()
+        )
+        
+        # Use 98% of max possible as cap (allows some flexibility)
+        calculated_cap = max_possible_total * 0.98
+        
+        # For min salary, use 70% of max possible (ensures we use good players)
+        calculated_min = max_possible_total * 0.70
+        
+        # Override config min_salary if it's unrealistic
+        if config['min_salary'] > calculated_cap:
+            config['min_salary'] = int(calculated_min)
+            st.warning(f"⚠️ Adjusted min salary to {UIHelpers.format_currency(calculated_min)} based on your player pool")
+        
+        salary_cap = calculated_cap
+        
+        # Show salary analysis
+        with st.expander("📊 Salary Analysis", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Player Range", f"{UIHelpers.format_currency(min_sal)} - {UIHelpers.format_currency(max_sal)}")
+            with col2:
+                st.metric("Calculated Cap", UIHelpers.format_currency(salary_cap))
+            with col3:
+                st.metric("Minimum Target", UIHelpers.format_currency(config['min_salary']))
+            
+            st.caption(f"Players available: {len(df)}")
         
         # Create enforcement rules if AI was used
         enforcement_rules = {}
@@ -1131,22 +1192,22 @@ def run_optimization():
         else:
             status.text("🎯 Running Linear Programming Optimization...")
             
-            # FIXED: Proper multi-lineup generation with uniqueness
+            # Setup player indexing
             player_list = df['Player'].tolist()
             player_indices = {p: i for i, p in enumerate(player_list)}
             
-            # Store used lineups to ensure uniqueness
+            # Store used lineups
             used_lineups = []
             
-            # Calculate salary cap dynamically
-            max_possible_salary = df['Salary'].max() * OptimizerConfig.CAPTAIN_MULTIPLIER + df['Salary'].nlargest(5).sum()
-            salary_cap = min(max_possible_salary * 0.98, OptimizerConfig.SALARY_CAP)
-            
             target_lineups = config['num_lineups']
-            max_attempts = target_lineups * 3
+            max_attempts = target_lineups * 5
             
             # Get diversity setting
             max_overlap = config.get('max_overlap', 4)
+            
+            # Relaxation attempt counter
+            relaxation_level = 0
+            consecutive_failures = 0
             
             for attempt in range(max_attempts):
                 try:
@@ -1176,7 +1237,7 @@ def run_optimization():
                     for i in range(len(player_list)):
                         prob += captain_vars[i] + flex_vars[i] <= 1
                     
-                    # CONSTRAINT 4: Salary cap
+                    # CONSTRAINT 4: Salary cap (use calculated cap)
                     prob += lpSum([
                         df.iloc[i]['Salary'] * OptimizerConfig.CAPTAIN_MULTIPLIER * captain_vars[i]
                         for i in range(len(player_list))
@@ -1185,29 +1246,32 @@ def run_optimization():
                         for i in range(len(player_list))
                     ]) <= salary_cap
                     
-                    # CONSTRAINT 5: Minimum salary
+                    # CONSTRAINT 5: Minimum salary (relaxed after failures)
+                    current_min_salary = config['min_salary'] * (0.95 ** relaxation_level)
+                    
                     prob += lpSum([
                         df.iloc[i]['Salary'] * OptimizerConfig.CAPTAIN_MULTIPLIER * captain_vars[i]
                         for i in range(len(player_list))
                     ]) + lpSum([
                         df.iloc[i]['Salary'] * flex_vars[i]
                         for i in range(len(player_list))
-                    ]) >= config['min_salary']
+                    ]) >= current_min_salary
                     
                     # CONSTRAINT 6: Uniqueness with configurable diversity
+                    current_max_overlap = max_overlap + relaxation_level
+                    
                     for used_lineup in used_lineups:
                         used_captain_idx = player_indices[used_lineup['captain']]
                         used_flex_indices = [player_indices[p] for p in used_lineup['flex']]
                         
-                        # This lineup can have at most max_overlap players from any previous lineup
                         prob += (
                             captain_vars[used_captain_idx] +
                             lpSum([flex_vars[i] for i in used_flex_indices])
-                        ) <= max_overlap
+                        ) <= current_max_overlap
                     
-                    # CONSTRAINT 7: AI Recommendations (if available)
-                    if enforcement_rules and enforcement_rules.get('hard_constraints'):
-                        for rule in enforcement_rules['hard_constraints'][:3]:  # Apply top 3 rules
+                    # CONSTRAINT 7: AI Recommendations (only if not too relaxed)
+                    if enforcement_rules and enforcement_rules.get('hard_constraints') and relaxation_level < 2:
+                        for rule in enforcement_rules['hard_constraints'][:2]:
                             rule_type = rule.get('rule')
                             
                             if rule_type == 'captain_from_list':
@@ -1216,27 +1280,31 @@ def run_optimization():
                                     player_indices[p] for p in captain_players 
                                     if p in player_indices
                                 ]
-                                if captain_player_indices:
-                                    # Captain must be from this list
+                                if captain_player_indices and len(captain_player_indices) >= 3:
                                     prob += lpSum([captain_vars[i] for i in captain_player_indices]) >= 1
-                            
-                            elif rule_type == 'must_include':
-                                player = rule.get('player')
-                                if player and player in player_indices:
-                                    p_idx = player_indices[player]
-                                    # Player must be in lineup (either captain or flex)
-                                    prob += captain_vars[p_idx] + flex_vars[p_idx] >= 1
                     
                     # Solve
                     prob.solve()
                     
                     # Check if we found a solution
                     if LpStatus[prob.status] != 'Optimal':
-                        # If we can't find more lineups, stop
-                        if len(lineups) > 0:
+                        consecutive_failures += 1
+                        
+                        # Auto-relax constraints after consecutive failures
+                        if consecutive_failures >= 5:
+                            relaxation_level += 1
+                            consecutive_failures = 0
+                            if relaxation_level <= 2:
+                                status.text(f"🔧 Relaxing constraints (level {relaxation_level})...")
+                        
+                        # If we have some lineups and can't find more, that's okay
+                        if len(lineups) >= target_lineups * 0.5:
                             break
-                        else:
-                            continue
+                        
+                        continue
+                    
+                    # Reset consecutive failures on success
+                    consecutive_failures = 0
                     
                     # Extract solution
                     captain_idx = [i for i in range(len(player_list)) if value(captain_vars[i]) == 1]
@@ -1288,19 +1356,28 @@ def run_optimization():
                     # Update progress
                     progress = 0.2 + (len(lineups) / target_lineups) * 0.7
                     progress_bar.progress(min(0.95, progress))
-                    status.text(f"🎯 Generated {len(lineups)}/{target_lineups} lineups...")
+                    status.text(f"✅ Generated {len(lineups)}/{target_lineups} lineups...")
                     
                     # Stop if we have enough
                     if len(lineups) >= target_lineups:
                         break
                     
                 except Exception as e:
-                    # If this iteration fails, continue to next
                     continue
             
-            # If we didn't get enough lineups, show warning
+            # Summary message
             if len(lineups) < target_lineups:
-                st.warning(f"⚠️ Generated {len(lineups)} lineups (requested {target_lineups}). Try relaxing diversity or increasing player pool.")
+                if len(lineups) > 0:
+                    st.warning(f"⚠️ Generated {len(lineups)}/{target_lineups} lineups. Consider lowering diversity or min salary.")
+                else:
+                    st.error(f"""
+                    ❌ Could not generate lineups. **Try these fixes:**
+                    
+                    1. **Lower "Min Total Salary"** in sidebar (currently {UIHelpers.format_currency(config['min_salary'])})
+                    2. **Set Diversity to "Low"** for easier optimization
+                    3. **Reduce number of lineups** to 5-10 initially
+                    4. **Check player pool size** ({len(df)} players - need at least 10)
+                    """)
         
         progress_bar.progress(1.0)
         status.empty()
@@ -1311,7 +1388,7 @@ def run_optimization():
             UIHelpers.show_success(f"✅ Generated {len(lineups)} unique lineups!")
             st.rerun()
         else:
-            UIHelpers.show_error("Failed to generate lineups. Try adjusting settings or check your data.")
+            UIHelpers.show_error("Failed to generate lineups. See suggestions above.")
         
     except Exception as e:
         UIHelpers.show_error(f"Optimization failed: {str(e)}")
@@ -1449,10 +1526,10 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: gray; padding: 20px;'>
-        <p>NFL DFS AI-Driven Optimizer v{} | Built with ❤️ and AI</p>
+        <p>NFL DFS AI-Driven Optimizer v2.0.1 | Built with ❤️ and AI</p>
         <p>⚠️ For entertainment purposes only. Always gamble responsibly.</p>
     </div>
-    """.format(__version__), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
