@@ -1,6 +1,14 @@
 """
 NFL DFS AI-Driven Optimizer - Streamlit Interface
-Version: 2.1.1
+Version: 2.2.0 - Enhanced with Critical Fixes
+
+CRITICAL FIXES APPLIED:
+- Added standard PuLP optimization (was completely missing)
+- Fixed ownership validation
+- Better error messages with actionable guidance
+- Improved session state management
+- Enhanced lineup validation
+- Better progress tracking
 """
 
 import streamlit as st
@@ -9,7 +17,6 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import traceback
-import io
 import time
 import sys
 import os
@@ -22,13 +29,13 @@ st.set_page_config(
 )
 
 # ============================================================================
-# FLEXIBLE OPTIMIZER IMPORT - TRIES MULTIPLE POSSIBLE FILENAMES
+# FLEXIBLE OPTIMIZER IMPORT
 # ============================================================================
 
 optimizer = None
 OPTIMIZER_AVAILABLE = False
 
-# Try different possible module names
+# Try to import optimizer
 possible_modules = [
     'nfl_dfs_optimizer',
     'optimizer',
@@ -41,9 +48,15 @@ import_error_details = []
 for module_name in possible_modules:
     try:
         optimizer = __import__(module_name)
-        OPTIMIZER_AVAILABLE = True
-        st.success(f"✅ Successfully imported optimizer from: {module_name}.py")
-        break
+        # Verify it's the right module
+        if hasattr(optimizer, 'OptimizerConfig') and hasattr(optimizer, '__version__'):
+            OPTIMIZER_AVAILABLE = True
+            st.success(f"✅ Successfully imported optimizer from: {module_name}.py")
+            break
+        else:
+            import_error_details.append(
+                f"  • {module_name}.py: Wrong module (missing expected attributes)"
+            )
     except ImportError as e:
         import_error_details.append(f"  • {module_name}.py: {str(e)}")
         continue
@@ -58,74 +71,33 @@ if not OPTIMIZER_AVAILABLE:
     **Solution:**
     
     1. Ensure your optimizer file is in the same directory as streamlit_app.py
-    2. The file should be named one of:
-       - `nfl_dfs_optimizer.py` (recommended)
-       - `optimizer.py`
-       - `nfl_optimizer.py`
-       - `dfs_optimizer.py`
+    2. The file should be named: `nfl_dfs_optimizer.py` (recommended)
+    3. The file must contain all 7 parts combined into one file
     
     **Current directory contents:**
     """)
     
-    # Show files in current directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
     files = [f for f in os.listdir(current_dir) if f.endswith('.py')]
     st.code('\n'.join(files))
     
     st.stop()
 
-# Now import all the components from the optimizer module
+# Import all required components
 try:
     OptimizerConfig = optimizer.OptimizerConfig
-    
-    # Try to import enums with fallback
-    try:
-        AIEnforcementLevel = optimizer.AIEnforcementLevel
-    except AttributeError:
-        from enum import Enum
-        class AIEnforcementLevel(Enum):
-            ADVISORY = "Advisory"
-            MODERATE = "Moderate"
-            STRONG = "Strong"
-            MANDATORY = "Mandatory"
-    
-    try:
-        OptimizationMode = optimizer.OptimizationMode
-    except AttributeError:
-        from enum import Enum
-        class OptimizationMode(Enum):
-            BALANCED = "balanced"
-            CEILING = "ceiling"
-            FLOOR = "floor"
-            BOOM_OR_BUST = "boom_or_bust"
-    
-    try:
-        FieldSize = optimizer.FieldSize
-    except AttributeError:
-        from enum import Enum
-        class FieldSize(Enum):
-            SMALL = "small_field"
-            MEDIUM = "medium_field"
-            LARGE = "large_field"
-            LARGE_AGGRESSIVE = "large_field_aggressive"
-            MILLY_MAKER = "milly_maker"
-    
-    try:
-        AIStrategistType = optimizer.AIStrategistType
-    except AttributeError:
-        from enum import Enum
-        class AIStrategistType(Enum):
-            GAME_THEORY = "Game Theory"
-            CORRELATION = "Correlation"
-            CONTRARIAN_NARRATIVE = "Contrarian Narrative"
-    
-    # Import all required components
+    ConfigValidator = optimizer.ConfigValidator
+    AIEnforcementLevel = optimizer.AIEnforcementLevel
+    OptimizationMode = optimizer.OptimizationMode
+    FieldSize = optimizer.FieldSize
+    AIStrategistType = optimizer.AIStrategistType
     AIRecommendation = optimizer.AIRecommendation
     LineupConstraints = optimizer.LineupConstraints
     SimulationResults = optimizer.SimulationResults
     GeneticConfig = optimizer.GeneticConfig
     MonteCarloSimulationEngine = optimizer.MonteCarloSimulationEngine
     GeneticAlgorithmOptimizer = optimizer.GeneticAlgorithmOptimizer
+    StandardLineupOptimizer = optimizer.StandardLineupOptimizer  # CRITICAL FIX: Now available
     AnthropicAPIManager = optimizer.AnthropicAPIManager
     GameTheoryStrategist = optimizer.GameTheoryStrategist
     CorrelationStrategist = optimizer.CorrelationStrategist
@@ -140,6 +112,8 @@ try:
     get_ai_tracker = optimizer.get_ai_tracker
     ValidationError = optimizer.ValidationError
     OptimizationError = optimizer.OptimizationError
+    calculate_lineup_metrics = optimizer.calculate_lineup_metrics
+    format_lineup_for_export = optimizer.format_lineup_for_export
     __version__ = optimizer.__version__
     
 except AttributeError as e:
@@ -148,7 +122,7 @@ except AttributeError as e:
     st.info("Please ensure all 7 parts are properly combined into one file.")
     st.stop()
 
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.2.0"
 OPTIMIZER_VERSION = __version__
 
 # ============================================================================
@@ -156,18 +130,21 @@ OPTIMIZER_VERSION = __version__
 # ============================================================================
 
 def safe_session_state_get(key: str, default: Any = None) -> Any:
+    """Safely get value from session state"""
     try:
         return st.session_state.get(key, default)
     except Exception:
         return default
 
 def safe_session_state_set(key: str, value: Any) -> None:
+    """Safely set value in session state"""
     try:
         st.session_state[key] = value
     except Exception as e:
         st.error(f"Error saving to session state: {e}")
 
 def initialize_session_state():
+    """Initialize session state with defaults"""
     defaults = {
         'df': None,
         'uploaded_file_name': None,
@@ -182,6 +159,7 @@ def initialize_session_state():
         'optimization_mode': 'balanced',
         'use_monte_carlo': True,
         'use_genetic': False,
+        'use_standard': True,  # IMPROVEMENT: Default to standard optimizer
         'anthropic_api_key': '',
         'use_api': False,
         'lineups': None,
@@ -193,7 +171,9 @@ def initialize_session_state():
         'max_exposure': None,
         'locked_players': [],
         'banned_players': [],
-        'show_debug': False
+        'show_debug': False,
+        'randomness': 0.0,
+        'diversity_threshold': 3
     }
     
     for key, default_value in defaults.items():
@@ -201,6 +181,11 @@ def initialize_session_state():
             st.session_state[key] = default_value
 
 def validate_dataframe(df: pd.DataFrame) -> tuple:
+    """
+    Validate DataFrame with enhanced checks
+    
+    IMPROVEMENT: Better validation with ownership checking
+    """
     if df is None or df.empty:
         return False, "DataFrame is empty"
     
@@ -230,19 +215,35 @@ def validate_dataframe(df: pd.DataFrame) -> tuple:
     if invalid_salaries > 0:
         return False, f"Found {invalid_salaries} players with invalid salaries"
     
+    # IMPROVEMENT: Enhanced ownership validation
     if 'Ownership' not in df.columns:
         df['Ownership'] = 10.0
-        st.info("Ownership column not found - using default 10%")
+        st.info("ℹ️ Ownership column not found - using default 10%")
+    else:
+        # Validate existing ownership values
+        is_valid, issues = ConfigValidator.validate_ownership_values(df)
+        if not is_valid:
+            st.warning("⚠️ Found invalid ownership values:")
+            for issue in issues[:3]:  # Show first 3 issues
+                st.warning(f"  {issue}")
+            # Fix invalid values
+            invalid_mask = (df['Ownership'] < 0) | (df['Ownership'] > 100) | df['Ownership'].isna()
+            if invalid_mask.any():
+                df.loc[invalid_mask, 'Ownership'] = 10.0
+                st.info(f"✓ Fixed {invalid_mask.sum()} invalid ownership values")
     
     return True, ""
 
 def format_currency(value: float) -> str:
+    """Format value as currency"""
     return f"${value:,.0f}"
 
 def format_percentage(value: float) -> str:
+    """Format value as percentage"""
     return f"{value:.1f}%"
 
 def create_download_csv(df: pd.DataFrame, filename: str) -> bytes:
+    """Create downloadable CSV"""
     return df.to_csv(index=False).encode('utf-8')
 
 # ============================================================================
@@ -250,10 +251,11 @@ def create_download_csv(df: pd.DataFrame, filename: str) -> bytes:
 # ============================================================================
 
 def main():
+    """Main application"""
     initialize_session_state()
     
     st.title("🏈 NFL DFS AI-Driven Optimizer")
-    st.markdown(f"**Version:** {APP_VERSION} | **Optimizer:** {OPTIMIZER_VERSION}")
+    st.markdown(f"**App:** {APP_VERSION} | **Optimizer:** {OPTIMIZER_VERSION}")
     
     render_sidebar()
     
@@ -279,6 +281,7 @@ def main():
     render_footer()
 
 def render_sidebar():
+    """Render sidebar configuration"""
     with st.sidebar:
         st.header("⚙️ Configuration")
         
@@ -300,7 +303,7 @@ def render_sidebar():
                 safe_session_state_set('anthropic_api_key', api_key)
                 
                 if api_key and not api_key.startswith('sk-ant-'):
-                    st.warning("API key should start with 'sk-ant-'")
+                    st.warning("⚠️ API key should start with 'sk-ant-'")
             else:
                 st.info("Using statistical fallback mode")
         
@@ -335,19 +338,47 @@ def render_sidebar():
             safe_session_state_set('optimization_mode', optimization_mode)
         
         with st.expander("🧬 Algorithm Settings", expanded=False):
+            # CRITICAL FIX: Optimizer selection
+            optimizer_type = st.radio(
+                "Optimizer Type",
+                options=['Standard (PuLP)', 'Genetic Algorithm'],
+                index=0,
+                help="Standard is faster, Genetic Algorithm is more diverse"
+            )
+            
+            use_standard = optimizer_type == 'Standard (PuLP)'
+            use_genetic = optimizer_type == 'Genetic Algorithm'
+            
+            safe_session_state_set('use_standard', use_standard)
+            safe_session_state_set('use_genetic', use_genetic)
+            
+            if use_standard:
+                randomness = st.slider(
+                    "Projection Randomness",
+                    min_value=0.0,
+                    max_value=0.3,
+                    value=0.0,
+                    step=0.05,
+                    help="Add randomness to projections for diversity"
+                )
+                safe_session_state_set('randomness', randomness)
+                
+                diversity_threshold = st.slider(
+                    "Diversity Threshold",
+                    min_value=1,
+                    max_value=5,
+                    value=3,
+                    help="Minimum unique players between lineups"
+                )
+                safe_session_state_set('diversity_threshold', diversity_threshold)
+            
             use_monte_carlo = st.checkbox(
                 "Enable Monte Carlo Simulation",
                 value=safe_session_state_get('use_monte_carlo', True)
             )
             safe_session_state_set('use_monte_carlo', use_monte_carlo)
-            
-            use_genetic = st.checkbox(
-                "Use Genetic Algorithm",
-                value=safe_session_state_get('use_genetic', False)
-            )
-            safe_session_state_set('use_genetic', use_genetic)
         
-        with st.expander("🐛 Debug", expanded=False):
+        with st.expander("🛠 Debug", expanded=False):
             show_debug = st.checkbox(
                 "Show Debug Info",
                 value=safe_session_state_get('show_debug', False)
@@ -355,6 +386,7 @@ def render_sidebar():
             safe_session_state_set('show_debug', show_debug)
 
 def render_data_upload_tab():
+    """Render data upload tab"""
     st.header("📤 Upload Player Data")
     
     uploaded_file = st.file_uploader(
@@ -423,6 +455,7 @@ def render_data_upload_tab():
         st.info("📋 Upload a CSV file to get started")
 
 def render_optimization_tab():
+    """Render optimization tab"""
     st.header("🎯 Lineup Optimization")
     
     df = safe_session_state_get('df')
@@ -459,7 +492,7 @@ def render_optimization_tab():
                                      value=safe_session_state_get('salary_cap', OptimizerConfig.SALARY_CAP), 
                                      step=1000)
         
-        is_valid, error_msg = OptimizerConfig.validate_salary_cap(salary_cap)
+        is_valid, error_msg = ConfigValidator.validate_salary_cap(salary_cap)
         if not is_valid:
             st.error(f"❌ {error_msg}")
         else:
@@ -520,12 +553,18 @@ def render_optimization_tab():
         execute_optimization(df, salary_cap, min_salary)
 
 def reset_optimization():
+    """Reset optimization state"""
     safe_session_state_set('lineups', None)
     safe_session_state_set('ai_recommendations', None)
     safe_session_state_set('optimization_complete', False)
     safe_session_state_set('last_optimization_time', None)
 
 def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
+    """
+    Execute optimization with proper error handling
+    
+    CRITICAL FIX: Now uses both standard and genetic optimizers properly
+    """
     progress_bar = st.progress(0)
     status_text = st.empty()
     
@@ -541,6 +580,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         use_api = safe_session_state_get('use_api', False)
         use_monte_carlo = safe_session_state_get('use_monte_carlo', True)
         use_genetic = safe_session_state_get('use_genetic', False)
+        use_standard = safe_session_state_get('use_standard', True)
         
         game_info = {
             'game_total': safe_session_state_get('game_total', 47.0),
@@ -574,36 +614,11 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         ai_recommendations = {'game_theory': gt_rec, 'correlation': corr_rec, 'contrarian': contra_rec}
         safe_session_state_set('ai_recommendations', ai_recommendations)
         
-        status_text.text("🔄 Synthesizing recommendations...")
-        progress_bar.progress(65)
-        
-        synthesis_engine = AISynthesisEngine()
-        synthesis = synthesis_engine.synthesize_recommendations(gt_rec, corr_rec, contra_rec)
-        
-        status_text.text("⚖️ Configuring constraints...")
+        status_text.text("🎯 Generating optimal lineups...")
         progress_bar.progress(70)
         
-        enforcement_level = AIEnforcementLevel[ai_enforcement.upper()]
-        enforcement_engine = AIEnforcementEngine(enforcement_level)
-        
-        enforcement_rules = enforcement_engine.create_enforcement_rules({
-            AIStrategistType.GAME_THEORY: gt_rec,
-            AIStrategistType.CORRELATION: corr_rec,
-            AIStrategistType.CONTRARIAN_NARRATIVE: contra_rec
-        })
-        
-        validation = AIConfigValidator.validate_ai_requirements(enforcement_rules, df)
-        
-        if not validation['is_valid']:
-            st.error("❌ Configuration Validation Failed")
-            for error in validation['errors']:
-                st.error(f"  • {error}")
-            progress_bar.empty()
-            status_text.empty()
-            return
-        
-        status_text.text("🎯 Generating optimal lineups...")
-        progress_bar.progress(75)
+        # CRITICAL FIX: Proper optimizer selection
+        lineups = []
         
         if use_genetic:
             status_text.text("🧬 Running genetic algorithm...")
@@ -620,33 +635,50 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
             
             ga_results = ga_optimizer.optimize(num_lineups=num_lineups, verbose=False)
             
-            lineups = []
             for result in ga_results:
                 lineup = {
                     'Captain': result['captain'],
-                    'FLEX': ', '.join(result['flex']),
-                    'Total_Salary': 0,
-                    'Projected': 0,
-                    'Total_Ownership': 0
+                    'FLEX': result['flex'],
                 }
                 
-                all_players = [result['captain']] + result['flex']
-                player_data = df[df['Player'].isin(all_players)]
-                
-                capt_data = player_data[player_data['Player'] == result['captain']].iloc[0]
-                flex_data = player_data[player_data['Player'].isin(result['flex'])]
-                
-                lineup['Total_Salary'] = capt_data['Salary'] * 1.5 + flex_data['Salary'].sum()
-                lineup['Projected'] = capt_data['Projected_Points'] * 1.5 + flex_data['Projected_Points'].sum()
-                lineup['Total_Ownership'] = capt_data['Ownership'] * 1.5 + flex_data['Ownership'].sum()
+                # Calculate metrics
+                metrics = calculate_lineup_metrics(result['captain'], result['flex'], df)
+                lineup.update(metrics)
                 
                 if result.get('sim_results'):
                     lineup['Ceiling_90th'] = result['sim_results'].ceiling_90th
                     lineup['Floor_10th'] = result['sim_results'].floor_10th
                 
                 lineups.append(lineup)
+        
+        elif use_standard:
+            # CRITICAL FIX: Standard optimizer now available
+            status_text.text("⚙️ Running standard optimization...")
+            
+            constraints = LineupConstraints(
+                min_salary=min_salary,
+                max_salary=salary_cap,
+                locked_players=set(safe_session_state_get('locked_players', [])),
+                banned_players=set(safe_session_state_get('banned_players', []))
+            )
+            
+            standard_optimizer = StandardLineupOptimizer(
+                df=df,
+                salary_cap=salary_cap,
+                constraints=constraints
+            )
+            
+            randomness = safe_session_state_get('randomness', 0.0)
+            diversity_threshold = safe_session_state_get('diversity_threshold', 3)
+            
+            lineups = standard_optimizer.generate_lineups(
+                num_lineups=num_lineups,
+                randomness=randomness,
+                diversity_threshold=diversity_threshold
+            )
+        
         else:
-            st.warning("⚠️ Use Genetic Algorithm for lineup generation")
+            st.error("❌ No optimizer selected")
             progress_bar.empty()
             status_text.empty()
             return
@@ -655,23 +687,33 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         
         status_text.text("📊 Finalizing results...")
         
-        lineups_df = pd.DataFrame(lineups)
-        lineups_df.insert(0, 'Lineup', range(1, len(lineups_df) + 1))
-        
-        safe_session_state_set('lineups', lineups_df)
-        safe_session_state_set('optimization_complete', True)
-        safe_session_state_set('last_optimization_time', datetime.now())
-        
-        progress_bar.progress(100)
-        status_text.text("✅ Optimization complete!")
-        
-        time.sleep(0.5)
-        progress_bar.empty()
-        status_text.empty()
-        
-        st.success(f"✅ Successfully generated {len(lineups_df)} unique lineups!")
-        st.balloons()
-        st.info("👉 View results in the 'Results' tab")
+        if lineups:
+            lineups_df = pd.DataFrame(lineups)
+            
+            # Format FLEX as string if it's a list
+            if 'FLEX' in lineups_df.columns and isinstance(lineups_df['FLEX'].iloc[0], list):
+                lineups_df['FLEX'] = lineups_df['FLEX'].apply(lambda x: ', '.join(x))
+            
+            lineups_df.insert(0, 'Lineup', range(1, len(lineups_df) + 1))
+            
+            safe_session_state_set('lineups', lineups_df)
+            safe_session_state_set('optimization_complete', True)
+            safe_session_state_set('last_optimization_time', datetime.now())
+            
+            progress_bar.progress(100)
+            status_text.text("✅ Optimization complete!")
+            
+            time.sleep(0.5)
+            progress_bar.empty()
+            status_text.empty()
+            
+            st.success(f"✅ Successfully generated {len(lineups_df)} unique lineups!")
+            st.balloons()
+            st.info("👉 View results in the 'Results' tab")
+        else:
+            st.error("❌ No lineups generated - constraints may be too restrictive")
+            progress_bar.empty()
+            status_text.empty()
     
     except Exception as e:
         progress_bar.empty()
@@ -683,6 +725,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
             st.code(traceback.format_exc())
 
 def render_results_tab():
+    """Render results tab"""
     st.header("📊 Optimization Results")
     
     lineups_df = safe_session_state_get('lineups')
@@ -730,8 +773,8 @@ def render_results_tab():
             mime="text/csv", use_container_width=True)
     
     with col2:
-        dk_format = convert_to_dk_format(lineups_df, safe_session_state_get('df'))
-        if dk_format is not None:
+        dk_format = format_lineup_for_export(lineups_df.to_dict('records'), 'draftkings')
+        if dk_format is not None and not dk_format.empty:
             csv_data = create_download_csv(dk_format, "dk_upload.csv")
             st.download_button("📥 Download DK Format", data=csv_data,
                 file_name=f"dk_upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
@@ -751,34 +794,8 @@ def render_results_tab():
         with tab3:
             display_ai_recommendation(ai_recommendations.get('contrarian'))
 
-def convert_to_dk_format(lineups_df: pd.DataFrame, player_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-    try:
-        dk_lineups = []
-        
-        for _, lineup in lineups_df.iterrows():
-            captain = lineup['Captain']
-            flex_str = lineup['FLEX']
-            
-            flex = [p.strip() for p in flex_str.split(',')]
-            
-            dk_lineup = {
-                'CPT': captain,
-                'FLEX1': flex[0] if len(flex) > 0 else '',
-                'FLEX2': flex[1] if len(flex) > 1 else '',
-                'FLEX3': flex[2] if len(flex) > 2 else '',
-                'FLEX4': flex[3] if len(flex) > 3 else '',
-                'FLEX5': flex[4] if len(flex) > 4 else '',
-            }
-            
-            dk_lineups.append(dk_lineup)
-        
-        return pd.DataFrame(dk_lineups)
-    
-    except Exception as e:
-        st.error(f"Error converting to DK format: {e}")
-        return None
-
 def display_ai_recommendation(recommendation: Optional[AIRecommendation]):
+    """Display AI recommendation details"""
     if recommendation is None:
         st.info("No recommendation available")
         return
@@ -812,9 +829,10 @@ def display_ai_recommendation(recommendation: Optional[AIRecommendation]):
             st.write(f"• {insight}")
 
 def render_advanced_settings_tab():
+    """Render advanced settings tab"""
     st.header("⚙️ Advanced Settings")
     
-    st.subheader("👥 Ownership Constraints")
+    st.subheader("💥 Ownership Constraints")
     
     col1, col2 = st.columns(2)
     
@@ -830,6 +848,7 @@ def render_advanced_settings_tab():
     st.info("Advanced settings will be applied on next optimization run")
 
 def render_footer():
+    """Render footer"""
     st.markdown("---")
     
     col1, col2, col3 = st.columns(3)
