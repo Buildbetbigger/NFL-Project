@@ -1,83 +1,15 @@
-"""
-NFL DFS AI-Driven Optimizer - Streamlit Interface
-Complete, Production-Ready Application with Critical Bug Fixes
+""")
+    st.stop()
 
-Version: 2.1.1
-Compatible with: Optimizer v2.1.1
-
-CRITICAL FIXES APPLIED:
-- Safe session state management
-- Comprehensive input validation
-- Better error handling with user feedback
-- Consistent salary cap usage
-- Thread-safe operations
-- Proper DataFrame validation
-"""
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime
-from typing import Dict, List, Any, Optional
-import traceback
-import io
-import time
-
-# Set page config FIRST (must be first Streamlit command)
-st.set_page_config(
-    page_title="NFL DFS AI Optimizer",
-    page_icon="🏈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Import optimizer components
-# NOTE: This assumes the 7-part optimizer is in a file named 'nfl_dfs_optimizer.py'
-# Adjust the import based on your file structure
-try:
-    from nfl_dfs_optimizer import (
-        # Configuration
-        OptimizerConfig,
-        AIEnforcementLevel,
-        OptimizationMode,
-        FieldSize,
-        
-        # Data Classes
-        AIRecommendation,
-        LineupConstraints,
-        SimulationResults,
-        GeneticConfig,
-        
-        # Engines
-        MonteCarloSimulationEngine,
-        GeneticAlgorithmOptimizer,
-        
-        # AI Components
-        AnthropicAPIManager,
-        GameTheoryStrategist,
-        CorrelationStrategist,
-        ContrarianNarrativeStrategist,
-        AIEnforcementEngine,
-        AISynthesisEngine,
-        AIOwnershipBucketManager,
-        AIConfigValidator,
-        
-        # Utilities
-        OptimizedDataProcessor,
-        get_logger,
-        get_performance_monitor,
-        get_ai_tracker,
-        
-        # Exceptions
-        ValidationError,
-        OptimizationError,
-        
-        # Version
-        __version__
-    )
-    OPTIMIZER_AVAILABLE = True
-except ImportError as e:
-    st.error(f"Failed to import optimizer components: {e}")
+except AttributeError as e:
+    st.error(f"""
+    ❌ **Missing optimizer component**
+    
+    Error: {str(e)}
+    
+    This usually means the optimizer file is incomplete.
+    Please ensure all 7 parts are properly combined.
+    """)
     st.stop()
 
 # ============================================================================
@@ -145,8 +77,8 @@ def initialize_session_state():
         'salary_cap': OptimizerConfig.SALARY_CAP,
         'num_lineups': 20,
         'field_size': 'large_field',
-        'ai_enforcement': AIEnforcementLevel.STRONG.value,
-        'optimization_mode': OptimizationMode.BALANCED.value,
+        'ai_enforcement': 'Strong',
+        'optimization_mode': 'balanced',
         'use_monte_carlo': True,
         'use_genetic': False,
         'anthropic_api_key': '',
@@ -177,8 +109,6 @@ def initialize_session_state():
 def validate_dataframe(df: pd.DataFrame) -> tuple[bool, str]:
     """
     Validate uploaded DataFrame
-    
-    CRITICAL FIX: Comprehensive validation with actionable messages
     
     Args:
         df: DataFrame to validate
@@ -347,18 +277,22 @@ def render_sidebar():
             )
             safe_session_state_set('field_size', OptimizerConfig.FIELD_SIZES[field_size])
             
+            # Use string values for AI enforcement
+            ai_enforcement_options = ['Advisory', 'Moderate', 'Strong', 'Mandatory']
             ai_enforcement = st.selectbox(
                 "AI Enforcement Level",
-                options=[e.value for e in AIEnforcementLevel],
-                index=2,  # STRONG
+                options=ai_enforcement_options,
+                index=2,  # Strong
                 help="How strictly to enforce AI recommendations"
             )
             safe_session_state_set('ai_enforcement', ai_enforcement)
             
+            # Use string values for optimization mode
+            optimization_mode_options = ['balanced', 'ceiling', 'floor', 'boom_or_bust']
             optimization_mode = st.selectbox(
                 "Optimization Mode",
-                options=[m.value for m in OptimizationMode],
-                index=0,  # BALANCED
+                options=optimization_mode_options,
+                index=0,  # balanced
                 help="Ceiling=upside, Floor=consistency, Balanced=mix"
             )
             safe_session_state_set('optimization_mode', optimization_mode)
@@ -682,8 +616,6 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
     """
     Execute the lineup optimization
     
-    CRITICAL FIX: Comprehensive error handling and user feedback
-    
     Args:
         df: Player DataFrame
         salary_cap: Salary cap limit
@@ -768,6 +700,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         status_text.text("⚖️ Configuring constraints...")
         progress_bar.progress(70)
         
+        # Convert string to enum
         enforcement_level = AIEnforcementLevel[ai_enforcement.upper()]
         enforcement_engine = AIEnforcementEngine(enforcement_level)
         
@@ -818,7 +751,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
                     population_size=100,
                     generations=50
                 ),
-                salary_cap=salary_cap  # CRITICAL FIX: Pass salary_cap
+                salary_cap=salary_cap
             )
             
             ga_results = ga_optimizer.optimize(
@@ -864,7 +797,6 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         
         else:
             # Standard optimization (simplified for demo)
-            # In production, this would call your main optimizer class
             st.warning("⚠️ Standard optimization not fully implemented in this demo. Use Genetic Algorithm.")
             progress_bar.empty()
             status_text.empty()
