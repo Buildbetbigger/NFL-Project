@@ -1,8 +1,11 @@
 """
 NFL DFS AI-Driven Optimizer - Streamlit Interface
-Version: 2.2.0 - Enhanced with Critical Fixes
+Version: 2.3.0 - Complete with Smart Column Mapping
 
 CRITICAL FIXES APPLIED:
+- Smart column mapping for various CSV formats
+- Automatic first_name + last_name combination
+- Manual column mapping fallback
 - Added standard PuLP optimization (was completely missing)
 - Fixed ownership validation
 - Better error messages with actionable guidance
@@ -15,7 +18,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import traceback
 import time
 import sys
@@ -77,9 +80,12 @@ if not OPTIMIZER_AVAILABLE:
     **Current directory contents:**
     """)
     
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    files = [f for f in os.listdir(current_dir) if f.endswith('.py')]
-    st.code('\n'.join(files))
+    current_dir = os.path.dirname(os.path.abspath(__file__)) if __file__ else os.getcwd()
+    try:
+        files = [f for f in os.listdir(current_dir) if f.endswith('.py')]
+        st.code('\n'.join(files))
+    except Exception:
+        st.code("Unable to list directory")
     
     st.stop()
 
@@ -97,7 +103,7 @@ try:
     GeneticConfig = optimizer.GeneticConfig
     MonteCarloSimulationEngine = optimizer.MonteCarloSimulationEngine
     GeneticAlgorithmOptimizer = optimizer.GeneticAlgorithmOptimizer
-    StandardLineupOptimizer = optimizer.StandardLineupOptimizer  # CRITICAL FIX: Now available
+    StandardLineupOptimizer = optimizer.StandardLineupOptimizer
     AnthropicAPIManager = optimizer.AnthropicAPIManager
     GameTheoryStrategist = optimizer.GameTheoryStrategist
     CorrelationStrategist = optimizer.CorrelationStrategist
@@ -122,7 +128,7 @@ except AttributeError as e:
     st.info("Please ensure all 7 parts are properly combined into one file.")
     st.stop()
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 OPTIMIZER_VERSION = __version__
 
 # ============================================================================
@@ -136,12 +142,14 @@ def safe_session_state_get(key: str, default: Any = None) -> Any:
     except Exception:
         return default
 
+
 def safe_session_state_set(key: str, value: Any) -> None:
     """Safely set value in session state"""
     try:
         st.session_state[key] = value
     except Exception as e:
         st.error(f"Error saving to session state: {e}")
+
 
 def initialize_session_state():
     """Initialize session state with defaults"""
@@ -159,7 +167,7 @@ def initialize_session_state():
         'optimization_mode': 'balanced',
         'use_monte_carlo': True,
         'use_genetic': False,
-        'use_standard': True,  # IMPROVEMENT: Default to standard optimizer
+        'use_standard': True,
         'anthropic_api_key': '',
         'use_api': False,
         'lineups': None,
@@ -180,11 +188,224 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = default_value
 
-def validate_dataframe(df: pd.DataFrame) -> tuple:
+
+def smart_column_mapping(df_raw: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Intelligently map CSV columns to required format
+    
+    Args:
+        df_raw: Raw uploaded DataFrame
+        
+    Returns:
+        Tuple of (mapped_df, mapping_info_dict)
+    """
+    df = df_raw.copy()
+    
+    # Define column mapping patterns
+    column_patterns = {
+        'Player': [
+            'player', 'name', 'player_name', 'playername', 'full_name', 'fullname'
+        ],
+        'Position': [
+            'position', 'pos', 'Pos'
+        ],
+        'Team': [
+            'team', 'tm', 'team_name', 'teamname'
+        ],
+        'Salary': [
+            'salary', 'sal', 'cost', 'price'
+        ],
+        'Projected_Points': [
+            'projected_points', 'projection', 'proj', 'points', 
+            'point_projection', 'fpts', 'fantasy_points', 'pts', 'projected'
+        ],
+        'Ownership': [
+            'ownership', 'own', 'own%', 'ownership%', 'proj_own', 'projected_ownership'
+        ]
+    }
+    
+    mappings = {}
+    auto_mapped = False
+    
+    # Try to map each required column
+    for required_col, patterns in column_patterns.items():
+        if required_col in df.columns:
+            # Already has correct name
+            continue
+        
+        # Look for matching pattern
+        for pattern in patterns:
+            # Case-insensitive matching
+            matching_cols = [col for col in df.columns if col.lower() == pattern.lower()]
+            if matching_cols:
+                old_col = matching_cols[0]
+                df.rename(columns={old_col: required_col}, inplace=True)
+                mappings[old_col] = required_col
+                auto_mapped = True
+                break
+    
+    # Special case: Combine first_name + last_name into Player
+    if 'Player' not in df.columns:
+        first_name_cols = [col for col in df.columns if col.lower() in ['first_name', 'firstname', 'first']]
+        last_name_cols = [col for col in df.columns if col.lower() in ['last_name', 'lastname', 'last']]
+        
+        if first_name_cols and last_name_cols:
+            first_col = first_name_cols[0]
+            last_col = last_name_cols[0]
+            df['Player'] = df[first_col].astype(str) + ' ' + df[last_col].astype(str)
+            mappings[f'{first_col} + {last_col}'] = 'Player'
+            auto_mapped = True
+    
+    # Normalize position names (handle lowercase)
+    if 'Position' in df.columns:
+        df['Position'] = df['Position'].str.upper()
+    
+    mapping_info = {
+        'auto_mapped': auto_mapped,
+        'mappings': mappings
+    }
+    
+    return df, mapping_info
+
+
+def manual_column_mapping(df_raw: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """
+    Provide manual column mapping interface
+    
+    Args:
+        df_raw: Raw uploaded DataFrame
+        
+    Returns:
+        Mapped DataFrame or None if cancelled
+    """
+    st.subheader("🔧 Manual Column Mapping")
+    st.info("Map your CSV columns to the required format:")
+    
+    df = df_raw.copy()
+    available_columns = [''] + list(df_raw.columns)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Required Columns:**")
+        
+        player_col = st.selectbox(
+            "Player Name Column",
+            options=available_columns,
+            help="Column containing player names"
+        )
+        
+        position_col = st.selectbox(
+            "Position Column",
+            options=available_columns,
+            help="Column containing positions (QB, RB, WR, etc.)"
+        )
+        
+        team_col = st.selectbox(
+            "Team Column",
+            options=available_columns,
+            help="Column containing team names"
+        )
+    
+    with col2:
+        st.markdown("**Required Columns (cont.):**")
+        
+        salary_col = st.selectbox(
+            "Salary Column",
+            options=available_columns,
+            help="Column containing salaries"
+        )
+        
+        projection_col = st.selectbox(
+            "Projected Points Column",
+            options=available_columns,
+            help="Column containing point projections"
+        )
+        
+        ownership_col = st.selectbox(
+            "Ownership Column (Optional)",
+            options=available_columns,
+            help="Column containing ownership projections"
+        )
+    
+    # Check if using first_name + last_name
+    combine_name = False
+    first_name_cols = [col for col in df_raw.columns if 'first' in col.lower() and 'name' in col.lower()]
+    last_name_cols = [col for col in df_raw.columns if 'last' in col.lower() and 'name' in col.lower()]
+    
+    if not player_col and first_name_cols and last_name_cols:
+        combine_name = st.checkbox(
+            f"Combine '{first_name_cols[0]}' and '{last_name_cols[0]}' into Player column",
+            value=True
+        )
+    
+    if st.button("Apply Mapping", type="primary"):
+        try:
+            # Create mapped dataframe
+            mapped_df = pd.DataFrame()
+            
+            # Handle Player column
+            if combine_name and first_name_cols and last_name_cols:
+                mapped_df['Player'] = (
+                    df_raw[first_name_cols[0]].astype(str) + ' ' + 
+                    df_raw[last_name_cols[0]].astype(str)
+                )
+            elif player_col:
+                mapped_df['Player'] = df_raw[player_col]
+            else:
+                st.error("❌ Player column is required")
+                return None
+            
+            # Map other required columns
+            if position_col:
+                mapped_df['Position'] = df_raw[position_col].str.upper()
+            else:
+                st.error("❌ Position column is required")
+                return None
+            
+            if team_col:
+                mapped_df['Team'] = df_raw[team_col]
+            else:
+                st.error("❌ Team column is required")
+                return None
+            
+            if salary_col:
+                mapped_df['Salary'] = pd.to_numeric(df_raw[salary_col], errors='coerce')
+            else:
+                st.error("❌ Salary column is required")
+                return None
+            
+            if projection_col:
+                mapped_df['Projected_Points'] = pd.to_numeric(df_raw[projection_col], errors='coerce')
+            else:
+                st.error("❌ Projected Points column is required")
+                return None
+            
+            # Optional ownership
+            if ownership_col:
+                mapped_df['Ownership'] = pd.to_numeric(df_raw[ownership_col], errors='coerce')
+            else:
+                mapped_df['Ownership'] = 10.0
+            
+            st.success("✅ Mapping applied successfully!")
+            return mapped_df
+        
+        except Exception as e:
+            st.error(f"❌ Mapping failed: {e}")
+            return None
+    
+    return None
+
+
+def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
     """
     Validate DataFrame with enhanced checks
     
-    IMPROVEMENT: Better validation with ownership checking
+    Args:
+        df: DataFrame to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
     """
     if df is None or df.empty:
         return False, "DataFrame is empty"
@@ -215,7 +436,7 @@ def validate_dataframe(df: pd.DataFrame) -> tuple:
     if invalid_salaries > 0:
         return False, f"Found {invalid_salaries} players with invalid salaries"
     
-    # IMPROVEMENT: Enhanced ownership validation
+    # Enhanced ownership validation
     if 'Ownership' not in df.columns:
         df['Ownership'] = 10.0
         st.info("ℹ️ Ownership column not found - using default 10%")
@@ -224,7 +445,7 @@ def validate_dataframe(df: pd.DataFrame) -> tuple:
         is_valid, issues = ConfigValidator.validate_ownership_values(df)
         if not is_valid:
             st.warning("⚠️ Found invalid ownership values:")
-            for issue in issues[:3]:  # Show first 3 issues
+            for issue in issues[:3]:
                 st.warning(f"  {issue}")
             # Fix invalid values
             invalid_mask = (df['Ownership'] < 0) | (df['Ownership'] > 100) | df['Ownership'].isna()
@@ -234,17 +455,37 @@ def validate_dataframe(df: pd.DataFrame) -> tuple:
     
     return True, ""
 
+
 def format_currency(value: float) -> str:
     """Format value as currency"""
     return f"${value:,.0f}"
+
 
 def format_percentage(value: float) -> str:
     """Format value as percentage"""
     return f"{value:.1f}%"
 
+
 def create_download_csv(df: pd.DataFrame, filename: str) -> bytes:
     """Create downloadable CSV"""
     return df.to_csv(index=False).encode('utf-8')
+
+
+def create_sample_csv() -> bytes:
+    """Create a sample CSV for download"""
+    sample_df = pd.DataFrame({
+        'Player': [
+            'Patrick Mahomes', 'Travis Kelce', 'Tyreek Hill', 
+            'Justin Jefferson', 'Austin Ekeler', 'Stefon Diggs'
+        ],
+        'Position': ['QB', 'TE', 'WR', 'WR', 'RB', 'WR'],
+        'Team': ['KC', 'KC', 'MIA', 'MIN', 'LAC', 'BUF'],
+        'Salary': [11000, 8500, 7800, 8200, 7500, 7600],
+        'Projected_Points': [25.5, 18.2, 16.8, 17.9, 16.2, 17.1],
+        'Ownership': [35.2, 22.1, 18.5, 20.3, 15.8, 19.2]
+    })
+    return sample_df.to_csv(index=False).encode('utf-8')
+
 
 # ============================================================================
 # MAIN APP
@@ -280,10 +521,26 @@ def main():
     
     render_footer()
 
+
 def render_sidebar():
     """Render sidebar configuration"""
     with st.sidebar:
         st.header("⚙️ Configuration")
+        
+        # Sample CSV download
+        st.markdown("---")
+        st.subheader("📥 Sample Data")
+        sample_csv = create_sample_csv()
+        st.download_button(
+            "Download Sample CSV",
+            data=sample_csv,
+            file_name="sample_showdown_slate.csv",
+            mime="text/csv",
+            help="Download a sample CSV to see the expected format",
+            use_container_width=True
+        )
+        
+        st.markdown("---")
         
         with st.expander("🤖 AI Settings", expanded=False):
             use_api = st.checkbox(
@@ -338,7 +595,6 @@ def render_sidebar():
             safe_session_state_set('optimization_mode', optimization_mode)
         
         with st.expander("🧬 Algorithm Settings", expanded=False):
-            # CRITICAL FIX: Optimizer selection
             optimizer_type = st.radio(
                 "Optimizer Type",
                 options=['Standard (PuLP)', 'Genetic Algorithm'],
@@ -385,29 +641,77 @@ def render_sidebar():
             )
             safe_session_state_set('show_debug', show_debug)
 
+
 def render_data_upload_tab():
-    """Render data upload tab"""
+    """Render data upload tab with intelligent column mapping"""
     st.header("📤 Upload Player Data")
+    
+    # Show expected format
+    with st.expander("ℹ️ CSV Format Guide", expanded=False):
+        st.markdown("""
+        **Your CSV should contain these columns** (names can vary):
+        
+        | Column | Alternatives | Example |
+        |--------|-------------|---------|
+        | Player | first_name + last_name, Name, player_name | Patrick Mahomes |
+        | Position | position, pos | QB |
+        | Team | team, Team Name | KC |
+        | Salary | salary, sal, cost | 11000 |
+        | Projected_Points | point_projection, projection, proj, fpts | 25.5 |
+        | Ownership | ownership, own, own% | 15.2 |
+        
+        **The app will automatically detect and map your columns!**
+        """)
     
     uploaded_file = st.file_uploader(
         "Upload CSV with player projections",
         type=['csv'],
-        help="CSV must contain: Player, Position, Team, Salary, Projected_Points"
+        help="CSV will be automatically mapped to required format"
     )
     
     if uploaded_file is not None:
         try:
-            df = pd.read_csv(uploaded_file)
+            # Read raw CSV
+            df_raw = pd.read_csv(uploaded_file)
+            st.success(f"✅ File loaded: {len(df_raw)} rows, {len(df_raw.columns)} columns")
             
+            # Show raw columns
+            with st.expander("📋 Detected Columns", expanded=False):
+                st.write("**Your CSV contains:**")
+                st.code(', '.join(df_raw.columns.tolist()))
+            
+            # Intelligent column mapping
+            df, mapping_info = smart_column_mapping(df_raw)
+            
+            # Show mapping results
+            if mapping_info['auto_mapped']:
+                st.info("🔄 **Automatic Column Mapping Applied:**")
+                for old_col, new_col in mapping_info['mappings'].items():
+                    st.success(f"  ✓ `{old_col}` → `{new_col}`")
+            
+            # Validate mapped dataframe
             is_valid, error_message = validate_dataframe(df)
             
             if not is_valid:
                 st.error(f"❌ Validation Error: {error_message}")
-                return
+                
+                # Offer manual mapping
+                st.warning("⚠️ Automatic mapping failed. Try manual mapping:")
+                df_manual = manual_column_mapping(df_raw)
+                if df_manual is not None:
+                    df = df_manual
+                    is_valid, error_message = validate_dataframe(df)
+                    if not is_valid:
+                        st.error(f"Still invalid: {error_message}")
+                        return
+                else:
+                    return
             
+            # Save to session state
             safe_session_state_set('df', df)
             safe_session_state_set('uploaded_file_name', uploaded_file.name)
             
+            # Extract teams
             teams = sorted(df['Team'].unique())
             if len(teams) >= 2:
                 safe_session_state_set('home_team', teams[0])
@@ -415,7 +719,8 @@ def render_data_upload_tab():
             
             st.success(f"✅ Successfully loaded {len(df)} players")
             
-            st.subheader("Data Preview")
+            # Show preview
+            st.subheader("📊 Data Preview")
             
             col1, col2, col3, col4 = st.columns(4)
             with col1:
@@ -427,32 +732,58 @@ def render_data_upload_tab():
             with col4:
                 st.metric("Avg Projection", f"{df['Projected_Points'].mean():.2f}")
             
-            st.dataframe(df.head(10), use_container_width=True, hide_index=True)
+            # Show processed data
+            display_columns = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
+            if 'Ownership' in df.columns:
+                display_columns.append('Ownership')
             
-            st.subheader("Position Breakdown")
+            st.dataframe(
+                df[display_columns].head(15), 
+                use_container_width=True, 
+                hide_index=True
+            )
+            
+            # Position breakdown
+            st.subheader("📍 Position Breakdown")
             position_counts = df['Position'].value_counts()
             
-            cols = st.columns(len(position_counts))
+            cols = st.columns(min(len(position_counts), 6))
             for i, (pos, count) in enumerate(position_counts.items()):
-                with cols[i]:
+                with cols[i % 6]:
                     st.metric(pos, count)
             
+            # Ownership distribution
             if 'Ownership' in df.columns:
-                st.subheader("Ownership Distribution")
+                st.subheader("👥 Ownership Distribution")
                 
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Avg Ownership", format_percentage(df['Ownership'].mean()))
                 with col2:
                     st.metric("Max Ownership", format_percentage(df['Ownership'].max()))
+                with col3:
+                    st.metric("Min Ownership", format_percentage(df['Ownership'].min()))
         
         except Exception as e:
-            st.error(f"❌ Error reading CSV: {e}")
+            st.error(f"❌ Error processing CSV: {e}")
             if safe_session_state_get('show_debug', False):
                 st.code(traceback.format_exc())
     
     else:
         st.info("📋 Upload a CSV file to get started")
+        
+        # Show example format
+        st.subheader("📝 Example CSV Format")
+        example_df = pd.DataFrame({
+            'Player': ['Patrick Mahomes', 'Travis Kelce', 'Tyreek Hill'],
+            'Position': ['QB', 'TE', 'WR'],
+            'Team': ['KC', 'KC', 'MIA'],
+            'Salary': [11000, 8500, 7800],
+            'Projected_Points': [25.5, 18.2, 16.8],
+            'Ownership': [35.2, 22.1, 18.5]
+        })
+        st.dataframe(example_df, hide_index=True)
+
 
 def render_optimization_tab():
     """Render optimization tab"""
@@ -552,6 +883,7 @@ def render_optimization_tab():
     if optimize_button:
         execute_optimization(df, salary_cap, min_salary)
 
+
 def reset_optimization():
     """Reset optimization state"""
     safe_session_state_set('lineups', None)
@@ -559,11 +891,10 @@ def reset_optimization():
     safe_session_state_set('optimization_complete', False)
     safe_session_state_set('last_optimization_time', None)
 
+
 def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
     """
     Execute optimization with proper error handling
-    
-    CRITICAL FIX: Now uses both standard and genetic optimizers properly
     """
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -617,7 +948,6 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         status_text.text("🎯 Generating optimal lineups...")
         progress_bar.progress(70)
         
-        # CRITICAL FIX: Proper optimizer selection
         lineups = []
         
         if use_genetic:
@@ -641,7 +971,6 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
                     'FLEX': result['flex'],
                 }
                 
-                # Calculate metrics
                 metrics = calculate_lineup_metrics(result['captain'], result['flex'], df)
                 lineup.update(metrics)
                 
@@ -652,7 +981,6 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
                 lineups.append(lineup)
         
         elif use_standard:
-            # CRITICAL FIX: Standard optimizer now available
             status_text.text("⚙️ Running standard optimization...")
             
             constraints = LineupConstraints(
@@ -724,6 +1052,7 @@ def execute_optimization(df: pd.DataFrame, salary_cap: int, min_salary: int):
         if safe_session_state_get('show_debug', False):
             st.code(traceback.format_exc())
 
+
 def render_results_tab():
     """Render results tab"""
     st.header("📊 Optimization Results")
@@ -794,6 +1123,7 @@ def render_results_tab():
         with tab3:
             display_ai_recommendation(ai_recommendations.get('contrarian'))
 
+
 def display_ai_recommendation(recommendation: Optional[AIRecommendation]):
     """Display AI recommendation details"""
     if recommendation is None:
@@ -828,6 +1158,7 @@ def display_ai_recommendation(recommendation: Optional[AIRecommendation]):
         for insight in recommendation.key_insights[:5]:
             st.write(f"• {insight}")
 
+
 def render_advanced_settings_tab():
     """Render advanced settings tab"""
     st.header("⚙️ Advanced Settings")
@@ -847,6 +1178,7 @@ def render_advanced_settings_tab():
     
     st.info("Advanced settings will be applied on next optimization run")
 
+
 def render_footer():
     """Render footer"""
     st.markdown("---")
@@ -863,6 +1195,7 @@ def render_footer():
         last_opt_time = safe_session_state_get('last_optimization_time')
         if last_opt_time:
             st.markdown(f"**Last Run:** {last_opt_time.strftime('%H:%M:%S')}")
+
 
 if __name__ == "__main__":
     main()
