@@ -3174,6 +3174,8 @@ class GeneticAlgorithmOptimizer:
         self.game_info = game_info
         self.config = config or GeneticConfig()
 
+        self.salary_cap = salary_cap
+
         self.mc_engine = mc_engine
 
         self.mc_engine = mc_engine
@@ -6538,7 +6540,7 @@ class GPPContrarianNarrativeStrategist(BaseAIStrategist):
         )
         hidden_value = df_with_value[df_with_value['Ownership'] < 15].nlargest(10, 'Value')
 
-        prompt = f"""You are a contrarian DFS strategist who finds NON-OBVIOUS narratives that win GPP tournaments.
+        prompt = f"""You are a contrarian DFS strategist who finds NON-OBVIOUS narratives that win GPP tournaments.self.config = config or GeneticConfig()
 
 GAME: {game_info.get('teams', 'Unknown')}
 Total: {game_info.get('total', 45)} | Spread: {game_info.get('spread', 0)}
