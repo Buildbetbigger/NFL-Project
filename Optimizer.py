@@ -3152,12 +3152,12 @@ class GeneticAlgorithmOptimizer:
     """
 
     def __init__(
-        self,
-        df: pd.DataFrame,
-        game_info: Dict[str, Any],
-        mc_engine: Optional[MonteCarloSimulationEngine] = None,
-        config: Optional[GeneticConfig] = None
-    ):
+            self,
+            df: pd.DataFrame,
+            game_info: Dict[str, Any],
+            mc_engine: Optional[MonteCarloSimulationEngine] = None,
+            config: Optional[GeneticConfig] = None,
+            salary_cap: int = 50000
         """
         Initialize genetic algorithm optimizer
 
@@ -3173,6 +3173,8 @@ class GeneticAlgorithmOptimizer:
         self.df = df.copy()
         self.game_info = game_info
         self.config = config or GeneticConfig()
+
+        self.mc_engine = mc_engine
 
         self.mc_engine = mc_engine
 
@@ -3218,7 +3220,17 @@ class GeneticAlgorithmOptimizer:
         # Fallback to minimum salary lineup
         return self._create_min_salary_lineup()
 
-    def _is_valid_lineup(self, lineup: GeneticLineup) -> bool:
+
+def _is_valid_lineup(self, lineup: GeneticLineup) -> bool:
+    try:
+        all_players = lineup.get_all_players()
+
+        # Check salary
+        total_salary = sum(self.salaries.get(p, 0) for p in lineup.flex)
+        total_salary += self.salaries.get(lineup.captain, 0) * OptimizerConfig.CAPTAIN_MULTIPLIER
+
+        if total_salary > self.salary_cap:  # USE INSTANCE VARIABLE
+            return False
         """
         Validate lineup against DK constraints
 
