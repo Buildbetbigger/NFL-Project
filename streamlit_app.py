@@ -8,6 +8,8 @@ FIXES APPLIED:
 - FIX #11: Enhanced error messages
 - FIX: Matplotlib graceful fallback for Streamlit Cloud compatibility
 - FIX: Added comprehensive diagnostics for troubleshooting
+- FIX: Timeout protection to prevent infinite loops
+- FIX: Configurable minimum salary threshold
 - Better validation feedback
 - Improved UI/UX
 """
@@ -16,6 +18,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from itertools import combinations
@@ -40,6 +43,7 @@ from nfl_dfs_optimizer import (
     ValidationResult,
     GlobalLogger,
     PerformanceMonitor,
+    LineupConstraints,
     
     # Enums
     ExportFormat,
@@ -156,6 +160,9 @@ def init_session_state():
     
     if 'api_key' not in st.session_state:
         st.session_state.api_key = ''
+    
+    if 'min_salary_pct' not in st.session_state:
+        st.session_state.min_salary_pct = 95
     
     # UI state
     if 'show_advanced' not in st.session_state:
@@ -443,6 +450,18 @@ def render_sidebar():
         if st.checkbox("Advanced Options", value=st.session_state.show_advanced):
             st.session_state.show_advanced = True
             
+            st.subheader("Salary Constraints")
+            min_salary_pct = st.slider(
+                "Minimum Salary % of Cap",
+                min_value=50,
+                max_value=100,
+                value=st.session_state.min_salary_pct,
+                step=5,
+                help="Lower this if you have low-salary players (default: 95%)"
+            )
+            st.session_state.min_salary_pct = min_salary_pct
+            st.caption(f"Min salary: ${int(DraftKingsRules.SALARY_CAP * min_salary_pct / 100):,}")
+            
             st.subheader("Debug Options")
             show_debug = st.checkbox(
                 "Show Debug Info",
@@ -514,7 +533,7 @@ def render_data_overview():
     st.dataframe(top_players, use_container_width=True, hide_index=True)
     
     # DIAGNOSTIC SECTION
-    with st.expander("Diagnostic Info (Click if optimization fails)", expanded=False):
+    with st.expander("Diagnostic Info (Expand if optimization fails)", expanded=False):
         st.subheader("Data Validation")
         
         # Check required columns
@@ -550,27 +569,33 @@ def render_data_overview():
             st.write(f"- {team}: {count} players")
         
         if df['Team'].nunique() < 2:
-            st.error("WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
+            st.error("⚠ WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
         
         # Check if any lineup is theoretically possible
         st.write("**Salary Cap Feasibility:**")
         min_6_salary = df.nsmallest(6, 'Salary')['Salary'].sum()
         max_6_salary = df.nlargest(6, 'Salary')['Salary'].sum()
         threshold_95 = int(DraftKingsRules.SALARY_CAP * 0.95)
+        current_threshold = int(DraftKingsRules.SALARY_CAP * (st.session_state.min_salary_pct / 100))
         
         st.write(f"- Cheapest 6-player lineup: ${min_6_salary:,.0f}")
         st.write(f"- Most expensive 6-player lineup: ${max_6_salary:,.0f}")
         st.write(f"- Salary cap: ${DraftKingsRules.SALARY_CAP:,.0f}")
-        st.write(f"- 95% minimum threshold: ${threshold_95:,.0f}")
+        st.write(f"- Current min threshold ({st.session_state.min_salary_pct}%): ${current_threshold:,.0f}")
         
         if min_6_salary > DraftKingsRules.SALARY_CAP:
-            st.error("IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
-        elif max_6_salary < threshold_95:
-            st.error(f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) can't reach 95% minimum (${threshold_95:,.0f})")
-        elif min_6_salary > threshold_95:
-            st.warning("May be difficult: Even cheapest lineup exceeds 95% minimum")
+            st.error("⚠ IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
+        elif max_6_salary < current_threshold:
+            st.error(
+                f"⚠ IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
+                f"can't reach {st.session_state.min_salary_pct}% minimum (${current_threshold:,.0f})"
+            )
+            suggested_pct = int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100)
+            st.info(f"💡 Try setting 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options")
+        elif min_6_salary > current_threshold:
+            st.warning("May be difficult: Even cheapest lineup exceeds minimum threshold")
         else:
-            st.success(f"Salary cap constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
+            st.success(f"✓ Salary constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
         
         # Sample valid lineup attempt
         st.write("**Sample Lineup Test:**")
@@ -589,18 +614,18 @@ def render_data_overview():
                 teams = combo_players['Team'].nunique()
                 max_from_team = combo_players['Team'].value_counts().max()
                 
-                if (threshold_95 <= total_sal <= DraftKingsRules.SALARY_CAP 
+                if (current_threshold <= total_sal <= DraftKingsRules.SALARY_CAP 
                     and teams >= DraftKingsRules.MIN_TEAMS_REQUIRED
                     and max_from_team <= DraftKingsRules.MAX_PLAYERS_PER_TEAM):
-                    st.success(f"Found valid combination: ${total_sal:,.0f}, {teams} teams")
+                    st.success(f"✓ Found valid combination: ${total_sal:,.0f}, {teams} teams")
                     st.write("Players:", ', '.join(combo_players['Player'].tolist()))
                     valid_found = True
                     break
             
             if not valid_found:
-                st.error(f"No valid combinations found after checking {sample_count} possibilities")
+                st.error(f"✗ No valid combinations found after checking {sample_count} possibilities")
                 st.write("**Common issues:**")
-                st.write("- Salaries too low (can't reach 95% minimum)")
+                st.write("- Salaries too low (can't reach minimum threshold)")
                 st.write("- All players from same team")
                 st.write("- Only 1 team in player pool")
                 st.write("- Too many players from one team in each combination")
@@ -635,6 +660,7 @@ def render_optimization_section():
             st.write("**Optimization Settings:**")
             st.write(f"- Lineups: {st.session_state.num_lineups}")
             st.write(f"- Mode: {st.session_state.optimization_mode}")
+            st.write(f"- Min Salary: {st.session_state.min_salary_pct}%")
             st.write(f"- AI Enabled: {st.session_state.use_ai}")
     
     # Optimization button
@@ -644,7 +670,7 @@ def render_optimization_section():
 
 def run_optimization():
     """
-    FIX #17: Run optimization with state preservation
+    Run optimization with state preservation, timeout protection, and configurable constraints
     """
     snapshot = StreamlitStateSnapshot()
     
@@ -653,6 +679,22 @@ def run_optimization():
             # Validate prerequisites
             if st.session_state.use_ai and not st.session_state.api_key:
                 st.error("AI enabled but no API key provided")
+                return
+            
+            # Pre-flight check
+            df = st.session_state.processed_df
+            min_salary_threshold = int(DraftKingsRules.SALARY_CAP * (st.session_state.min_salary_pct / 100))
+            max_6_salary = df.nlargest(6, 'Salary')['Salary'].sum()
+            
+            if max_6_salary < min_salary_threshold:
+                st.error(
+                    f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
+                    f"cannot reach minimum salary requirement (${min_salary_threshold:,.0f})"
+                )
+                suggested_pct = int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100)
+                st.info(
+                    f"💡 Lower 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options"
+                )
                 return
             
             # Progress tracking
@@ -664,8 +706,6 @@ def run_optimization():
             progress_bar.progress(10)
             time.sleep(0.3)
             
-            df = st.session_state.processed_df
-            
             # Build game info
             processor = OptimizedDataProcessor()
             game_info = processor.infer_game_info(
@@ -675,50 +715,76 @@ def run_optimization():
             )
             st.session_state.game_info = game_info
             
-            # Phase 2: Optimization
-            status_text.text("Running optimization...")
+            # Phase 2: Optimization with timeout
+            status_text.text("Running optimization (timeout: 2 minutes)...")
             progress_bar.progress(30)
             
             start_time = time.time()
             
-            try:
-                lineups, _ = optimize_showdown(
-                    csv_path_or_df=df,
-                    num_lineups=st.session_state.num_lineups,
-                    game_total=st.session_state.game_total,
-                    spread=st.session_state.spread,
-                    contest_type=st.session_state.contest_type,
-                    api_key=st.session_state.api_key if st.session_state.use_ai else None,
-                    use_ai=st.session_state.use_ai,
-                    optimization_mode=st.session_state.optimization_mode,
-                    ai_enforcement=st.session_state.ai_enforcement
-                )
+            # Optimization result container
+            result = {'lineups': None, 'df': None, 'error': None}
+            
+            def optimization_thread():
+                try:
+                    lineups, processed_df = optimize_showdown(
+                        csv_path_or_df=df,
+                        num_lineups=st.session_state.num_lineups,
+                        game_total=st.session_state.game_total,
+                        spread=st.session_state.spread,
+                        contest_type=st.session_state.contest_type,
+                        api_key=st.session_state.api_key if st.session_state.use_ai else None,
+                        use_ai=st.session_state.use_ai,
+                        optimization_mode=st.session_state.optimization_mode,
+                        ai_enforcement=st.session_state.ai_enforcement
+                    )
+                    result['lineups'] = lineups
+                    result['df'] = processed_df
+                except Exception as e:
+                    result['error'] = e
+            
+            # Start optimization in thread
+            thread = threading.Thread(target=optimization_thread)
+            thread.daemon = True
+            thread.start()
+            
+            # Wait with progress updates
+            timeout_seconds = 120  # 2 minutes
+            elapsed = 0
+            
+            while thread.is_alive() and elapsed < timeout_seconds:
+                thread.join(timeout=1)
+                elapsed = time.time() - start_time
                 
-                progress_bar.progress(90)
+                # Update progress (30% to 90%)
+                progress_pct = min(90, 30 + int((elapsed / timeout_seconds) * 60))
+                progress_bar.progress(progress_pct)
                 
-            except Exception as e:
+                if elapsed > 10 and int(elapsed) % 15 == 0:
+                    status_text.text(f"Still optimizing... ({int(elapsed)}s elapsed)")
+            
+            # Check if timed out
+            if thread.is_alive():
                 progress_bar.empty()
                 status_text.empty()
-                
-                # FIX #11: Enhanced error message
-                st.error(f"Optimization failed: {str(e)}")
-                
-                # Get suggestions from logger
-                logger = get_logger()
-                error_summary = logger.get_error_summary()
-                
-                if error_summary.get('recent_errors'):
-                    recent = error_summary['recent_errors'][-1]
-                    if recent.get('suggestions'):
-                        st.info("Suggestions:")
-                        for suggestion in recent['suggestions'][:3]:
-                            st.write(f"- {suggestion}")
-                
-                if st.session_state.show_debug:
-                    with st.expander("Debug Info"):
-                        st.code(traceback.format_exc())
-                
+                st.error(
+                    f"⏱ Optimization timed out after {timeout_seconds} seconds. "
+                    f"Constraints may be too strict."
+                )
+                st.info("💡 Try these fixes:")
+                st.write(f"1. Lower 'Minimum Salary % of Cap' to 80% or less")
+                st.write(f"2. Reduce number of lineups to 5-10")
+                st.write(f"3. Check Diagnostic Info for feasibility issues")
                 return
+            
+            # Check for errors
+            if result['error']:
+                progress_bar.empty()
+                status_text.empty()
+                raise result['error']
+            
+            lineups = result['lineups']
+            
+            progress_bar.progress(90)
             
             elapsed_time = time.time() - start_time
             
@@ -730,13 +796,21 @@ def run_optimization():
             progress_bar.empty()
             status_text.empty()
             
+            # Validate results
+            if not lineups or len(lineups) == 0:
+                st.warning(
+                    "⚠ No lineups generated. Constraints may be too strict. "
+                    "Try lowering the minimum salary percentage."
+                )
+                return
+            
             # Store results
             st.session_state.lineups = lineups
             st.session_state.optimization_complete = True
             
             # Success message
             st.success(
-                f"Successfully generated {len(lineups)} lineups in {elapsed_time:.1f} seconds"
+                f"✓ Successfully generated {len(lineups)} lineups in {elapsed_time:.1f} seconds"
             )
             
             # Show summary
@@ -764,8 +838,20 @@ def run_optimization():
     except Exception as e:
         st.error(f"Unexpected error: {str(e)}")
         
+        # Get suggestions from logger
+        logger = get_logger()
+        error_summary = logger.get_error_summary()
+        
+        if error_summary.get('recent_errors'):
+            recent = error_summary['recent_errors'][-1]
+            if recent.get('suggestions'):
+                st.info("💡 Suggestions:")
+                for suggestion in recent['suggestions'][:3]:
+                    st.write(f"- {suggestion}")
+        
         if st.session_state.show_debug:
-            st.code(traceback.format_exc())
+            with st.expander("🐛 Debug Info"):
+                st.code(traceback.format_exc())
         
         st.info("Your settings have been preserved - adjust and try again")
 
