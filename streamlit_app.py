@@ -6,6 +6,7 @@ FIXES APPLIED:
 - FIX #17: State recovery on errors
 - FIX #10: CSV encoding detection
 - FIX #11: Enhanced error messages
+- FIX: Matplotlib graceful fallback for Streamlit Cloud compatibility
 - Better validation feedback
 - Improved UI/UX
 """
@@ -269,14 +270,14 @@ def load_and_validate_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], List[
         df_raw, encoding_info = safe_load_csv(uploaded_file, logger)
         
         if df_raw is None:
-            st.error(f"❌ Failed to load CSV: {encoding_info}")
+            st.error(f"Failed to load CSV: {encoding_info}")
             return None, [encoding_info]
         
         if encoding_info != 'utf-8':
-            warnings.append(f"ℹ️ File loaded with {encoding_info} encoding")
+            warnings.append(f"File loaded with {encoding_info} encoding")
         
         # Show raw data preview
-        with st.expander("📋 Raw Data Preview", expanded=False):
+        with st.expander("Raw Data Preview", expanded=False):
             st.dataframe(df_raw.head(10))
             st.caption(f"Showing 10 of {len(df_raw)} rows")
         
@@ -290,13 +291,13 @@ def load_and_validate_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], List[
         warnings.extend(process_warnings)
         
         # Show processed data
-        with st.expander("✅ Processed Data Preview", expanded=False):
+        with st.expander("Processed Data Preview", expanded=False):
             st.dataframe(df_processed.head(10))
             st.caption(f"Processed: {len(df_processed)} players")
         
         # Show warnings if any
         if warnings:
-            with st.expander("⚠️ Processing Warnings", expanded=True):
+            with st.expander("Processing Warnings", expanded=True):
                 for warning in warnings:
                     st.warning(warning)
         
@@ -304,7 +305,7 @@ def load_and_validate_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], List[
         
     except Exception as e:
         error_msg = f"Error loading data: {str(e)}"
-        st.error(f"❌ {error_msg}")
+        st.error(f"{error_msg}")
         
         if st.session_state.get('show_debug', False):
             st.code(traceback.format_exc())
@@ -320,10 +321,10 @@ def render_sidebar():
     """Render sidebar with configuration options"""
     
     with st.sidebar:
-        st.title("⚙️ Configuration")
+        st.title("Configuration")
         
         # File Upload
-        st.header("1️⃣ Data Upload")
+        st.header("1. Data Upload")
         uploaded_file = st.file_uploader(
             "Upload Player CSV",
             type=['csv'],
@@ -331,7 +332,7 @@ def render_sidebar():
         )
         
         if uploaded_file is not None:
-            if st.button("🔄 Load & Validate Data"):
+            if st.button("Load & Validate Data"):
                 with st.spinner("Loading and validating data..."):
                     df, warnings = load_and_validate_data(uploaded_file)
                     
@@ -340,15 +341,15 @@ def render_sidebar():
                         st.session_state.processed_df = df
                         st.session_state.warnings = warnings
                         st.session_state.data_validated = True
-                        st.success(f"✅ Loaded {len(df)} players")
+                        st.success(f"Loaded {len(df)} players")
                     else:
                         st.session_state.data_validated = False
-                        st.error("❌ Data validation failed")
+                        st.error("Data validation failed")
         
         st.divider()
         
         # Game Settings
-        st.header("2️⃣ Game Settings")
+        st.header("2. Game Settings")
         
         game_total = st.number_input(
             "Game Total (O/U)",
@@ -373,7 +374,7 @@ def render_sidebar():
         st.divider()
         
         # Contest Settings
-        st.header("3️⃣ Contest Settings")
+        st.header("3. Contest Settings")
         
         contest_type = st.selectbox(
             "Contest Type",
@@ -405,7 +406,7 @@ def render_sidebar():
         st.divider()
         
         # AI Settings
-        st.header("4️⃣ AI Settings (Optional)")
+        st.header("4. AI Settings (Optional)")
         
         use_ai = st.checkbox(
             "Enable AI Analysis",
@@ -432,12 +433,12 @@ def render_sidebar():
             st.session_state.ai_enforcement = ai_enforcement
             
             if not api_key:
-                st.warning("⚠️ API key required for AI features")
+                st.warning("API key required for AI features")
         
         st.divider()
         
         # Advanced Options
-        if st.checkbox("🔧 Advanced Options", value=st.session_state.show_advanced):
+        if st.checkbox("Advanced Options", value=st.session_state.show_advanced):
             st.session_state.show_advanced = True
             
             st.subheader("Debug Options")
@@ -458,10 +459,10 @@ def render_sidebar():
 def render_data_overview():
     """Render data overview section"""
     
-    st.header("📊 Data Overview")
+    st.header("Data Overview")
     
     if st.session_state.processed_df is None:
-        st.info("👆 Upload a CSV file in the sidebar to get started")
+        st.info("Upload a CSV file in the sidebar to get started")
         return
     
     df = st.session_state.processed_df
@@ -518,14 +519,14 @@ def render_data_overview():
 def render_optimization_section():
     """Render optimization section"""
     
-    st.header("🎯 Optimization")
+    st.header("Optimization")
     
     if st.session_state.processed_df is None:
-        st.warning("⚠️ Please load and validate data first")
+        st.warning("Please load and validate data first")
         return
     
     # Show current settings
-    with st.expander("📋 Current Settings", expanded=False):
+    with st.expander("Current Settings", expanded=False):
         col1, col2 = st.columns(2)
         
         with col1:
@@ -541,7 +542,7 @@ def render_optimization_section():
             st.write(f"- AI Enabled: {st.session_state.use_ai}")
     
     # Optimization button
-    if st.button("🚀 Generate Lineups", type="primary", use_container_width=True):
+    if st.button("Generate Lineups", type="primary", use_container_width=True):
         run_optimization()
 
 
@@ -555,7 +556,7 @@ def run_optimization():
         with snapshot.preserve_on_error():
             # Validate prerequisites
             if st.session_state.use_ai and not st.session_state.api_key:
-                st.error("❌ AI enabled but no API key provided")
+                st.error("AI enabled but no API key provided")
                 return
             
             # Progress tracking
@@ -563,7 +564,7 @@ def run_optimization():
             status_text = st.empty()
             
             # Phase 1: Setup
-            status_text.text("⚙️ Initializing optimizer...")
+            status_text.text("Initializing optimizer...")
             progress_bar.progress(10)
             time.sleep(0.3)
             
@@ -579,7 +580,7 @@ def run_optimization():
             st.session_state.game_info = game_info
             
             # Phase 2: Optimization
-            status_text.text("🔄 Running optimization...")
+            status_text.text("Running optimization...")
             progress_bar.progress(30)
             
             start_time = time.time()
@@ -604,7 +605,7 @@ def run_optimization():
                 status_text.empty()
                 
                 # FIX #11: Enhanced error message
-                st.error(f"❌ Optimization failed: {str(e)}")
+                st.error(f"Optimization failed: {str(e)}")
                 
                 # Get suggestions from logger
                 logger = get_logger()
@@ -613,12 +614,12 @@ def run_optimization():
                 if error_summary.get('recent_errors'):
                     recent = error_summary['recent_errors'][-1]
                     if recent.get('suggestions'):
-                        st.info("💡 Suggestions:")
+                        st.info("Suggestions:")
                         for suggestion in recent['suggestions'][:3]:
-                            st.write(f"• {suggestion}")
+                            st.write(f"- {suggestion}")
                 
                 if st.session_state.show_debug:
-                    with st.expander("🐛 Debug Info"):
+                    with st.expander("Debug Info"):
                         st.code(traceback.format_exc())
                 
                 return
@@ -626,7 +627,7 @@ def run_optimization():
             elapsed_time = time.time() - start_time
             
             # Phase 3: Complete
-            status_text.text("✅ Optimization complete!")
+            status_text.text("Optimization complete!")
             progress_bar.progress(100)
             time.sleep(0.5)
             
@@ -639,7 +640,7 @@ def run_optimization():
             
             # Success message
             st.success(
-                f"✅ Successfully generated {len(lineups)} lineups in {elapsed_time:.1f} seconds"
+                f"Successfully generated {len(lineups)} lineups in {elapsed_time:.1f} seconds"
             )
             
             # Show summary
@@ -665,12 +666,12 @@ def run_optimization():
             st.rerun()
             
     except Exception as e:
-        st.error(f"❌ Unexpected error: {str(e)}")
+        st.error(f"Unexpected error: {str(e)}")
         
         if st.session_state.show_debug:
             st.code(traceback.format_exc())
         
-        st.info("⚠️ Your settings have been preserved - adjust and try again")
+        st.info("Your settings have been preserved - adjust and try again")
 
 
 # ============================================================================
@@ -683,7 +684,7 @@ def render_results_section():
     if not st.session_state.optimization_complete or not st.session_state.lineups:
         return
     
-    st.header("📈 Results")
+    st.header("Results")
     
     lineups = st.session_state.lineups
     df = st.session_state.processed_df
@@ -767,9 +768,9 @@ def render_results_section():
                         pos = player_info.iloc[0]['Position']
                         salary = player_info.iloc[0]['Salary']
                         proj = player_info.iloc[0]['Projected_Points']
-                        st.write(f"  • {player} ({pos}) - ${salary:,.0f} | {proj:.1f} pts")
+                        st.write(f"  - {player} ({pos}) - ${salary:,.0f} | {proj:.1f} pts")
                     else:
-                        st.write(f"  • {player}")
+                        st.write(f"  - {player}")
             
             with col2:
                 # Metrics
@@ -796,7 +797,7 @@ def render_export_section():
     if not st.session_state.optimization_complete or not st.session_state.lineups:
         return
     
-    st.header("💾 Export")
+    st.header("Export")
     
     lineups = st.session_state.lineups
     
@@ -821,7 +822,7 @@ def render_export_section():
     is_valid, error_msg = validate_export_format(lineups, selected_format)
     
     if not is_valid:
-        st.error(f"❌ {error_msg}")
+        st.error(f"{error_msg}")
         return
     
     # Generate export
@@ -829,24 +830,24 @@ def render_export_section():
         export_df = format_lineup_for_export(lineups, selected_format)
         
         # Preview
-        with st.expander("📋 Export Preview", expanded=False):
+        with st.expander("Export Preview", expanded=False):
             st.dataframe(export_df.head(10), use_container_width=True)
         
         # Download button
         csv = export_df.to_csv(index=False)
         
         st.download_button(
-            label=f"⬇️ Download {export_format} CSV",
+            label=f"Download {export_format} CSV",
             data=csv,
             file_name=f"optimized_lineups_{export_format.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv",
             use_container_width=True
         )
         
-        st.success(f"✅ Ready to export {len(export_df)} lineups in {export_format} format")
+        st.success(f"Ready to export {len(export_df)} lineups in {export_format} format")
         
     except Exception as e:
-        st.error(f"❌ Export failed: {str(e)}")
+        st.error(f"Export failed: {str(e)}")
         
         if st.session_state.show_debug:
             st.code(traceback.format_exc())
@@ -862,7 +863,7 @@ def render_analytics_section():
     if not st.session_state.optimization_complete or not st.session_state.lineups:
         return
     
-    st.header("📊 Analytics")
+    st.header("Analytics")
     
     lineups = st.session_state.lineups
     df = st.session_state.processed_df
@@ -932,16 +933,21 @@ def render_analytics_section():
     with col3:
         st.metric("Avg Salary", f"${np.mean(salaries):,.0f}")
     
-    # Histogram
-    import matplotlib.pyplot as plt
-    
-    fig, ax = plt.subplots()
-    ax.hist(salaries, bins=20, edgecolor='black')
-    ax.set_xlabel('Total Salary')
-    ax.set_ylabel('Frequency')
-    ax.set_title('Salary Distribution')
-    
-    st.pyplot(fig)
+    # Histogram with graceful fallback
+    try:
+        import matplotlib.pyplot as plt
+        
+        fig, ax = plt.subplots()
+        ax.hist(salaries, bins=20, edgecolor='black')
+        ax.set_xlabel('Total Salary')
+        ax.set_ylabel('Frequency')
+        ax.set_title('Salary Distribution')
+        st.pyplot(fig)
+    except ImportError:
+        # Fallback to Streamlit native charting
+        salary_bins = pd.cut(salaries, bins=20)
+        salary_counts = salary_bins.value_counts().sort_index()
+        st.bar_chart(salary_counts)
     
     # Team stacking
     st.subheader("Team Stacking Analysis")
@@ -1003,7 +1009,7 @@ def main():
     apply_custom_css()
     
     # Header
-    st.title("🏈 NFL DFS AI-Driven Optimizer")
+    st.title("NFL DFS AI-Driven Optimizer")
     st.markdown("*Optimize your DraftKings Showdown lineups with advanced AI and Monte Carlo simulation*")
     
     # Sidebar
@@ -1011,10 +1017,10 @@ def main():
     
     # Main content tabs
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Data Overview",
-        "🎯 Optimization",
-        "📈 Results",
-        "💾 Export & Analytics"
+        "Data Overview",
+        "Optimization",
+        "Results",
+        "Export & Analytics"
     ])
     
     with tab1:
@@ -1032,7 +1038,7 @@ def main():
             st.divider()
             render_analytics_section()
         else:
-            st.info("💡 Complete optimization to view export and analytics")
+            st.info("Complete optimization to view export and analytics")
     
     # Footer
     render_footer()
