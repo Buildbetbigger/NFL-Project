@@ -10,6 +10,7 @@ FIXES APPLIED:
 - FIX: Added comprehensive diagnostics for troubleshooting
 - FIX: Timeout protection to prevent infinite loops
 - FIX: Configurable minimum salary threshold
+- FIX: Session state initialization at module level
 - Better validation feedback
 - Improved UI/UX
 """
@@ -62,6 +63,50 @@ from nfl_dfs_optimizer import (
 )
 
 # ============================================================================
+# CRITICAL: INITIALIZE SESSION STATE IMMEDIATELY AT MODULE LEVEL
+# ============================================================================
+
+def ensure_session_state():
+    """Ensure all session state variables are initialized - called at module load"""
+    defaults = {
+        # Core data
+        'df': None,
+        'processed_df': None,
+        'lineups': [],
+        'game_info': {},
+        
+        # Settings
+        'num_lineups': 20,
+        'game_total': 50.0,
+        'spread': 0.0,
+        'contest_type': 'Large GPP (1000+)',
+        'optimization_mode': 'balanced',
+        'use_ai': False,
+        'ai_enforcement': 'Moderate',
+        'api_key': '',
+        'min_salary_pct': 95,
+        
+        # UI state
+        'show_advanced': False,
+        'show_debug': False,
+        
+        # Processing flags
+        'data_validated': False,
+        'optimization_complete': False,
+        
+        # Warnings and errors
+        'warnings': [],
+        'errors': []
+    }
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
+# Initialize immediately when module loads
+ensure_session_state()
+
+# ============================================================================
 # PAGE CONFIGURATION
 # ============================================================================
 
@@ -73,12 +118,12 @@ st.set_page_config(
 )
 
 # ============================================================================
-# FIX #17: STATE SNAPSHOT FOR ERROR RECOVERY
+# STATE SNAPSHOT FOR ERROR RECOVERY
 # ============================================================================
 
 class StreamlitStateSnapshot:
     """
-    FIX #17: Preserve Streamlit state across errors
+    Preserve Streamlit state across errors
     """
     
     def __init__(self):
@@ -117,76 +162,6 @@ class StreamlitStateSnapshot:
 
 
 # ============================================================================
-# SESSION STATE INITIALIZATION
-# ============================================================================
-
-def init_session_state():
-    """Initialize session state variables"""
-    
-    # Core data
-    if 'df' not in st.session_state:
-        st.session_state.df = None
-    
-    if 'processed_df' not in st.session_state:
-        st.session_state.processed_df = None
-    
-    if 'lineups' not in st.session_state:
-        st.session_state.lineups = []
-    
-    if 'game_info' not in st.session_state:
-        st.session_state.game_info = {}
-    
-    # Settings
-    if 'num_lineups' not in st.session_state:
-        st.session_state.num_lineups = 20
-    
-    if 'game_total' not in st.session_state:
-        st.session_state.game_total = 50.0
-    
-    if 'spread' not in st.session_state:
-        st.session_state.spread = 0.0
-    
-    if 'contest_type' not in st.session_state:
-        st.session_state.contest_type = 'Large GPP (1000+)'
-    
-    if 'optimization_mode' not in st.session_state:
-        st.session_state.optimization_mode = 'balanced'
-    
-    if 'use_ai' not in st.session_state:
-        st.session_state.use_ai = False
-    
-    if 'ai_enforcement' not in st.session_state:
-        st.session_state.ai_enforcement = 'Moderate'
-    
-    if 'api_key' not in st.session_state:
-        st.session_state.api_key = ''
-    
-    if 'min_salary_pct' not in st.session_state:
-        st.session_state.min_salary_pct = 95
-    
-    # UI state
-    if 'show_advanced' not in st.session_state:
-        st.session_state.show_advanced = False
-    
-    if 'show_debug' not in st.session_state:
-        st.session_state.show_debug = False
-    
-    # Processing flags
-    if 'data_validated' not in st.session_state:
-        st.session_state.data_validated = False
-    
-    if 'optimization_complete' not in st.session_state:
-        st.session_state.optimization_complete = False
-    
-    # Warnings and errors
-    if 'warnings' not in st.session_state:
-        st.session_state.warnings = []
-    
-    if 'errors' not in st.session_state:
-        st.session_state.errors = []
-
-
-# ============================================================================
 # STYLING
 # ============================================================================
 
@@ -200,42 +175,6 @@ def apply_custom_css():
         
         .stAlert {
             margin-top: 1rem;
-            margin-bottom: 1rem;
-        }
-        
-        .success-box {
-            padding: 1rem;
-            background-color: #d4edda;
-            border-left: 4px solid #28a745;
-            margin: 1rem 0;
-        }
-        
-        .warning-box {
-            padding: 1rem;
-            background-color: #fff3cd;
-            border-left: 4px solid #ffc107;
-            margin: 1rem 0;
-        }
-        
-        .error-box {
-            padding: 1rem;
-            background-color: #f8d7da;
-            border-left: 4px solid #dc3545;
-            margin: 1rem 0;
-        }
-        
-        .metric-card {
-            background-color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border: 1px solid #dee2e6;
-        }
-        
-        .lineup-card {
-            background-color: white;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border: 1px solid #dee2e6;
             margin-bottom: 1rem;
         }
         
@@ -269,12 +208,12 @@ def apply_custom_css():
 
 def load_and_validate_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], List[str]]:
     """
-    FIX #10: Load and validate uploaded CSV with encoding detection
+    Load and validate uploaded CSV with encoding detection
     """
     warnings = []
     
     try:
-        # FIX #10: Safe CSV loading with encoding detection
+        # Safe CSV loading with encoding detection
         logger = get_logger()
         df_raw, encoding_info = safe_load_csv(uploaded_file, logger)
         
@@ -569,7 +508,7 @@ def render_data_overview():
             st.write(f"- {team}: {count} players")
         
         if df['Team'].nunique() < 2:
-            st.error("⚠ WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
+            st.error("WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
         
         # Check if any lineup is theoretically possible
         st.write("**Salary Cap Feasibility:**")
@@ -584,18 +523,18 @@ def render_data_overview():
         st.write(f"- Current min threshold ({st.session_state.min_salary_pct}%): ${current_threshold:,.0f}")
         
         if min_6_salary > DraftKingsRules.SALARY_CAP:
-            st.error("⚠ IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
+            st.error("IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
         elif max_6_salary < current_threshold:
             st.error(
-                f"⚠ IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
+                f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
                 f"can't reach {st.session_state.min_salary_pct}% minimum (${current_threshold:,.0f})"
             )
             suggested_pct = int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100)
-            st.info(f"💡 Try setting 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options")
+            st.info(f"Try setting 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options")
         elif min_6_salary > current_threshold:
             st.warning("May be difficult: Even cheapest lineup exceeds minimum threshold")
         else:
-            st.success(f"✓ Salary constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
+            st.success(f"Salary constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
         
         # Sample valid lineup attempt
         st.write("**Sample Lineup Test:**")
@@ -617,13 +556,13 @@ def render_data_overview():
                 if (current_threshold <= total_sal <= DraftKingsRules.SALARY_CAP 
                     and teams >= DraftKingsRules.MIN_TEAMS_REQUIRED
                     and max_from_team <= DraftKingsRules.MAX_PLAYERS_PER_TEAM):
-                    st.success(f"✓ Found valid combination: ${total_sal:,.0f}, {teams} teams")
+                    st.success(f"Found valid combination: ${total_sal:,.0f}, {teams} teams")
                     st.write("Players:", ', '.join(combo_players['Player'].tolist()))
                     valid_found = True
                     break
             
             if not valid_found:
-                st.error(f"✗ No valid combinations found after checking {sample_count} possibilities")
+                st.error(f"No valid combinations found after checking {sample_count} possibilities")
                 st.write("**Common issues:**")
                 st.write("- Salaries too low (can't reach minimum threshold)")
                 st.write("- All players from same team")
@@ -693,7 +632,7 @@ def run_optimization():
                 )
                 suggested_pct = int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100)
                 st.info(
-                    f"💡 Lower 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options"
+                    f"Lower 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options"
                 )
                 return
             
@@ -767,10 +706,10 @@ def run_optimization():
                 progress_bar.empty()
                 status_text.empty()
                 st.error(
-                    f"⏱ Optimization timed out after {timeout_seconds} seconds. "
+                    f"Optimization timed out after {timeout_seconds} seconds. "
                     f"Constraints may be too strict."
                 )
-                st.info("💡 Try these fixes:")
+                st.info("Try these fixes:")
                 st.write(f"1. Lower 'Minimum Salary % of Cap' to 80% or less")
                 st.write(f"2. Reduce number of lineups to 5-10")
                 st.write(f"3. Check Diagnostic Info for feasibility issues")
@@ -799,7 +738,7 @@ def run_optimization():
             # Validate results
             if not lineups or len(lineups) == 0:
                 st.warning(
-                    "⚠ No lineups generated. Constraints may be too strict. "
+                    "No lineups generated. Constraints may be too strict. "
                     "Try lowering the minimum salary percentage."
                 )
                 return
@@ -810,7 +749,7 @@ def run_optimization():
             
             # Success message
             st.success(
-                f"✓ Successfully generated {len(lineups)} lineups in {elapsed_time:.1f} seconds"
+                f"Successfully generated {len(lineups)} lineups in {elapsed_time:.1f} seconds"
             )
             
             # Show summary
@@ -845,12 +784,12 @@ def run_optimization():
         if error_summary.get('recent_errors'):
             recent = error_summary['recent_errors'][-1]
             if recent.get('suggestions'):
-                st.info("💡 Suggestions:")
+                st.info("Suggestions:")
                 for suggestion in recent['suggestions'][:3]:
                     st.write(f"- {suggestion}")
         
         if st.session_state.show_debug:
-            with st.expander("🐛 Debug Info"):
+            with st.expander("Debug Info"):
                 st.code(traceback.format_exc())
         
         st.info("Your settings have been preserved - adjust and try again")
@@ -1186,8 +1125,10 @@ def render_footer():
 def main():
     """Main application entry point"""
     
-    # Initialize
-    init_session_state()
+    # Ensure state is initialized
+    ensure_session_state()
+    
+    # Apply styling
     apply_custom_css()
     
     # Header
