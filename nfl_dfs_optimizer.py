@@ -3340,6 +3340,12 @@ class GeneticAlgorithmOptimizer:
 
 """
 PART 9 OF 13: STANDARD LINEUP OPTIMIZER (PuLP)
+
+CORRECTIONS APPLIED:
+- Added salary constraint validation in lineup acceptance
+- Made diversity threshold adaptive based on num_lineups requested
+- Improved logging for debugging constraint issues
+- All previous fixes maintained
 """
 
 # ============================================================================
@@ -3350,6 +3356,8 @@ class StandardLineupOptimizer:
     """
     PuLP-based linear programming optimizer
     Enhanced with better error handling and validation
+
+    CORRECTED: Now properly validates salary constraints before accepting lineups
     """
 
     def __init__(
@@ -3386,7 +3394,7 @@ class StandardLineupOptimizer:
         self,
         num_lineups: int,
         randomness: float = 0.05,
-        diversity_threshold: int = 3,
+        diversity_threshold: Optional[int] = None,
         optimize_for: str = 'projection'
     ) -> List[Dict[str, Any]]:
         """
@@ -3395,23 +3403,42 @@ class StandardLineupOptimizer:
         Args:
             num_lineups: Number of lineups to generate
             randomness: Projection randomization (0-1)
-            diversity_threshold: Minimum player differences
+            diversity_threshold: Minimum player differences (None = auto-calculate)
             optimize_for: 'projection', 'ceiling', or 'leverage'
+
+        Returns:
+            List of valid lineups
+
+        CORRECTED: Auto-calculates diversity threshold and validates salary constraints
         """
         try:
+            # CORRECTION: Adaptive diversity threshold
+            if diversity_threshold is None:
+                if num_lineups <= 5:
+                    diversity_threshold = 4
+                elif num_lineups <= 15:
+                    diversity_threshold = 3
+                elif num_lineups <= 30:
+                    diversity_threshold = 2
+                else:
+                    diversity_threshold = 1
+
             lineups = []
             attempts = 0
-            max_attempts = num_lineups * 5
+            max_attempts = num_lineups * 10  # Increased from 5
+            consecutive_failures = 0
+            max_consecutive_failures = 20
 
             self.logger.log(
-                f"Generating {num_lineups} lineups with PuLP (randomness={randomness})",
+                f"Generating {num_lineups} lineups with PuLP "
+                f"(randomness={randomness}, diversity={diversity_threshold})",
                 "INFO"
             )
 
             while len(lineups) < num_lineups and attempts < max_attempts:
                 attempts += 1
 
-                # Randomize projections
+                # Randomize projections for diversity
                 if randomness > 0 and attempts > 1:
                     adjusted_projections = {
                         p: proj * (1 + np.random.uniform(-randomness, randomness))
@@ -3434,18 +3461,47 @@ class StandardLineupOptimizer:
                     diversity_threshold=diversity_threshold
                 )
 
+                # CORRECTION: Validate salary constraints before accepting
                 if lineup and lineup.get('Valid'):
-                    lineups.append(lineup)
+                    salary = lineup.get('Total_Salary', 0)
 
-                    if len(lineups) % 10 == 0:
-                        self.logger.log(
-                            f"Generated {len(lineups)}/{num_lineups} lineups",
-                            "DEBUG"
-                        )
+                    # Check against constraints
+                    if self.constraints.min_salary <= salary <= self.constraints.max_salary:
+                        lineups.append(lineup)
+                        consecutive_failures = 0  # Reset failure counter
+
+                        if len(lineups) % 5 == 0:
+                            self.logger.log(
+                                f"Generated {len(lineups)}/{num_lineups} lineups "
+                                f"(salary: ${salary:,.0f})",
+                                "DEBUG"
+                            )
+                    else:
+                        # Log salary constraint violations
+                        if attempts % 10 == 0:
+                            self.logger.log(
+                                f"Rejected lineup: ${salary:,.0f} outside valid range "
+                                f"${self.constraints.min_salary:,.0f}-${self.constraints.max_salary:,.0f}",
+                                "DEBUG"
+                            )
+                        consecutive_failures += 1
+                else:
+                    consecutive_failures += 1
+
+                # Early exit if too many consecutive failures
+                if consecutive_failures >= max_consecutive_failures:
+                    self.logger.log(
+                        f"Stopping after {consecutive_failures} consecutive failures. "
+                        f"Generated {len(lineups)} lineups. "
+                        f"Try relaxing constraints or reducing diversity threshold.",
+                        "WARNING"
+                    )
+                    break
 
             if len(lineups) < num_lineups:
                 self.logger.log(
-                    f"Only generated {len(lineups)}/{num_lineups} lineups after {attempts} attempts",
+                    f"Only generated {len(lineups)}/{num_lineups} lineups after {attempts} attempts. "
+                    f"Diversity threshold: {diversity_threshold}",
                     "WARNING"
                 )
 
@@ -4731,7 +4787,11 @@ class OptimizedDataProcessor:
 """
 PART 13 OF 13: MAIN EXECUTION & INTEGRATION
 
-This part integrates all components and provides main execution functions
+CORRECTIONS APPLIED:
+- Made diversity threshold adaptive in standard optimization
+- Added post-optimization salary validation
+- Improved error messaging with constraint diagnostics
+- All previous integration maintained
 """
 
 # ============================================================================
@@ -4742,6 +4802,8 @@ class MasterOptimizer:
     """
     Master optimizer that coordinates all components
     Integrates AI, optimization, and simulation
+
+    CORRECTED: Adaptive diversity and enhanced validation
     """
 
     def __init__(
@@ -4794,6 +4856,8 @@ class MasterOptimizer:
 
         Returns:
             List of optimized lineups
+
+        CORRECTED: Enhanced validation and adaptive optimization
         """
         try:
             self.logger.log("="*60, "INFO")
@@ -4828,6 +4892,9 @@ class MasterOptimizer:
                     constraints,
                     optimization_mode
                 )
+
+            # CORRECTION: Post-optimization validation
+            lineups = self._validate_and_filter_lineups(lineups, constraints)
 
             # Phase 4: Simulate lineups
             if lineups and self.mc_engine:
@@ -4985,7 +5052,11 @@ class MasterOptimizer:
         constraints: LineupConstraints,
         mode: str
     ) -> List[Dict[str, Any]]:
-        """Run standard PuLP optimization"""
+        """
+        Run standard PuLP optimization
+
+        CORRECTED: Adaptive diversity and increased randomness for more lineups
+        """
         try:
             self.perf_monitor.start_timer('lineup_generation')
 
@@ -5002,10 +5073,21 @@ class MasterOptimizer:
             elif mode == 'floor':
                 optimize_for = 'projection'
 
+            # CORRECTION: Adaptive parameters based on num_lineups
+            if num_lineups <= 10:
+                randomness = 0.05
+                diversity = 3
+            elif num_lineups <= 30:
+                randomness = 0.08
+                diversity = 2
+            else:
+                randomness = 0.12
+                diversity = 1
+
             lineups = optimizer.generate_lineups(
                 num_lineups=num_lineups,
-                randomness=0.05,
-                diversity_threshold=3,
+                randomness=randomness,
+                diversity_threshold=diversity,
                 optimize_for=optimize_for
             )
 
@@ -5017,6 +5099,64 @@ class MasterOptimizer:
         except Exception as e:
             self.logger.log_exception(e, "_run_standard_optimization")
             return []
+
+    def _validate_and_filter_lineups(
+        self,
+        lineups: List[Dict[str, Any]],
+        constraints: LineupConstraints
+    ) -> List[Dict[str, Any]]:
+        """
+        CORRECTION: Post-optimization validation to catch any invalid lineups
+
+        This is a safety net that validates all constraints are actually met
+        """
+        if not lineups:
+            return []
+
+        valid_lineups = []
+        invalid_count = 0
+
+        for lineup in lineups:
+            salary = lineup.get('Total_Salary', 0)
+
+            # Salary constraints
+            if not (constraints.min_salary <= salary <= constraints.max_salary):
+                invalid_count += 1
+                self.logger.log(
+                    f"Filtered lineup: ${salary:,.0f} outside "
+                    f"${constraints.min_salary:,.0f}-${constraints.max_salary:,.0f}",
+                    "DEBUG"
+                )
+                continue
+
+            # Team diversity
+            team_dist = lineup.get('Team_Distribution', {})
+            if team_dist:
+                if len(team_dist) < DraftKingsRules.MIN_TEAMS_REQUIRED:
+                    invalid_count += 1
+                    self.logger.log(
+                        f"Filtered lineup: Only {len(team_dist)} team(s) represented",
+                        "DEBUG"
+                    )
+                    continue
+
+                if max(team_dist.values()) > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
+                    invalid_count += 1
+                    self.logger.log(
+                        f"Filtered lineup: Too many players from one team",
+                        "DEBUG"
+                    )
+                    continue
+
+            valid_lineups.append(lineup)
+
+        if invalid_count > 0:
+            self.logger.log(
+                f"Filtered {invalid_count} invalid lineups, {len(valid_lineups)} valid",
+                "INFO"
+            )
+
+        return valid_lineups
 
     def _simulate_lineups(
         self,
