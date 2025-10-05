@@ -11,6 +11,7 @@ FIXES APPLIED:
 - FIX: Timeout protection to prevent infinite loops
 - FIX: Configurable minimum salary threshold
 - FIX: Session state initialization at module level
+- FIX: Thread-safe optimization (session state captured before threading)
 - Better validation feedback
 - Improved UI/UX
 """
@@ -610,6 +611,7 @@ def render_optimization_section():
 def run_optimization():
     """
     Run optimization with state preservation, timeout protection, and configurable constraints
+    CRITICAL FIX: Capture all session state values BEFORE threading
     """
     snapshot = StreamlitStateSnapshot()
     
@@ -620,9 +622,21 @@ def run_optimization():
                 st.error("AI enabled but no API key provided")
                 return
             
-            # Pre-flight check
+            # CRITICAL: Capture all session state values BEFORE threading
+            # Session state CANNOT be accessed from within threads
             df = st.session_state.processed_df
-            min_salary_threshold = int(DraftKingsRules.SALARY_CAP * (st.session_state.min_salary_pct / 100))
+            num_lineups = st.session_state.num_lineups
+            game_total = st.session_state.game_total
+            spread = st.session_state.spread
+            contest_type = st.session_state.contest_type
+            api_key = st.session_state.api_key if st.session_state.use_ai else None
+            use_ai = st.session_state.use_ai
+            optimization_mode = st.session_state.optimization_mode
+            ai_enforcement = st.session_state.ai_enforcement
+            min_salary_pct = st.session_state.min_salary_pct
+            
+            # Pre-flight check
+            min_salary_threshold = int(DraftKingsRules.SALARY_CAP * (min_salary_pct / 100))
             max_6_salary = df.nlargest(6, 'Salary')['Salary'].sum()
             
             if max_6_salary < min_salary_threshold:
@@ -647,11 +661,7 @@ def run_optimization():
             
             # Build game info
             processor = OptimizedDataProcessor()
-            game_info = processor.infer_game_info(
-                df,
-                st.session_state.game_total,
-                st.session_state.spread
-            )
+            game_info = processor.infer_game_info(df, game_total, spread)
             st.session_state.game_info = game_info
             
             # Phase 2: Optimization with timeout
@@ -664,17 +674,18 @@ def run_optimization():
             result = {'lineups': None, 'df': None, 'error': None}
             
             def optimization_thread():
+                """Thread function - uses captured local variables, NOT session state"""
                 try:
                     lineups, processed_df = optimize_showdown(
                         csv_path_or_df=df,
-                        num_lineups=st.session_state.num_lineups,
-                        game_total=st.session_state.game_total,
-                        spread=st.session_state.spread,
-                        contest_type=st.session_state.contest_type,
-                        api_key=st.session_state.api_key if st.session_state.use_ai else None,
-                        use_ai=st.session_state.use_ai,
-                        optimization_mode=st.session_state.optimization_mode,
-                        ai_enforcement=st.session_state.ai_enforcement
+                        num_lineups=num_lineups,
+                        game_total=game_total,
+                        spread=spread,
+                        contest_type=contest_type,
+                        api_key=api_key,
+                        use_ai=use_ai,
+                        optimization_mode=optimization_mode,
+                        ai_enforcement=ai_enforcement
                     )
                     result['lineups'] = lineups
                     result['df'] = processed_df
