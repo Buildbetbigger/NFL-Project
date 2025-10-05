@@ -7,6 +7,7 @@ FIXES APPLIED:
 - FIX #10: CSV encoding detection
 - FIX #11: Enhanced error messages
 - FIX: Matplotlib graceful fallback for Streamlit Cloud compatibility
+- FIX: Added comprehensive diagnostics for troubleshooting
 - Better validation feedback
 - Improved UI/UX
 """
@@ -17,6 +18,7 @@ import numpy as np
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
+from itertools import combinations
 import traceback
 import io
 
@@ -510,6 +512,100 @@ def render_data_overview():
     top_players['Ownership'] = top_players['Ownership'].apply(lambda x: f"{x:.1f}%")
     
     st.dataframe(top_players, use_container_width=True, hide_index=True)
+    
+    # DIAGNOSTIC SECTION
+    with st.expander("Diagnostic Info (Click if optimization fails)", expanded=False):
+        st.subheader("Data Validation")
+        
+        # Check required columns
+        required_cols = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Required Columns:**")
+            for col in required_cols:
+                if col in df.columns:
+                    st.success(f"✓ {col}")
+                else:
+                    st.error(f"✗ {col} MISSING")
+        
+        with col2:
+            st.write("**Data Sample:**")
+            st.write(f"First player: {df.iloc[0]['Player']}")
+            st.write(f"Position: {df.iloc[0]['Position']}")
+            st.write(f"Team: {df.iloc[0]['Team']}")
+        
+        # Check value ranges
+        st.write("**Salary Analysis:**")
+        st.write(f"- Range: ${df['Salary'].min():,.0f} - ${df['Salary'].max():,.0f}")
+        st.write(f"- Average: ${df['Salary'].mean():,.0f}")
+        st.write(f"- Median: ${df['Salary'].median():,.0f}")
+        
+        st.write("**Projection Analysis:**")
+        st.write(f"- Range: {df['Projected_Points'].min():.1f} - {df['Projected_Points'].max():.1f}")
+        st.write(f"- Average: {df['Projected_Points'].mean():.1f}")
+        
+        st.write("**Team Distribution:**")
+        for team, count in df['Team'].value_counts().items():
+            st.write(f"- {team}: {count} players")
+        
+        if df['Team'].nunique() < 2:
+            st.error("WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
+        
+        # Check if any lineup is theoretically possible
+        st.write("**Salary Cap Feasibility:**")
+        min_6_salary = df.nsmallest(6, 'Salary')['Salary'].sum()
+        max_6_salary = df.nlargest(6, 'Salary')['Salary'].sum()
+        threshold_95 = int(DraftKingsRules.SALARY_CAP * 0.95)
+        
+        st.write(f"- Cheapest 6-player lineup: ${min_6_salary:,.0f}")
+        st.write(f"- Most expensive 6-player lineup: ${max_6_salary:,.0f}")
+        st.write(f"- Salary cap: ${DraftKingsRules.SALARY_CAP:,.0f}")
+        st.write(f"- 95% minimum threshold: ${threshold_95:,.0f}")
+        
+        if min_6_salary > DraftKingsRules.SALARY_CAP:
+            st.error("IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
+        elif max_6_salary < threshold_95:
+            st.error(f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) can't reach 95% minimum (${threshold_95:,.0f})")
+        elif min_6_salary > threshold_95:
+            st.warning("May be difficult: Even cheapest lineup exceeds 95% minimum")
+        else:
+            st.success(f"Salary cap constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
+        
+        # Sample valid lineup attempt
+        st.write("**Sample Lineup Test:**")
+        try:
+            valid_found = False
+            sample_count = 0
+            max_samples = min(1000, len(list(combinations(range(len(df)), 6))))
+            
+            for combo_indices in combinations(range(len(df)), 6):
+                if sample_count >= max_samples:
+                    break
+                sample_count += 1
+                
+                combo_players = df.iloc[list(combo_indices)]
+                total_sal = combo_players['Salary'].sum()
+                teams = combo_players['Team'].nunique()
+                max_from_team = combo_players['Team'].value_counts().max()
+                
+                if (threshold_95 <= total_sal <= DraftKingsRules.SALARY_CAP 
+                    and teams >= DraftKingsRules.MIN_TEAMS_REQUIRED
+                    and max_from_team <= DraftKingsRules.MAX_PLAYERS_PER_TEAM):
+                    st.success(f"Found valid combination: ${total_sal:,.0f}, {teams} teams")
+                    st.write("Players:", ', '.join(combo_players['Player'].tolist()))
+                    valid_found = True
+                    break
+            
+            if not valid_found:
+                st.error(f"No valid combinations found after checking {sample_count} possibilities")
+                st.write("**Common issues:**")
+                st.write("- Salaries too low (can't reach 95% minimum)")
+                st.write("- All players from same team")
+                st.write("- Only 1 team in player pool")
+                st.write("- Too many players from one team in each combination")
+        except Exception as e:
+            st.error(f"Error testing combinations: {e}")
 
 
 # ============================================================================
