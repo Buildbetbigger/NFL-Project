@@ -159,33 +159,39 @@ class StreamlitStateSnapshot:
     max_entries=5
 )
 def cached_csv_processing(
-    file_bytes: bytes,
-    file_name: str,
-    file_hash: str
+        file_bytes: bytes,
+        file_name: str,
+        file_hash: str
 ) -> Tuple[Optional[pd.DataFrame], List[str]]:
     """Cache expensive CSV processing for 1 hour"""
     logger = get_logger()
-    profiler = get_profiler()
-    
-    with profiler.profile('csv_processing'):
-        file_obj = io.BytesIO(file_bytes)
-        df_raw, encoding_info = safe_load_csv(file_obj, logger)
-        
-        if df_raw is None:
-            return None, [f"Failed to load CSV: {encoding_info}"]
-        
-        warnings = []
-        if encoding_info != 'utf-8':
-            warnings.append(f"File loaded with {encoding_info} encoding")
-        
-        processor = OptimizedDataProcessor()
-        df_processed, process_warnings = processor.process_dataframe(
-            df_raw,
-            ValidationLevel.MODERATE
-        )
-        
-        warnings.extend(process_warnings)
-        return df_processed, warnings
+
+    # Manual timing instead of profiler context manager
+    start_time = time.time()
+
+    file_obj = io.BytesIO(file_bytes)
+    df_raw, encoding_info = safe_load_csv(file_obj, logger)
+
+    if df_raw is None:
+        return None, [f"Failed to load CSV: {encoding_info}"]
+
+    warnings = []
+    if encoding_info != 'utf-8':
+        warnings.append(f"File loaded with {encoding_info} encoding")
+
+    processor = OptimizedDataProcessor()
+    df_processed, process_warnings = processor.process_dataframe(
+        df_raw,
+        ValidationLevel.MODERATE
+    )
+
+    warnings.extend(process_warnings)
+
+    # Log timing
+    elapsed = time.time() - start_time
+    logger.log(f"CSV processing completed in {elapsed:.2f}s", "INFO")
+
+    return df_processed, warnings
 
 # ============================================================================
 # STYLING
