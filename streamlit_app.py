@@ -1,10 +1,10 @@
 """
 NFL DFS Optimizer - Complete Streamlit Application
-Version: 3.2.1 - Context Manager Fix
+Version: 3.2.2 - Profiler Context Manager Fix
 
 COMPLETE FILE - Replaces entire streamlit_app.py
 
-FIXED: Context manager protocol error in StreamlitStateSnapshot
+FIXED: Removed all profiler context manager usage
 """
 
 import streamlit as st
@@ -37,7 +37,6 @@ from nfl_dfs_optimizer import (
     ValidationResult,
     StructuredLogger,
     PerformanceMonitor,
-    PerformanceProfiler,
     LineupConstraints,
     
     # Enums
@@ -55,7 +54,6 @@ from nfl_dfs_optimizer import (
     # Utilities
     get_logger,
     get_performance_monitor,
-    get_profiler,
     
     # Type hints
     OptimizationModeType,
@@ -123,7 +121,7 @@ def ensure_session_state():
 ensure_session_state()
 
 # ============================================================================
-# STATE SNAPSHOT FOR ERROR RECOVERY (FIXED)
+# STATE SNAPSHOT FOR ERROR RECOVERY
 # ============================================================================
 
 class StreamlitStateSnapshot:
@@ -151,7 +149,7 @@ class StreamlitStateSnapshot:
                 st.session_state[key] = value
 
 # ============================================================================
-# STREAMLIT CACHING DECORATORS
+# STREAMLIT CACHING DECORATORS (NO PROFILER)
 # ============================================================================
 
 @st.cache_data(
@@ -159,38 +157,38 @@ class StreamlitStateSnapshot:
     max_entries=5
 )
 def cached_csv_processing(
-        file_bytes: bytes,
-        file_name: str,
-        file_hash: str
+    file_bytes: bytes,
+    file_name: str,
+    file_hash: str
 ) -> Tuple[Optional[pd.DataFrame], List[str]]:
     """Cache expensive CSV processing for 1 hour"""
     logger = get_logger()
-
-    # Manual timing instead of profiler context manager
+    
+    # Manual timing
     start_time = time.time()
-
+    
     file_obj = io.BytesIO(file_bytes)
     df_raw, encoding_info = safe_load_csv(file_obj, logger)
-
+    
     if df_raw is None:
         return None, [f"Failed to load CSV: {encoding_info}"]
-
+    
     warnings = []
     if encoding_info != 'utf-8':
         warnings.append(f"File loaded with {encoding_info} encoding")
-
+    
     processor = OptimizedDataProcessor()
     df_processed, process_warnings = processor.process_dataframe(
         df_raw,
         ValidationLevel.MODERATE
     )
-
+    
     warnings.extend(process_warnings)
-
+    
     # Log timing
     elapsed = time.time() - start_time
     logger.log(f"CSV processing completed in {elapsed:.2f}s", "INFO")
-
+    
     return df_processed, warnings
 
 # ============================================================================
@@ -216,7 +214,7 @@ def apply_custom_css():
 # ============================================================================
 
 def load_and_validate_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], List[str]]:
-    """Load and validate with caching and profiling"""
+    """Load and validate with caching"""
     logger = get_logger()
     
     try:
@@ -633,15 +631,12 @@ def render_optimization_section():
 
 
 def run_optimization():
-    """
-    CRITICAL: Thread-safe optimization with defensive DataFrame copy
-    FIXED: Simplified error recovery without context manager
-    """
+    """Thread-safe optimization with defensive DataFrame copy"""
     snapshot = StreamlitStateSnapshot()
-    snapshot.capture()  # Capture state at the beginning
+    snapshot.capture()
     
     logger = get_logger()
-    profiler = get_profiler()
+    perf_monitor = get_performance_monitor()
     
     try:
         # Validate prerequisites
@@ -701,6 +696,7 @@ def run_optimization():
         )
         progress_bar.progress(30)
         
+        perf_monitor.start_timer('full_optimization')
         start_time = time.time()
         result = {'lineups': None, 'df': None, 'error': None}
         
@@ -710,18 +706,17 @@ def run_optimization():
                 # CRITICAL: Make defensive deep copy
                 df_copy = df.copy(deep=True)
                 
-                with profiler.profile('full_optimization'):
-                    lineups, processed_df = optimize_showdown(
-                        csv_path_or_df=df_copy,
-                        num_lineups=num_lineups,
-                        game_total=game_total,
-                        spread=spread,
-                        contest_type=contest_type,
-                        api_key=api_key,
-                        use_ai=use_ai,
-                        optimization_mode=optimization_mode,
-                        ai_enforcement=ai_enforcement
-                    )
+                lineups, processed_df = optimize_showdown(
+                    csv_path_or_df=df_copy,
+                    num_lineups=num_lineups,
+                    game_total=game_total,
+                    spread=spread,
+                    contest_type=contest_type,
+                    api_key=api_key,
+                    use_ai=use_ai,
+                    optimization_mode=optimization_mode,
+                    ai_enforcement=ai_enforcement
+                )
                 
                 result['lineups'] = lineups
                 result['df'] = processed_df
@@ -769,7 +764,7 @@ def run_optimization():
             raise result['error']
         
         lineups = result['lineups']
-        elapsed_time = time.time() - start_time
+        elapsed_time = perf_monitor.stop_timer('full_optimization')
         
         # Complete
         status_text.text("Optimization complete!")
@@ -817,13 +812,14 @@ def run_optimization():
         # Show profiling if enabled
         if st.session_state.show_profiling:
             with st.expander("Performance Profile", expanded=False):
-                st.text(profiler.get_report())
+                stats = perf_monitor.get_operation_stats('full_optimization')
+                st.json(stats)
         
         # Rerun to show results
         st.rerun()
         
     except Exception as e:
-        snapshot.restore()  # Restore state on error
+        snapshot.restore()
         logger.log_exception(e, "run_optimization", critical=True)
         st.error(f"Error: {str(e)}")
         
@@ -1099,7 +1095,7 @@ def render_analytics_section():
     with col3:
         st.metric("Avg Salary", f"${np.mean(salaries):,.0f}")
     
-    # Histogram with graceful fallback
+    # Histogram
     try:
         import matplotlib.pyplot as plt
         
@@ -1110,7 +1106,6 @@ def render_analytics_section():
         ax.set_title('Salary Distribution')
         st.pyplot(fig)
     except ImportError:
-        # Fallback to Streamlit native charting
         salary_bins = pd.cut(salaries, bins=20)
         salary_counts = salary_bins.value_counts().sort_index()
         st.bar_chart(salary_counts)
@@ -1148,7 +1143,7 @@ def render_footer():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.caption("NFL DFS Optimizer v3.2.1")
+        st.caption("NFL DFS Optimizer v3.2.2")
     
     with col2:
         st.caption("Built with Streamlit & Claude AI")
