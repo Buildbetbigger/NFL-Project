@@ -1228,6 +1228,7 @@ ENHANCEMENTS:
 - FIX #14: Adaptive thread pool sizing
 - FIX #16: Lineup similarity calculation
 - FIX #19: GA parameter auto-tuning
+- NEW: Enhanced export validation with specific guidance
 """
 
 # ============================================================================
@@ -1578,7 +1579,7 @@ def format_lineup_for_export(
 
 
 # ============================================================================
-# FIX #18: EXPORT FORMAT VALIDATION
+# FIX #18: EXPORT FORMAT VALIDATION (ENHANCED)
 # ============================================================================
 
 def validate_export_format(
@@ -1587,6 +1588,7 @@ def validate_export_format(
 ) -> Tuple[bool, str]:
     """
     FIX #18: Validate lineups can be exported in requested format
+    ENHANCED: Provide specific guidance on what's wrong
 
     Args:
         lineups: List of lineups
@@ -1609,7 +1611,16 @@ def validate_export_format(
                 flex = [p.strip() for p in flex.split(',')]
 
             if len(flex) != 5:
-                return False, f"Lineup {i}: DK format requires exactly 5 FLEX players, has {len(flex)}"
+                # ENHANCED: Show what's actually in the lineup
+                captain = lineup.get('Captain', 'Unknown')
+                all_players = [captain] + flex
+
+                return False, (
+                    f"Lineup {i}: DraftKings format requires exactly 5 FLEX players, "
+                    f"found {len(flex)}.\n"
+                    f"Lineup has {len(all_players)} total players: {', '.join(all_players[:6])}\n"
+                    f"Expected: 1 Captain + 5 FLEX = 6 total players"
+                )
 
     return True, ""
 
@@ -2905,6 +2916,7 @@ PART 8 OF 13: GENETIC ALGORITHM OPTIMIZER
 FIXES APPLIED:
 - FIX #9: Guaranteed convergence with final fallback
 - FIX #19: Auto-tuned parameters
+- NEW: Early stopping when population converges (HIGH VALUE)
 """
 
 # ============================================================================
@@ -2913,10 +2925,11 @@ FIXES APPLIED:
 
 class GeneticAlgorithmOptimizer:
     """
-    Enhanced genetic algorithm with guaranteed convergence
+    Enhanced genetic algorithm with guaranteed convergence and early stopping
 
     FIX #9: Multiple fallback layers prevent infinite loops
     FIX #19: Auto-tuned parameters for optimal performance
+    NEW: Early stopping detection for efficiency
     """
 
     def __init__(
@@ -2972,6 +2985,9 @@ class GeneticAlgorithmOptimizer:
         # Performance tracking
         self.generation_times: List[float] = []
         self.diversity_scores: List[float] = []
+
+        # NEW: Convergence tracking
+        self.best_fitness_history: List[float] = []
 
     def create_random_lineup(self) -> GeneticLineup:
         """Create random valid lineup with retry logic"""
@@ -3175,7 +3191,7 @@ class GeneticAlgorithmOptimizer:
         try:
             all_players = lineup.get_all_players()
 
-            # Uniqueness
+            # Uniqueness - check for duplicates early (fail fast)
             if len(set(all_players)) != DraftKingsRules.ROSTER_SIZE:
                 return False
 
@@ -3436,11 +3452,20 @@ class GeneticAlgorithmOptimizer:
         fitness_mode: FitnessMode = FitnessMode.MEAN,
         diversity_threshold: float = 0.5
     ) -> List[Dict[str, Any]]:
-        """Generate diverse lineups using genetic algorithm"""
+        """
+        Generate diverse lineups using genetic algorithm
+
+        NEW: Early stopping when population converges
+        """
         try:
             self.logger.log(f"Starting GA optimization for {num_lineups} lineups", "INFO")
 
             self.initialize_population()
+
+            # NEW: Early stopping parameters
+            convergence_window = 10  # Check last 10 generations
+            convergence_threshold = 0.01  # 1% improvement required
+            self.best_fitness_history = []
 
             for generation in range(self.config.generations):
                 gen_start = time.time()
@@ -3450,8 +3475,26 @@ class GeneticAlgorithmOptimizer:
                 gen_time = time.time() - gen_start
                 self.generation_times.append(gen_time)
 
+                # NEW: Track best fitness
+                best_fitness = self.population[0].fitness
+                self.best_fitness_history.append(best_fitness)
+
+                # NEW: Early stopping check
+                if generation >= convergence_window:
+                    recent_improvement = (
+                        self.best_fitness_history[-1] -
+                        self.best_fitness_history[-convergence_window]
+                    ) / max(abs(self.best_fitness_history[-convergence_window]), 0.1)
+
+                    if abs(recent_improvement) < convergence_threshold:
+                        self.logger.log(
+                            f"✓ Converged at generation {generation}/{self.config.generations} "
+                            f"(improvement: {recent_improvement:.3%})",
+                            "INFO"
+                        )
+                        break
+
                 if generation % 10 == 0:
-                    best_fitness = self.population[0].fitness
                     self.logger.log(
                         f"Generation {generation}: Best fitness = {best_fitness:.2f}",
                         "DEBUG"
@@ -3490,7 +3533,8 @@ class GeneticAlgorithmOptimizer:
                 results.append(lineup_dict)
 
             self.logger.log(
-                f"GA completed: {len(results)} unique lineups generated",
+                f"GA completed: {len(results)} unique lineups generated "
+                f"in {len(self.best_fitness_history)} generations",
                 "INFO"
             )
 
@@ -3811,17 +3855,19 @@ PART 10 OF 13: AI API MANAGER & STRATEGISTS
 
 FIXES APPLIED:
 - FIX #6: Rate limiting with exponential backoff
+- NEW: Rate limit reset time display for better UX (NICE TO HAVE)
 """
 
 # ============================================================================
-# AI API MANAGER WITH RATE LIMITING
+# AI API MANAGER WITH ENHANCED RATE LIMITING
 # ============================================================================
 
 class AnthropicAPIManager:
     """
-    Enhanced API manager with rate limiting and caching
+    Enhanced API manager with rate limiting and user-friendly feedback
 
     FIX #6: Rate limiting prevents API throttling
+    NEW: Shows reset time for better user experience
     """
 
     def __init__(
@@ -3862,7 +3908,7 @@ class AnthropicAPIManager:
 
     def _wait_if_rate_limited(self) -> None:
         """
-        FIX #6: Block if approaching rate limit
+        FIX #6 + NEW: Block if approaching rate limit with user-friendly messaging
         """
         now = datetime.now()
 
@@ -3877,8 +3923,12 @@ class AnthropicAPIManager:
             wait_seconds = 60 - (now - oldest).total_seconds()
 
             if wait_seconds > 0:
+                # NEW: Calculate and display reset time
+                reset_time = now + timedelta(seconds=wait_seconds)
+
                 self.logger.log(
-                    f"Rate limit reached, waiting {wait_seconds:.1f}s",
+                    f"⏳ Rate limit reached ({len(self.request_times)}/{self.requests_per_minute} requests). "
+                    f"Waiting {wait_seconds:.1f}s (reset at {reset_time.strftime('%H:%M:%S')})",
                     "WARNING"
                 )
                 time.sleep(wait_seconds)
@@ -3949,7 +3999,8 @@ class AnthropicAPIManager:
                 if 'rate' in error_str or 'timeout' in error_str:
                     if attempt < len(self.retry_delays) - 1:
                         self.logger.log(
-                            f"API error (attempt {attempt + 1}), retrying in {delay}s: {e}",
+                            f"API error (attempt {attempt + 1}/{len(self.retry_delays)}), "
+                            f"retrying in {delay}s: {e}",
                             "WARNING"
                         )
                         time.sleep(delay)
@@ -4723,6 +4774,10 @@ class AIDecisionTracker:
 
 """
 PART 12 OF 13: DATA PROCESSING & COLUMN MAPPING
+
+ENHANCEMENTS:
+- NEW: CSV header whitespace stripping (IMMEDIATE FIX)
+- Smart column mapping with case-insensitive matching
 """
 
 # ============================================================================
@@ -4732,6 +4787,8 @@ PART 12 OF 13: DATA PROCESSING & COLUMN MAPPING
 class OptimizedDataProcessor:
     """
     Enhanced data processor with smart column mapping
+
+    NEW: Handles whitespace in CSV headers
     """
 
     def __init__(self):
@@ -4809,14 +4866,19 @@ class OptimizedDataProcessor:
         """
         Intelligently map columns to required format
 
+        NEW: Strips whitespace from column names before matching
+
         Returns:
             Tuple of (mapped_df, warnings)
         """
         warnings = []
         df = df.copy()
 
-        # Get current columns (case-insensitive)
-        current_cols = {col.lower(): col for col in df.columns}
+        # NEW: Strip whitespace from all column names first
+        df.columns = df.columns.str.strip()
+
+        # Get current columns (case-insensitive, whitespace-stripped)
+        current_cols = {col.strip().lower(): col.strip() for col in df.columns}
 
         # Map each required column
         for required, patterns in self.column_mappings.items():
@@ -4826,12 +4888,12 @@ class OptimizedDataProcessor:
             # Try to find match
             found = False
             for pattern in patterns:
-                pattern_lower = pattern.lower()
+                pattern_lower = pattern.strip().lower()  # NEW: Also strip pattern
 
                 if pattern_lower in current_cols:
                     actual_col = current_cols[pattern_lower]
                     df = df.rename(columns={actual_col: required})
-                    warnings.append(f"Mapped '{actual_col}' -> '{required}'")
+                    warnings.append(f"Mapped '{actual_col}' → '{required}'")
                     found = True
                     break
 
