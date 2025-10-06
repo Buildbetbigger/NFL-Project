@@ -2037,7 +2037,7 @@ class ConstraintFeasibilityChecker:
     @staticmethod
     def check(
         df: pd.DataFrame,
-        constraints: LineupConstraints
+        constraints: 'LineupConstraints'
     ) -> Tuple[bool, str, List[str]]:
         """
         Check if constraints are feasible
