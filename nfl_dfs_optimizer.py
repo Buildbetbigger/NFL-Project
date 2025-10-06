@@ -953,513 +953,1167 @@ class StructuredLogger:
 GlobalLogger = StructuredLogger
 
 """
-PART 2 OF 13: CUSTOM EXCEPTIONS, TYPE DEFINITIONS & PROTOCOLS
+PART 2 OF 13: GLOBAL SINGLETONS, UTILITIES & INFRASTRUCTURE
 
-ENHANCEMENTS:
-- No imports needed (uses Part 1)
-- Enhanced ValidationResult with user-friendly formatting
-- Context managers for error recovery
-- Protocols for dependency injection
+CRITICAL INFRASTRUCTURE:
+- PerformanceMonitor for timing operations
+- OptimizerConfig for field configurations
+- Global singleton getters
+- Utility functions for threading, data processing
+- Helper classes for optimization
 """
-
-# ============================================================================
-# CUSTOM EXCEPTIONS
-# ============================================================================
-
-class OptimizerError(Exception):
-    """Base exception for optimizer errors"""
-    pass
-
-
-class ValidationError(OptimizerError):
-    """Raised when data validation fails"""
-    pass
-
-
-class ConstraintError(OptimizerError):
-    """Raised when constraints are infeasible"""
-    pass
-
-
-class OptimizationError(OptimizerError):
-    """Raised when optimization fails"""
-    pass
-
-
-class APIError(OptimizerError):
-    """Raised when API calls fail"""
-    pass
-
-
-class TimeoutError(OptimizerError):
-    """Raised when operation times out"""
-    pass
-
-
-# ============================================================================
-# TYPE DEFINITIONS
-# ============================================================================
-
-class PlayerData(TypedDict):
-    """Type definition for player dictionary"""
-    Player: str
-    Position: str
-    Team: str
-    Salary: float
-    Projected_Points: float
-    Ownership: float
-
-
-class LineupDict(TypedDict, total=False):
-    """Type definition for lineup dictionary"""
-    Lineup: int
-    Captain: str
-    FLEX: Union[List[str], str]
-    Total_Salary: float
-    Projected: float
-    Total_Ownership: float
-    Avg_Ownership: float
-    Ceiling_90th: Optional[float]
-    Floor_10th: Optional[float]
-    Sharpe_Ratio: Optional[float]
-    Win_Probability: Optional[float]
-    Team_Distribution: Optional[Dict[str, int]]
-    Position_Distribution: Optional[Dict[str, int]]
-    Valid: bool
-
-
-class GameInfoDict(TypedDict):
-    """Type definition for game information"""
-    game_total: float
-    spread: float
-    home_team: str
-    away_team: str
-    teams: List[str]
-
-
-class FieldConfigDict(TypedDict):
-    """Type definition for field configuration"""
-    max_exposure: float
-    min_unique_captains: int
-    max_chalk_players: int
-    min_leverage_players: int
-    ownership_leverage_weight: float
-    correlation_weight: float
-    narrative_weight: float
-    ai_enforcement: str
-    min_total_ownership: int
-    max_total_ownership: int
-    similarity_threshold: float
-    use_genetic: bool
-
-
-# ============================================================================
-# PROTOCOLS (for dependency injection)
-# ============================================================================
-
-class SimulationEngine(Protocol):
-    """Protocol for simulation engines"""
-
-    def evaluate_lineup(
-        self,
-        captain: str,
-        flex: List[str],
-        use_cache: bool = True
-    ) -> 'SimulationResults':
-        """Evaluate a lineup and return simulation results"""
-        ...
-
-
-class LineupOptimizer(Protocol):
-    """Protocol for lineup optimizers"""
-
-    def generate_lineups(
-        self,
-        num_lineups: int,
-        **kwargs
-    ) -> List[LineupDict]:
-        """Generate lineups"""
-        ...
-
-
-class AIAPIManager(Protocol):
-    """Protocol for AI API managers"""
-
-    def get_ai_analysis(
-        self,
-        prompt: str,
-        context: Dict[str, Any],
-        max_tokens: int = 2000,
-        temperature: float = 0.7,
-        use_cache: bool = True,
-        timeout_seconds: int = 30
-    ) -> Dict[str, Any]:
-        """Get AI analysis"""
-        ...
-
-
-# ============================================================================
-# GENERIC TYPE VARIABLES
-# ============================================================================
-
-P = ParamSpec('P')
-T = TypeVar('T')
-R = TypeVar('R')
-
-
-# ============================================================================
-# UTILITY CONTEXT MANAGERS
-# ============================================================================
-
-@contextmanager
-def time_limit(seconds: int):
-    """
-    Context manager for timeout protection
-
-    Args:
-        seconds: Maximum seconds allowed
-
-    Raises:
-        TimeoutError: If operation exceeds time limit
-    """
-    def signal_handler(signum, frame):
-        raise TimeoutError(f"Operation exceeded {seconds} second time limit")
-
-    old_handler = signal.signal(signal.SIGALRM, signal_handler)
-    signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
-
-
-class APIFallbackContext:
-    """
-    Context manager that tracks API fallback reasons
-    Useful for graceful degradation
-    """
-
-    def __init__(
-        self,
-        logger: 'StructuredLogger',
-        ui_callback: Optional[Callable[[str], None]] = None
-    ):
-        self.logger = logger
-        self.ui_callback = ui_callback
-        self.fallback_triggered = False
-        self.reason: Optional[str] = None
-
-    def __enter__(self) -> 'APIFallbackContext':
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            self.fallback_triggered = True
-            self.reason = str(exc_val)
-
-            if self.ui_callback:
-                self.ui_callback(
-                    f"AI API unavailable ({self.reason}), using statistical fallback"
-                )
-
-            return True
-        return False
-
-
-# ============================================================================
-# ENHANCED VALIDATION RESULT CLASS
-# ============================================================================
-
-class ValidationResult:
-    """
-    ENHANCED: Structured validation results with actionable feedback
-
-    Provides detailed error messages with suggestions for users
-    """
-
-    def __init__(
-        self,
-        is_valid: bool = True,
-        errors: Optional[List[str]] = None,
-        warnings: Optional[List[str]] = None,
-        suggestions: Optional[List[str]] = None
-    ):
-        self.is_valid = is_valid
-        self.errors = errors or []
-        self.warnings = warnings or []
-        self.suggestions = suggestions or []
-
-    def add_error(self, error: str, suggestion: Optional[str] = None) -> None:
-        """Add error with optional suggestion"""
-        self.is_valid = False
-        self.errors.append(error)
-        if suggestion:
-            self.suggestions.append(suggestion)
-
-    def add_warning(self, warning: str) -> None:
-        """Add warning without invalidating"""
-        self.warnings.append(warning)
-
-    def to_user_message(self) -> str:
-        """Format for display to user"""
-        if self.is_valid:
-            msg = "✓ Validation passed"
-            if self.warnings:
-                msg += f" ({len(self.warnings)} warnings)"
-            return msg
-
-        msg = f"✗ Validation failed ({len(self.errors)} errors)\n\n"
-
-        for error in self.errors:
-            msg += f"  • {error}\n"
-
-        if self.warnings:
-            msg += "\nWarnings:\n"
-            for warning in self.warnings:
-                msg += f"  ⚠ {warning}\n"
-
-        if self.suggestions:
-            msg += "\nSuggestions:\n"
-            for suggestion in self.suggestions:
-                msg += f"  💡 {suggestion}\n"
-
-        return msg
-
-"""
-PART 6 OF 13: LOGGING & MONITORING SYSTEMS
-
-ENHANCEMENTS:
-- FIX #12: Enhanced API key sanitization
-- Structured logging with JSON compatibility
-- Performance monitoring with detailed statistics
-- Thread-safe operations
-- NEW: Unified LRU Cache (ENHANCEMENT #3)
-"""
-
-# ============================================================================
-# NEW: UNIFIED LRU CACHE (ENHANCEMENT #3)
-# ============================================================================
-
-class UnifiedLRUCache:
-    """
-    Thread-safe LRU cache for all optimizer components
-
-    ENHANCEMENT #3: Unified caching with memory management
-    Reduces memory usage and provides better cache statistics
-    """
-
-    def __init__(self, max_size: int = 1000):
-        self.max_size = max_size
-        self.caches: Dict[str, 'OrderedDict'] = {}
-        self._lock = threading.RLock()
-        self.stats = {
-            'hits': 0,
-            'misses': 0,
-            'evictions': 0,
-            'total_gets': 0,
-            'total_puts': 0
-        }
-
-    def get(self, cache_name: str, key: Any) -> Optional[Any]:
-        """Get from cache with LRU update"""
-        with self._lock:
-            self.stats['total_gets'] += 1
-
-            if cache_name not in self.caches:
-                self.caches[cache_name] = OrderedDict()
-
-            cache = self.caches[cache_name]
-
-            if key in cache:
-                # Move to end (most recently used)
-                cache.move_to_end(key)
-                self.stats['hits'] += 1
-                return cache[key]
-
-            self.stats['misses'] += 1
-            return None
-
-    def put(self, cache_name: str, key: Any, value: Any) -> None:
-        """Put in cache with LRU eviction"""
-        with self._lock:
-            self.stats['total_puts'] += 1
-
-            if cache_name not in self.caches:
-                self.caches[cache_name] = OrderedDict()
-
-            cache = self.caches[cache_name]
-
-            # Add/update
-            cache[key] = value
-            cache.move_to_end(key)
-
-            # Evict if over size
-            while len(cache) > self.max_size:
-                cache.popitem(last=False)
-                self.stats['evictions'] += 1
-
-    def clear(self, cache_name: Optional[str] = None) -> None:
-        """Clear specific cache or all caches"""
-        with self._lock:
-            if cache_name:
-                if cache_name in self.caches:
-                    self.caches[cache_name].clear()
-            else:
-                self.caches.clear()
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get comprehensive cache statistics"""
-        with self._lock:
-            total_entries = sum(len(c) for c in self.caches.values())
-            hit_rate = (
-                self.stats['hits'] / self.stats['total_gets']
-                if self.stats['total_gets'] > 0
-                else 0.0
-            )
-
-            cache_sizes = {
-                name: len(cache)
-                for name, cache in self.caches.items()
-            }
-
-            return {
-                'total_entries': total_entries,
-                'hit_rate': hit_rate,
-                'cache_sizes': cache_sizes,
-                **self.stats
-            }
-
-    def get_memory_usage_estimate(self) -> int:
-        """Estimate memory usage in bytes"""
-        import sys
-        with self._lock:
-            total_size = 0
-            for cache in self.caches.values():
-                total_size += sys.getsizeof(cache)
-                for key, value in cache.items():
-                    total_size += sys.getsizeof(key) + sys.getsizeof(value)
-            return total_size
-
-
-# Global unified cache instance
-_unified_cache = UnifiedLRUCache(max_size=1000)
-
-def get_unified_cache() -> UnifiedLRUCache:
-    """Get global unified cache instance"""
-    return _unified_cache
-
 
 # ============================================================================
 # PERFORMANCE MONITOR
 # ============================================================================
 
 class PerformanceMonitor:
-    """Enhanced performance monitoring with thread safety"""
+    """
+    Thread-safe performance monitoring with operation tracking
+
+    Tracks execution times for different operations and provides
+    statistical summaries for performance analysis.
+    """
 
     def __init__(self):
-        self.timers: Dict[str, float] = {}
-        self.metrics: DefaultDict[str, List] = defaultdict(list)
+        self._timers: Dict[str, float] = {}
+        self._operation_times: DefaultDict[str, List[float]] = defaultdict(list)
         self._lock = threading.RLock()
-        self.start_times: Dict[str, float] = {}
-
-        self.operation_counts: DefaultDict[str, int] = defaultdict(int)
-        self.operation_times: DefaultDict[str, List[float]] = defaultdict(list)
-
-        self.phase_times: Dict[str, List[float]] = {
-            'data_load': [],
-            'ai_analysis': [],
-            'lineup_generation': [],
-            'validation': [],
-            'export': [],
-            'monte_carlo': [],
-            'genetic_algorithm': []
-        }
 
     def start_timer(self, operation: str) -> None:
         """Start timing an operation"""
         with self._lock:
-            self.start_times[operation] = time.time()
-            self.operation_counts[operation] += 1
+            self._timers[operation] = time.perf_counter()
 
     def stop_timer(self, operation: str) -> float:
         """Stop timing and return elapsed time"""
         with self._lock:
-            if operation not in self.start_times:
+            if operation not in self._timers:
                 return 0.0
 
-            elapsed = time.time() - self.start_times[operation]
-            del self.start_times[operation]
-
-            self.operation_times[operation].append(elapsed)
-
-            if len(self.operation_times[operation]) > 100:
-                self.operation_times[operation] = self.operation_times[operation][-50:]
-
+            elapsed = time.perf_counter() - self._timers[operation]
+            del self._timers[operation]
             return elapsed
 
-    def record_phase_time(self, phase: str, duration: float) -> None:
-        """Record time for optimization phase"""
+    def record_phase_time(self, phase: str, elapsed: float) -> None:
+        """Record a phase execution time"""
         with self._lock:
-            if phase in self.phase_times:
-                self.phase_times[phase].append(duration)
-                if len(self.phase_times[phase]) > 20:
-                    self.phase_times[phase] = self.phase_times[phase][-10:]
+            self._operation_times[phase].append(elapsed)
 
-    def get_operation_stats(self, operation: str) -> Dict[str, Any]:
+    def get_operation_stats(self, operation: str) -> Optional[Dict[str, float]]:
         """Get statistics for an operation"""
         with self._lock:
-            times = self.operation_times.get(operation, [])
+            times = self._operation_times.get(operation, [])
             if not times:
-                return {}
+                return None
 
-            try:
-                valid_times = [t for t in times if np.isfinite(t)]
+            return {
+                'count': len(times),
+                'total': sum(times),
+                'mean': np.mean(times),
+                'median': np.median(times),
+                'min': min(times),
+                'max': max(times)
+            }
 
-                if not valid_times:
-                    return {'count': len(times)}
+    def get_summary(self) -> Dict[str, Any]:
+        """Get complete performance summary"""
+        with self._lock:
+            return {
+                operation: self.get_operation_stats(operation)
+                for operation in self._operation_times.keys()
+            }
 
-                return {
-                    'count': self.operation_counts[operation],
-                    'avg_time': float(np.mean(valid_times)),
-                    'median_time': float(np.median(valid_times)),
-                    'min_time': float(min(valid_times)),
-                    'max_time': float(max(valid_times)),
-                    'total_time': float(sum(valid_times)),
-                    'std_dev': float(np.std(valid_times)) if len(valid_times) > 1 else 0.0
-                }
-            except Exception:
-                return {'count': len(times)}
-
+    def reset(self) -> None:
+        """Reset all tracking"""
+        with self._lock:
+            self._timers.clear()
+            self._operation_times.clear()
 
 # ============================================================================
-# SINGLETON GETTERS
+# GENETIC ALGORITHM CONFIG
 # ============================================================================
 
-def get_logger() -> 'StructuredLogger':
-    """Get or create global logger singleton"""
+@dataclass
+class GeneticConfig:
+    """Configuration for genetic algorithm"""
+    population_size: int = 100
+    generations: int = 50
+    mutation_rate: float = 0.15
+    elite_size: int = 10
+    tournament_size: int = 5
+    crossover_rate: float = 0.8
+
+# ============================================================================
+# OPTIMIZER CONFIGURATION
+# ============================================================================
+
+class OptimizerConfig:
+    """
+    Central configuration for optimizer behavior
+
+    Provides field-specific configurations and parameter optimization
+    """
+
+    @staticmethod
+    def get_field_config(field_size: str) -> Dict[str, Any]:
+        """
+        Get configuration for a specific field size
+
+        Args:
+            field_size: Field size key (e.g., 'large_field', 'milly_maker')
+
+        Returns:
+            Configuration dictionary
+        """
+        return FIELD_SIZE_CONFIGS.get(field_size, FIELD_SIZE_CONFIGS['large_field']).copy()
+
+    @staticmethod
+    def get_genetic_config(
+        num_players: int,
+        num_lineups: int,
+        time_budget_seconds: float = 60.0
+    ) -> GeneticConfig:
+        """
+        Calculate optimal genetic algorithm parameters
+
+        Auto-tunes GA parameters based on problem size and time constraints
+
+        Args:
+            num_players: Number of players in pool
+            num_lineups: Number of lineups to generate
+            time_budget_seconds: Maximum time allowed
+
+        Returns:
+            Optimized GeneticConfig
+        """
+        # Scale population with problem size
+        base_population = 100
+        population_size = min(200, max(50, base_population + (num_players // 5)))
+
+        # Scale generations based on time budget
+        target_time_per_generation = 0.5  # seconds
+        max_generations = int(time_budget_seconds / target_time_per_generation)
+        generations = min(100, max(20, max_generations))
+
+        # Adjust mutation rate based on diversity needs
+        if num_lineups <= 10:
+            mutation_rate = 0.10
+        elif num_lineups <= 50:
+            mutation_rate = 0.15
+        else:
+            mutation_rate = 0.20
+
+        return GeneticConfig(
+            population_size=population_size,
+            generations=generations,
+            mutation_rate=mutation_rate,
+            elite_size=max(5, population_size // 10),
+            tournament_size=min(7, population_size // 20),
+            crossover_rate=0.8
+        )
+
+# Helper function for Part 8 compatibility
+def calculate_optimal_ga_params(
+    num_players: int,
+    num_lineups: int,
+    time_budget_seconds: float = 60.0
+) -> GeneticConfig:
+    """Wrapper for OptimizerConfig.get_genetic_config"""
+    return OptimizerConfig.get_genetic_config(num_players, num_lineups, time_budget_seconds)
+
+# ============================================================================
+# THREADING UTILITIES
+# ============================================================================
+
+def get_optimal_thread_count(
+    data_size: int,
+    workload_type: str = 'light'
+) -> int:
+    """
+    Calculate optimal thread count based on data size and workload
+
+    Args:
+        data_size: Size of data to process
+        workload_type: 'light', 'medium', or 'heavy'
+
+    Returns:
+        Optimal number of threads
+    """
     try:
-        import streamlit as st
-        if 'logger' not in st.session_state:
-            st.session_state.logger = StructuredLogger()
-        return st.session_state.logger
-    except (ImportError, RuntimeError):
-        if not hasattr(get_logger, '_instance'):
-            get_logger._instance = StructuredLogger()
-        return get_logger._instance
+        cpu_count = os.cpu_count() or 4
 
+        # Minimum data per thread to avoid overhead
+        min_data_per_thread = {
+            'light': 100,
+            'medium': 50,
+            'heavy': 20
+        }.get(workload_type, 50)
+
+        # Calculate based on data size
+        max_threads_by_data = max(1, data_size // min_data_per_thread)
+
+        # Cap at system resources
+        max_threads = min(
+            max_threads_by_data,
+            cpu_count,
+            PerformanceLimits.MAX_PARALLEL_THREADS
+        )
+
+        # Only parallelize if worth it
+        if data_size < PerformanceLimits.MIN_PARALLELIZATION_THRESHOLD:
+            return 1
+
+        return max_threads
+
+    except Exception:
+        return 1
+
+# ============================================================================
+# CSV LOADING UTILITIES
+# ============================================================================
+
+def safe_load_csv(
+    file_path_or_buffer: Union[str, Path, io.BytesIO],
+    logger: StructuredLogger
+) -> Tuple[Optional[pd.DataFrame], str]:
+    """
+    Safely load CSV with encoding detection and error handling
+
+    Args:
+        file_path_or_buffer: File path or buffer
+        logger: Logger instance
+
+    Returns:
+        Tuple of (DataFrame or None, encoding_info or error_message)
+    """
+    encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+
+    for encoding in encodings:
+        try:
+            if isinstance(file_path_or_buffer, io.BytesIO):
+                file_path_or_buffer.seek(0)
+                df = pd.read_csv(file_path_or_buffer, encoding=encoding)
+            else:
+                df = pd.read_csv(file_path_or_buffer, encoding=encoding)
+
+            if df.empty:
+                continue
+
+            return df, encoding
+
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            logger.log_exception(e, f"CSV load error with {encoding}")
+            continue
+
+    return None, "All encodings failed"
+
+# ============================================================================
+# DATA COERCION UTILITIES
+# ============================================================================
+
+def safe_numeric_coercion(
+    value: Any,
+    default: float = 0.0,
+    field_name: str = "unknown"
+) -> float:
+    """
+    ENHANCED: Safely coerce value to numeric with detailed error logging
+
+    Args:
+        value: Value to coerce
+        default: Default if coercion fails
+        field_name: Field name for logging
+
+    Returns:
+        Numeric value or default
+    """
+    try:
+        if pd.isna(value):
+            return default
+
+        if isinstance(value, (int, float)):
+            if np.isnan(value) or np.isinf(value):
+                return default
+            return float(value)
+
+        if isinstance(value, str):
+            # Remove common formatting
+            cleaned = value.strip().replace('$', '').replace(',', '').replace('%', '')
+            if cleaned:
+                return float(cleaned)
+
+        return default
+
+    except (ValueError, TypeError) as e:
+        logger = get_logger()
+        logger.log(
+            f"Failed to coerce {field_name}='{value}' to numeric: {e}",
+            "WARNING"
+        )
+        return default
+
+def safe_int_coercion(
+    value: Any,
+    default: int = 0,
+    field_name: str = "unknown"
+) -> int:
+    """
+    Safely coerce value to integer
+
+    Args:
+        value: Value to coerce
+        default: Default if coercion fails
+        field_name: Field name for logging
+
+    Returns:
+        Integer value or default
+    """
+    numeric = safe_numeric_coercion(value, float(default), field_name)
+    return int(numeric)
+
+# ============================================================================
+# TIMEOUT CONTEXT MANAGER
+# ============================================================================
+
+class TimeoutContext:
+    """
+    Context manager for operation timeouts using threading
+
+    Usage:
+        with TimeoutContext(30, "optimization"):
+            # Your code here
+            pass
+    """
+
+    def __init__(self, seconds: int, operation_name: str = "operation"):
+        self.seconds = seconds
+        self.operation_name = operation_name
+        self.timer = None
+        self.timed_out = False
+
+    def _timeout_handler(self):
+        """Handler called when timeout occurs"""
+        self.timed_out = True
+        logger = get_logger()
+        logger.log(f"{self.operation_name} timed out after {self.seconds}s", "WARNING")
+
+    def __enter__(self):
+        """Start timeout timer"""
+        if self.seconds > 0:
+            self.timer = threading.Timer(self.seconds, self._timeout_handler)
+            self.timer.daemon = True
+            self.timer.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Stop timeout timer"""
+        if self.timer:
+            self.timer.cancel()
+
+        if self.timed_out:
+            raise TimeoutError(f"{self.operation_name} exceeded {self.seconds}s timeout")
+
+        return False
+
+# ============================================================================
+# MEMORY MANAGEMENT UTILITIES
+# ============================================================================
+
+def estimate_dataframe_memory(df: pd.DataFrame) -> float:
+    """
+    Estimate DataFrame memory usage in MB
+
+    Args:
+        df: DataFrame to estimate
+
+    Returns:
+        Memory usage in MB
+    """
+    try:
+        memory_bytes = df.memory_usage(deep=True).sum()
+        memory_mb = memory_bytes / (1024 * 1024)
+        return memory_mb
+    except Exception:
+        return 0.0
+
+def cleanup_memory(force: bool = False) -> None:
+    """
+    Trigger garbage collection
+
+    Args:
+        force: If True, force immediate collection
+    """
+    try:
+        if force:
+            gc.collect()
+        else:
+            # Suggest collection without forcing
+            gc.collect(generation=0)
+    except Exception:
+        pass
+
+# ============================================================================
+# HASH UTILITIES
+# ============================================================================
+
+def hash_lineup(captain: str, flex: List[str]) -> str:
+    """
+    Create consistent hash for lineup
+
+    Args:
+        captain: Captain player name
+        flex: List of flex player names
+
+    Returns:
+        MD5 hash string
+    """
+    try:
+        # Sort flex for consistency
+        sorted_flex = sorted(flex)
+        lineup_str = f"{captain}|{'|'.join(sorted_flex)}"
+        return hashlib.md5(lineup_str.encode()).hexdigest()
+    except Exception:
+        return ""
+
+def hash_players(players: List[str]) -> str:
+    """
+    Create consistent hash for player list
+
+    Args:
+        players: List of player names
+
+    Returns:
+        MD5 hash string
+    """
+    try:
+        sorted_players = sorted(players)
+        players_str = '|'.join(sorted_players)
+        return hashlib.md5(players_str.encode()).hexdigest()
+    except Exception:
+        return ""
+
+# ============================================================================
+# VALIDATION RESULT CLASS
+# ============================================================================
+
+@dataclass
+class ValidationResult:
+    """Result of validation operation"""
+    is_valid: bool
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+    def add_error(self, error: str) -> None:
+        """Add an error"""
+        self.errors.append(error)
+        self.is_valid = False
+
+    def add_warning(self, warning: str) -> None:
+        """Add a warning"""
+        self.warnings.append(warning)
+
+    def merge(self, other: 'ValidationResult') -> None:
+        """Merge another validation result"""
+        self.errors.extend(other.errors)
+        self.warnings.extend(other.warnings)
+        if not other.is_valid:
+            self.is_valid = False
+
+# ============================================================================
+# GLOBAL SINGLETON INSTANCES
+# ============================================================================
+
+_global_logger: Optional[StructuredLogger] = None
+_global_perf_monitor: Optional[PerformanceMonitor] = None
+_singleton_lock = threading.RLock()
+
+def get_logger() -> StructuredLogger:
+    """
+    Get global logger instance (thread-safe singleton)
+
+    Returns:
+        StructuredLogger instance
+    """
+    global _global_logger
+
+    if _global_logger is None:
+        with _singleton_lock:
+            if _global_logger is None:
+                _global_logger = StructuredLogger()
+
+    return _global_logger
 
 def get_performance_monitor() -> PerformanceMonitor:
-    """Get or create performance monitor singleton"""
+    """
+    Get global performance monitor instance (thread-safe singleton)
+
+    Returns:
+        PerformanceMonitor instance
+    """
+    global _global_perf_monitor
+
+    if _global_perf_monitor is None:
+        with _singleton_lock:
+            if _global_perf_monitor is None:
+                _global_perf_monitor = PerformanceMonitor()
+
+    return _global_perf_monitor
+
+# ============================================================================
+# POSITION NORMALIZATION
+# ============================================================================
+
+def normalize_position(position: str) -> str:
+    """
+    Normalize position string to standard format
+
+    Args:
+        position: Raw position string
+
+    Returns:
+        Normalized position (QB, RB, WR, TE, K, DST, or FLEX)
+    """
     try:
-        import streamlit as st
-        if 'perf_monitor' not in st.session_state:
-            st.session_state.perf_monitor = PerformanceMonitor()
-        return st.session_state.perf_monitor
-    except (ImportError, RuntimeError):
-        if not hasattr(get_performance_monitor, '_instance'):
-            get_performance_monitor._instance = PerformanceMonitor()
-        return get_performance_monitor._instance
+        pos_upper = str(position).strip().upper()
+
+        # Check each position's aliases
+        for standard_pos, aliases in POSITION_ALIASES.items():
+            if pos_upper in [alias.upper() for alias in aliases]:
+                return standard_pos
+
+        # Default to FLEX if unknown
+        return 'FLEX'
+
+    except Exception:
+        return 'FLEX'
+
+# ============================================================================
+# TEAM NORMALIZATION
+# ============================================================================
+
+def normalize_team_name(team: str) -> str:
+    """
+    Normalize team name to consistent format
+
+    Args:
+        team: Raw team string
+
+    Returns:
+        Normalized team name (uppercase, trimmed)
+    """
+    try:
+        return str(team).strip().upper()
+    except Exception:
+        return "UNKNOWN"
+
+"""
+PART 3 OF 13: UTILITY FUNCTIONS & HELPER METHODS
+
+ENHANCEMENTS:
+- FIX #10: CSV encoding detection
+- FIX #14: Adaptive thread pool sizing
+- FIX #16: Lineup similarity calculation
+- FIX #19: GA parameter auto-tuning
+- NEW: Enhanced export validation with specific guidance
+- NEW: Vectorized batch lineup validator (PERFORMANCE)
+- NEW: DataFrame memory optimization (PERFORMANCE)
+"""
+
+# ============================================================================
+# FIX #10: CSV ENCODING DETECTION
+# ============================================================================
+
+def safe_load_csv(
+    uploaded_file,
+    logger: Optional['StructuredLogger'] = None
+) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
+    """
+    FIX #10: Load CSV with automatic encoding detection
+
+    Args:
+        uploaded_file: File object or path
+        logger: Optional logger for messages
+
+    Returns:
+        Tuple of (DataFrame or None, encoding_info or error_message)
+    """
+    encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252', 'utf-16']
+
+    for encoding in encodings:
+        try:
+            if hasattr(uploaded_file, 'seek'):
+                uploaded_file.seek(0)
+
+            df = pd.read_csv(uploaded_file, encoding=encoding)
+
+            if logger:
+                if encoding != 'utf-8':
+                    logger.log(f"CSV loaded with {encoding} encoding", "INFO")
+
+            return df, encoding
+
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            return None, f"Error reading CSV: {e}"
+
+    return None, f"Could not decode file with any of: {', '.join(encodings)}"
+
+
+# ============================================================================
+# NEW: DATAFRAME MEMORY OPTIMIZATION (ENHANCEMENT #4)
+# ============================================================================
+
+def optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Reduce DataFrame memory footprint by ~50%
+
+    Converts to optimal dtypes without losing precision
+
+    Returns:
+        Memory-optimized DataFrame
+    """
+    df = df.copy()
+
+    # Salary: int32 is enough (max 50,000)
+    if 'Salary' in df.columns:
+        df['Salary'] = df['Salary'].astype('int32')
+
+    # Projected_Points: float32 is sufficient
+    if 'Projected_Points' in df.columns:
+        df['Projected_Points'] = df['Projected_Points'].astype('float32')
+
+    # Ownership: float32
+    if 'Ownership' in df.columns:
+        df['Ownership'] = df['Ownership'].astype('float32')
+
+    # Value columns if they exist
+    for col in ['Value', 'Leverage_Value']:
+        if col in df.columns:
+            df[col] = df[col].astype('float32')
+
+    # Categorical for strings (huge memory savings)
+    for col in ['Player', 'Position', 'Team']:
+        if col in df.columns:
+            df[col] = df[col].astype('category')
+
+    return df
+
+
+# ============================================================================
+# FIX #14: ADAPTIVE THREAD POOL SIZING
+# ============================================================================
+
+def get_optimal_thread_count(num_tasks: int, task_weight: str = 'medium') -> int:
+    """
+    FIX #14: Dynamically size thread pool based on workload and system
+
+    Args:
+        num_tasks: Number of tasks to process
+        task_weight: 'light', 'medium', or 'heavy'
+
+    Returns:
+        Optimal number of threads
+    """
+    cpu_count = os.cpu_count() or 4
+
+    # Task weight factors
+    weight_factors = {
+        'light': 1.0,    # Can use all cores
+        'medium': 0.75,  # Leave 25% headroom
+        'heavy': 0.5     # Leave 50% headroom (GIL contention)
+    }
+
+    factor = weight_factors.get(task_weight, 0.75)
+    max_threads = max(1, int(cpu_count * factor))
+
+    # Don't parallelize tiny workloads
+    if num_tasks < PerformanceLimits.MIN_PARALLELIZATION_THRESHOLD:
+        return 1
+    elif num_tasks < 30:
+        return min(2, max_threads)
+    else:
+        # Scale with tasks but cap at max_threads
+        optimal = min(max_threads, num_tasks // 5)
+        return max(1, optimal)
+
+
+# ============================================================================
+# FIX #16: LINEUP SIMILARITY CALCULATION
+# ============================================================================
+
+def calculate_lineup_similarity(
+    lineup1: Dict[str, Any],
+    lineup2: Dict[str, Any]
+) -> float:
+    """
+    FIX #16: Calculate similarity score between two lineups (0-1)
+
+    Args:
+        lineup1, lineup2: Lineup dictionaries
+
+    Returns:
+        Similarity score (0 = completely different, 1 = identical)
+    """
+    # Extract players
+    def get_players(lineup: Dict[str, Any]) -> Set[str]:
+        captain = lineup.get('Captain', lineup.get('captain', ''))
+        flex = lineup.get('FLEX', lineup.get('flex', []))
+
+        if isinstance(flex, str):
+            flex = [p.strip() for p in flex.split(', ') if p.strip()]
+
+        players = {captain} if captain else set()
+        players.update(flex)
+        return players
+
+    players1 = get_players(lineup1)
+    players2 = get_players(lineup2)
+
+    # Jaccard similarity
+    intersection = len(players1 & players2)
+    union = len(players1 | players2)
+
+    if union == 0:
+        return 0.0
+
+    return intersection / union
+
+
+def ensure_lineup_diversity(
+    lineups: List[Dict[str, Any]],
+    min_similarity: float = LineupSimilarityThresholds.MIN_SIMILARITY_FILTER
+) -> List[Dict[str, Any]]:
+    """
+    FIX #16: Filter lineups to ensure minimum diversity
+
+    Args:
+        lineups: List of lineups
+        min_similarity: Keep only if similarity < this threshold
+
+    Returns:
+        Filtered list of diverse lineups
+    """
+    if not lineups:
+        return []
+
+    diverse_lineups = [lineups[0]]
+
+    for lineup in lineups[1:]:
+        is_diverse = True
+
+        for existing in diverse_lineups:
+            similarity = calculate_lineup_similarity(lineup, existing)
+
+            if similarity >= min_similarity:
+                is_diverse = False
+                break
+
+        if is_diverse:
+            diverse_lineups.append(lineup)
+
+    return diverse_lineups
+
+
+# ============================================================================
+# NEW: DIVERSITY TRACKER (ENHANCEMENT #6)
+# ============================================================================
+
+class DiversityTracker:
+    """
+    Efficient lineup diversity tracking using set operations
+
+    ENHANCEMENT #6: Fast similarity checks for large lineup sets
+    """
+
+    def __init__(self, similarity_threshold: float = 0.5):
+        self.similarity_threshold = similarity_threshold
+        self.lineup_signatures: List[FrozenSet[str]] = []
+        self._player_usage: Dict[str, int] = defaultdict(int)
+        self._lock = threading.RLock()
+
+    def add_lineup(self, captain: str, flex: List[str]) -> None:
+        """Add lineup to tracker"""
+        with self._lock:
+            signature = frozenset([captain] + flex)
+            self.lineup_signatures.append(signature)
+
+            for player in signature:
+                self._player_usage[player] += 1
+
+    def is_diverse(self, captain: str, flex: List[str]) -> bool:
+        """Fast diversity check using set operations"""
+        with self._lock:
+            new_signature = frozenset([captain] + flex)
+
+            for existing in self.lineup_signatures:
+                # Jaccard similarity
+                intersection = len(new_signature & existing)
+                union = len(new_signature | existing)
+                similarity = intersection / union if union > 0 else 0
+
+                if similarity >= self.similarity_threshold:
+                    return False
+
+            return True
+
+    def get_overused_players(self, max_exposure: float) -> List[str]:
+        """Get players exceeding exposure limit"""
+        with self._lock:
+            total_lineups = len(self.lineup_signatures)
+            if total_lineups == 0:
+                return []
+
+            max_count = int(total_lineups * max_exposure)
+
+            return [
+                player for player, count in self._player_usage.items()
+                if count > max_count
+            ]
+
+    def get_player_exposure(self, player: str) -> float:
+        """Get exposure percentage for a player"""
+        with self._lock:
+            total_lineups = len(self.lineup_signatures)
+            if total_lineups == 0:
+                return 0.0
+
+            return self._player_usage.get(player, 0) / total_lineups
+
+    def reset(self) -> None:
+        """Clear all tracking data"""
+        with self._lock:
+            self.lineup_signatures.clear()
+            self._player_usage.clear()
+
+
+# ============================================================================
+# NEW: VECTORIZED BATCH LINEUP VALIDATOR (ENHANCEMENT #2)
+# ============================================================================
+
+class BatchLineupValidator:
+    """
+    Vectorized validation for multiple lineups at once
+
+    ENHANCEMENT #2: 2x faster than loop-based validation
+    """
+
+    def __init__(self, df: pd.DataFrame, constraints: 'LineupConstraints'):
+        self.df = df
+        self.constraints = constraints
+
+        # Pre-compute lookup arrays
+        self.player_to_idx = {p: i for i, p in enumerate(df['Player'])}
+        self.salaries = df['Salary'].values
+        self.teams = df['Team'].values
+        self.team_to_idx = {t: i for i, t in enumerate(df['Team'].unique())}
+
+    def validate_batch(
+        self,
+        lineups: List[Dict[str, Any]]
+    ) -> Tuple[List[bool], List[str]]:
+        """
+        Validate multiple lineups at once using vectorization
+
+        Returns: (is_valid_array, error_messages)
+        """
+        n_lineups = len(lineups)
+        is_valid = np.ones(n_lineups, dtype=bool)
+        errors = [""] * n_lineups
+
+        # Build lineup matrices
+        lineup_players = np.zeros((n_lineups, 6), dtype=int)
+
+        for i, lineup in enumerate(lineups):
+            captain = lineup.get('Captain', '')
+            flex = lineup.get('FLEX', [])
+
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',')]
+
+            all_players = [captain] + flex
+
+            # Convert to indices
+            try:
+                lineup_players[i] = [self.player_to_idx[p] for p in all_players]
+            except KeyError as e:
+                is_valid[i] = False
+                errors[i] = f"Player not found: {e}"
+                continue
+
+        # Vectorized salary check
+        lineup_salaries = self.salaries[lineup_players]
+        captain_salaries = lineup_salaries[:, 0] * DraftKingsRules.CAPTAIN_MULTIPLIER
+        flex_salaries = lineup_salaries[:, 1:].sum(axis=1)
+        total_salaries = captain_salaries + flex_salaries
+
+        salary_invalid = (
+            (total_salaries < self.constraints.min_salary) |
+            (total_salaries > self.constraints.max_salary)
+        )
+        is_valid[salary_invalid] = False
+
+        for i in np.where(salary_invalid)[0]:
+            errors[i] = f"Salary ${total_salaries[i]:,.0f} outside valid range"
+
+        # Vectorized team diversity check
+        lineup_teams = self.teams[lineup_players]
+
+        for i in range(n_lineups):
+            if not is_valid[i]:
+                continue
+
+            team_counts = np.bincount([self.team_to_idx[t] for t in lineup_teams[i]])
+
+            if len(team_counts[team_counts > 0]) < DraftKingsRules.MIN_TEAMS_REQUIRED:
+                is_valid[i] = False
+                errors[i] = "Insufficient team diversity"
+            elif team_counts.max() > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
+                is_valid[i] = False
+                errors[i] = "Too many players from one team"
+
+        return is_valid.tolist(), errors
+
+
+# ============================================================================
+# FIX #19: GA PARAMETER AUTO-TUNING
+# ============================================================================
+
+def calculate_optimal_ga_params(
+    num_players: int,
+    num_lineups: int,
+    time_budget_seconds: float = 60.0
+) -> 'GeneticConfig':
+    """
+    FIX #19: Auto-tune GA parameters based on problem size
+
+    Args:
+        num_players: Size of player pool
+        num_lineups: Number of lineups to generate
+        time_budget_seconds: Time budget for optimization
+
+    Returns:
+        Optimized GeneticConfig
+    """
+    # Population scales with problem complexity
+    population_size = min(200, max(50, num_lineups * 3))
+
+    # Generations based on time budget
+    # Rough estimate: 0.001s per individual per generation
+    estimated_time_per_gen = 0.001 * population_size
+    max_generations = int(time_budget_seconds / estimated_time_per_gen)
+    generations = min(100, max(20, max_generations))
+
+    # Elite size: keep top 10%
+    elite_size = max(5, int(population_size * 0.1))
+
+    # Mutation rate: higher for larger populations
+    mutation_rate = 0.1 + (population_size / 1000) * 0.1
+    mutation_rate = min(0.25, mutation_rate)
+
+    # Tournament size: ~5% of population
+    tournament_size = max(3, int(population_size * 0.05))
+
+    return GeneticConfig(
+        population_size=population_size,
+        generations=generations,
+        mutation_rate=mutation_rate,
+        elite_size=elite_size,
+        tournament_size=tournament_size
+    )
+
+
+# ============================================================================
+# LINEUP FORMATTING UTILITIES
+# ============================================================================
+
+def format_currency(value: float) -> str:
+    """Format value as currency"""
+    return f"${value:,.0f}"
+
+
+def format_percentage(value: float) -> str:
+    """Format value as percentage"""
+    return f"{value:.1f}%"
+
+
+def calculate_lineup_metrics(
+    captain: str,
+    flex: List[str],
+    df: pd.DataFrame
+) -> LineupDict:
+    """
+    Calculate comprehensive lineup metrics
+
+    Args:
+        captain: Captain player name
+        flex: List of FLEX players
+        df: Player DataFrame
+
+    Returns:
+        Dictionary with lineup metrics
+    """
+    try:
+        all_players = [captain] + flex
+        player_data = df[df['Player'].isin(all_players)]
+
+        if len(player_data) != 6:
+            return {'Valid': False}
+
+        capt_data = player_data[player_data['Player'] == captain]
+        if capt_data.empty:
+            return {'Valid': False}
+
+        capt_data = capt_data.iloc[0]
+        flex_data = player_data[player_data['Player'].isin(flex)]
+
+        total_salary = (
+            capt_data['Salary'] * DraftKingsRules.CAPTAIN_MULTIPLIER +
+            flex_data['Salary'].sum()
+        )
+
+        total_proj = (
+            capt_data['Projected_Points'] * DraftKingsRules.CAPTAIN_MULTIPLIER +
+            flex_data['Projected_Points'].sum()
+        )
+
+        total_own = (
+            capt_data['Ownership'] * DraftKingsRules.CAPTAIN_MULTIPLIER +
+            flex_data['Ownership'].sum()
+        )
+
+        # Team distribution
+        teams = player_data['Team'].value_counts().to_dict()
+
+        # Position distribution
+        positions = player_data['Position'].value_counts().to_dict()
+
+        return {
+            'Captain': captain,
+            'FLEX': flex,
+            'Total_Salary': float(total_salary),
+            'Projected': float(total_proj),
+            'Total_Ownership': float(total_own),
+            'Avg_Ownership': float(total_own / 6),
+            'Team_Distribution': teams,
+            'Position_Distribution': positions,
+            'Valid': True
+        }
+
+    except Exception:
+        return {'Valid': False}
+
+
+def format_lineup_for_export(
+    lineups: List[LineupDict],
+    format_type: ExportFormat = ExportFormat.STANDARD
+) -> pd.DataFrame:
+    """
+    Format lineups for export
+
+    Args:
+        lineups: List of lineup dictionaries
+        format_type: Export format
+
+    Returns:
+        Formatted DataFrame
+    """
+    if not lineups:
+        return pd.DataFrame()
+
+    if format_type == ExportFormat.DRAFTKINGS:
+        dk_lineups = []
+        for lineup in lineups:
+            captain = lineup.get('Captain', '')
+            flex = lineup.get('FLEX', [])
+
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+            dk_lineup = {
+                'CPT': captain,
+                'FLEX1': flex[0] if len(flex) > 0 else '',
+                'FLEX2': flex[1] if len(flex) > 1 else '',
+                'FLEX3': flex[2] if len(flex) > 2 else '',
+                'FLEX4': flex[3] if len(flex) > 3 else '',
+                'FLEX5': flex[4] if len(flex) > 4 else '',
+            }
+            dk_lineups.append(dk_lineup)
+
+        return pd.DataFrame(dk_lineups)
+
+    elif format_type == ExportFormat.DETAILED:
+        return pd.DataFrame(lineups)
+
+    else:  # STANDARD
+        standard_lineups = []
+        for i, lineup in enumerate(lineups, 1):
+            flex = lineup.get('FLEX', [])
+            if isinstance(flex, list):
+                flex_str = ', '.join(flex)
+            else:
+                flex_str = flex
+
+            standard_lineups.append({
+                'Lineup': i,
+                'Captain': lineup.get('Captain', ''),
+                'FLEX': flex_str,
+                'Total_Salary': lineup.get('Total_Salary', 0),
+                'Projected': lineup.get('Projected', 0),
+                'Total_Ownership': lineup.get('Total_Ownership', 0)
+            })
+
+        return pd.DataFrame(standard_lineups)
+
+
+# ============================================================================
+# FIX #18: EXPORT FORMAT VALIDATION (ENHANCED)
+# ============================================================================
+
+def validate_export_format(
+    lineups: List[LineupDict],
+    format_type: ExportFormat
+) -> Tuple[bool, str]:
+    """
+    FIX #18: Validate lineups can be exported in requested format
+    ENHANCED: Provide specific guidance on what's wrong
+
+    Args:
+        lineups: List of lineups
+        format_type: Desired export format
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not lineups:
+        return False, "No lineups to export"
+
+    # Check DraftKings format requirements
+    if format_type == ExportFormat.DRAFTKINGS:
+        for i, lineup in enumerate(lineups, 1):
+            if 'Captain' not in lineup:
+                return False, f"Lineup {i}: Missing 'Captain' field for DK format"
+
+            flex = lineup.get('FLEX', [])
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',')]
+
+            if len(flex) != 5:
+                # ENHANCED: Show what's actually in the lineup
+                captain = lineup.get('Captain', 'Unknown')
+                all_players = [captain] + flex
+
+                return False, (
+                    f"Lineup {i}: DraftKings format requires exactly 5 FLEX players, "
+                    f"found {len(flex)}.\n"
+                    f"Lineup has {len(all_players)} total players: {', '.join(all_players[:6])}\n"
+                    f"Expected: 1 Captain + 5 FLEX = 6 total players"
+                )
+
+    return True, ""
 
 """
 PART 4 OF 13: DATA VALIDATION & NORMALIZATION
