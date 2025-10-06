@@ -1,10 +1,14 @@
 """
 NFL DFS Optimizer - Complete Streamlit Application
-Version: 3.2.2 - Profiler Context Manager Fix
+Version: 3.3.0 - Integrated Constraint Diagnostics
 
 COMPLETE FILE - Replaces entire streamlit_app.py
 
-FIXED: Removed all profiler context manager usage
+NEW FEATURES:
+- Pre-flight constraint checking with auto-fix buttons
+- Constraint violation diagnostics
+- Optimizer performance summaries
+- Better error messages with specific guidance
 """
 
 import streamlit as st
@@ -38,6 +42,7 @@ from nfl_dfs_optimizer import (
     StructuredLogger,
     PerformanceMonitor,
     LineupConstraints,
+    ConstraintFeasibilityChecker,  # NEW
     
     # Enums
     ExportFormat,
@@ -111,6 +116,7 @@ def ensure_session_state():
         
         # Performance tracking
         'last_optimization_time': None,
+        'optimizer_summary': None,  # NEW
     }
     
     for key, default_value in defaults.items():
@@ -149,7 +155,7 @@ class StreamlitStateSnapshot:
                 st.session_state[key] = value
 
 # ============================================================================
-# STREAMLIT CACHING DECORATORS (NO PROFILER)
+# STREAMLIT CACHING DECORATORS
 # ============================================================================
 
 @st.cache_data(
@@ -164,7 +170,6 @@ def cached_csv_processing(
     """Cache expensive CSV processing for 1 hour"""
     logger = get_logger()
     
-    # Manual timing
     start_time = time.time()
     
     file_obj = io.BytesIO(file_bytes)
@@ -185,7 +190,6 @@ def cached_csv_processing(
     
     warnings.extend(process_warnings)
     
-    # Log timing
     elapsed = time.time() - start_time
     logger.log(f"CSV processing completed in {elapsed:.2f}s", "INFO")
     
@@ -206,8 +210,38 @@ def apply_custom_css():
         h3 {color: #4a90e2;}
         .stButton>button {width: 100%;}
         .stProgress > div > div > div {background-color: #4a90e2;}
+        .diagnostic-box {
+            background-color: #f0f2f6;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+        }
         </style>
     """, unsafe_allow_html=True)
+
+# ============================================================================
+# NEW: CONSTRAINT DIAGNOSTICS HELPER
+# ============================================================================
+
+def run_constraint_check(df: pd.DataFrame, min_salary_pct: int) -> Dict[str, Any]:
+    """
+    NEW: Run constraint feasibility check
+    
+    Returns diagnostic information for display
+    """
+    constraints = LineupConstraints(
+        min_salary=int(DraftKingsRules.SALARY_CAP * (min_salary_pct / 100)),
+        max_salary=DraftKingsRules.SALARY_CAP
+    )
+    
+    is_feasible, error_msg, suggestions = ConstraintFeasibilityChecker.check(df, constraints)
+    
+    return {
+        'is_feasible': is_feasible,
+        'error': error_msg,
+        'suggestions': suggestions,
+        'constraints': constraints
+    }
 
 # ============================================================================
 # DATA LOADING & VALIDATION
@@ -221,7 +255,6 @@ def load_and_validate_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], List[
         file_bytes = uploaded_file.read()
         file_name = uploaded_file.name
         
-        # Generate file hash for proper cache key
         file_hash = hashlib.md5(file_bytes).hexdigest()[:8]
         
         df_processed, warnings = cached_csv_processing(file_bytes, file_name, file_hash)
@@ -419,6 +452,93 @@ def render_sidebar():
             st.session_state.show_advanced = False
 
 # ============================================================================
+# NEW: ENHANCED DIAGNOSTIC SECTION
+# ============================================================================
+
+def render_constraint_diagnostics():
+    """
+    NEW: Render comprehensive constraint diagnostics with auto-fix
+    """
+    if st.session_state.processed_df is None:
+        return
+    
+    df = st.session_state.processed_df
+    
+    with st.expander("🔍 Pre-Flight Constraint Check", expanded=False):
+        st.subheader("Constraint Feasibility Analysis")
+        
+        # Run check
+        diagnostics = run_constraint_check(df, st.session_state.min_salary_pct)
+        
+        if diagnostics['is_feasible']:
+            st.success("✓ All constraints are feasible - optimization should succeed")
+        else:
+            st.error(f"✗ Constraint Issue Detected")
+            st.warning(f"**Problem:** {diagnostics['error']}")
+            
+            if diagnostics['suggestions']:
+                st.info("**Suggested Fixes:**")
+                
+                for i, suggestion in enumerate(diagnostics['suggestions'], 1):
+                    col1, col2 = st.columns([5, 1])
+                    
+                    with col1:
+                        st.write(f"{i}. {suggestion}")
+                    
+                    with col2:
+                        # Auto-fix buttons where applicable
+                        if "Lower minimum salary to" in suggestion or "lower" in suggestion.lower():
+                            # Extract percentage if present
+                            import re
+                            match = re.search(r'(\d+)%', suggestion)
+                            if match:
+                                pct = int(match.group(1))
+                                if st.button(f"Set {pct}%", key=f"fix_{i}"):
+                                    st.session_state.min_salary_pct = pct
+                                    st.rerun()
+        
+        # Show detailed stats
+        st.subheader("Player Pool Statistics")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Players", len(df))
+            st.metric("Teams", df['Team'].nunique())
+        
+        with col2:
+            cheapest_6 = df.nsmallest(6, 'Salary')['Salary'].sum()
+            expensive_6 = df.nlargest(6, 'Salary')['Salary'].sum()
+            st.metric("Cheapest 6", f"${cheapest_6:,}")
+            st.metric("Most Expensive 6", f"${expensive_6:,}")
+        
+        with col3:
+            min_threshold = diagnostics['constraints'].min_salary
+            max_threshold = diagnostics['constraints'].max_salary
+            st.metric("Min Threshold", f"${min_threshold:,}")
+            st.metric("Max Threshold", f"${max_threshold:,}")
+        
+        # Feasibility visualization
+        st.subheader("Salary Feasibility Range")
+        
+        fig_data = {
+            'Type': ['Cheapest 6', 'Min Threshold', 'Max Threshold', 'Most Expensive 6'],
+            'Salary': [cheapest_6, min_threshold, max_threshold, expensive_6]
+        }
+        
+        st.bar_chart(pd.DataFrame(fig_data).set_index('Type'))
+        
+        # Visual indicator
+        if cheapest_6 > max_threshold:
+            st.error("⚠️ IMPOSSIBLE: Cheapest possible lineup exceeds salary cap!")
+        elif expensive_6 < min_threshold:
+            st.error("⚠️ IMPOSSIBLE: Most expensive lineup can't reach minimum threshold!")
+        elif cheapest_6 > min_threshold:
+            st.warning("⚠️ TIGHT: Even cheapest lineup barely meets minimum - may be difficult")
+        else:
+            st.success("✓ Feasible: Valid lineups exist in this range")
+
+# ============================================================================
 # DATA OVERVIEW SECTION
 # ============================================================================
 
@@ -477,123 +597,8 @@ def render_data_overview():
     
     st.dataframe(top_players, use_container_width=True, hide_index=True)
     
-    # DIAGNOSTIC SECTION WITH QUICK FIX
-    with st.expander("Diagnostic Info (Expand if optimization fails)", expanded=False):
-        st.subheader("Data Validation")
-        
-        # Check required columns
-        required_cols = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Required Columns:**")
-            for col in required_cols:
-                if col in df.columns:
-                    st.success(f"✓ {col}")
-                else:
-                    st.error(f"✗ {col} MISSING")
-        
-        with col2:
-            st.write("**Data Sample:**")
-            st.write(f"First player: {df.iloc[0]['Player']}")
-            st.write(f"Position: {df.iloc[0]['Position']}")
-            st.write(f"Team: {df.iloc[0]['Team']}")
-        
-        # Check value ranges
-        st.write("**Salary Analysis:**")
-        st.write(f"- Range: ${df['Salary'].min():,.0f} - ${df['Salary'].max():,.0f}")
-        st.write(f"- Average: ${df['Salary'].mean():,.0f}")
-        st.write(f"- Median: ${df['Salary'].median():,.0f}")
-        
-        st.write("**Projection Analysis:**")
-        st.write(f"- Range: {df['Projected_Points'].min():.1f} - {df['Projected_Points'].max():.1f}")
-        st.write(f"- Average: {df['Projected_Points'].mean():.1f}")
-        
-        st.write("**Team Distribution:**")
-        for team, count in df['Team'].value_counts().items():
-            st.write(f"- {team}: {count} players")
-        
-        if df['Team'].nunique() < 2:
-            st.error("WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
-        
-        # Check if any lineup is theoretically possible
-        st.write("**Salary Cap Feasibility:**")
-        min_6_salary = df.nsmallest(6, 'Salary')['Salary'].sum()
-        max_6_salary = df.nlargest(6, 'Salary')['Salary'].sum()
-        current_threshold = int(DraftKingsRules.SALARY_CAP * (st.session_state.min_salary_pct / 100))
-        
-        st.write(f"- Cheapest 6-player lineup: ${min_6_salary:,.0f}")
-        st.write(f"- Most expensive 6-player lineup: ${max_6_salary:,.0f}")
-        st.write(f"- Salary cap: ${DraftKingsRules.SALARY_CAP:,.0f}")
-        st.write(f"- Current min threshold ({st.session_state.min_salary_pct}%): ${current_threshold:,.0f}")
-        
-        if min_6_salary > DraftKingsRules.SALARY_CAP:
-            st.error("IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
-        elif max_6_salary < current_threshold:
-            st.error(
-                f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
-                f"can't reach {st.session_state.min_salary_pct}% minimum (${current_threshold:,.0f})"
-            )
-            suggested_pct = max(50, int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100) - 5)
-            
-            # QUICK FIX BUTTON
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.info(f"Recommended: Set minimum to {suggested_pct}% or less")
-            with col2:
-                if st.button("Apply Fix", key="fix_min_salary"):
-                    st.session_state.min_salary_pct = suggested_pct
-                    st.success(f"Set to {suggested_pct}%")
-                    st.rerun()
-                    
-        elif min_6_salary > current_threshold:
-            st.warning("May be difficult: Even cheapest lineup exceeds minimum threshold")
-            
-            suggested_pct = max(50, int((min_6_salary / DraftKingsRules.SALARY_CAP) * 100) - 5)
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.info(f"Try lowering to {suggested_pct}%")
-            with col2:
-                if st.button("Apply Fix", key="fix_min_salary_2"):
-                    st.session_state.min_salary_pct = suggested_pct
-                    st.success(f"Set to {suggested_pct}%")
-                    st.rerun()
-        else:
-            st.success(f"Salary constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
-        
-        # Sample valid lineup attempt
-        st.write("**Sample Lineup Test:**")
-        try:
-            valid_found = False
-            sample_count = 0
-            max_samples = min(1000, len(list(combinations(range(len(df)), 6))))
-            
-            for combo_indices in combinations(range(len(df)), 6):
-                if sample_count >= max_samples:
-                    break
-                sample_count += 1
-                
-                combo_players = df.iloc[list(combo_indices)]
-                total_sal = combo_players['Salary'].sum()
-                teams_in_combo = combo_players['Team'].nunique()
-                max_from_team = combo_players['Team'].value_counts().max()
-                
-                if (current_threshold <= total_sal <= DraftKingsRules.SALARY_CAP 
-                    and teams_in_combo >= DraftKingsRules.MIN_TEAMS_REQUIRED
-                    and max_from_team <= DraftKingsRules.MAX_PLAYERS_PER_TEAM):
-                    st.success(f"Found valid combination: ${total_sal:,.0f}, {teams_in_combo} teams")
-                    st.write("Players:", ', '.join(combo_players['Player'].tolist()))
-                    valid_found = True
-                    break
-            
-            if not valid_found:
-                st.error(f"No valid combinations found after checking {sample_count} possibilities")
-                st.write("**Common issues:**")
-                st.write("- Salaries too low (can't reach minimum threshold)")
-                st.write("- All players from same team")
-                st.write("- Only 1 team in player pool")
-        except Exception as e:
-            st.error(f"Error testing combinations: {e}")
+    # NEW: Enhanced diagnostics
+    render_constraint_diagnostics()
 
 # ============================================================================
 # OPTIMIZATION SECTION
@@ -631,7 +636,7 @@ def render_optimization_section():
 
 
 def run_optimization():
-    """Thread-safe optimization with defensive DataFrame copy"""
+    """Thread-safe optimization with enhanced error handling"""
     snapshot = StreamlitStateSnapshot()
     snapshot.capture()
     
@@ -644,7 +649,7 @@ def run_optimization():
             st.error("AI enabled but no API key provided")
             return
         
-        # CRITICAL: Capture all session state BEFORE threading
+        # Capture session state
         df = st.session_state.processed_df
         num_lineups = st.session_state.num_lineups
         game_total = st.session_state.game_total
@@ -656,27 +661,22 @@ def run_optimization():
         ai_enforcement = st.session_state.ai_enforcement
         min_salary_pct = st.session_state.min_salary_pct
         
-        # Pre-flight validation
-        min_salary_threshold = int(DraftKingsRules.SALARY_CAP * (min_salary_pct / 100))
-        max_6_salary = df.nlargest(6, 'Salary')['Salary'].sum()
+        # NEW: Pre-flight check with user feedback
+        st.info("Running pre-flight constraint check...")
+        diagnostics = run_constraint_check(df, min_salary_pct)
         
-        if max_6_salary < min_salary_threshold:
-            st.error(
-                f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
-                f"cannot reach minimum salary (${min_salary_threshold:,.0f})"
-            )
-            suggested_pct = int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100)
+        if not diagnostics['is_feasible']:
+            st.error(f"Pre-flight Check Failed: {diagnostics['error']}")
             
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.info(
-                    f"Lower 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options"
-                )
-            with col2:
-                if st.button("Quick Fix"):
-                    st.session_state.min_salary_pct = max(50, suggested_pct - 5)
-                    st.rerun()
+            if diagnostics['suggestions']:
+                st.warning("Suggested fixes:")
+                for i, suggestion in enumerate(diagnostics['suggestions'], 1):
+                    st.write(f"{i}. {suggestion}")
+            
+            st.info("Please adjust settings in the sidebar and try again")
             return
+        
+        st.success("Pre-flight check passed!")
         
         # Progress tracking
         progress_bar = st.progress(0)
@@ -698,28 +698,35 @@ def run_optimization():
         
         perf_monitor.start_timer('full_optimization')
         start_time = time.time()
-        result = {'lineups': None, 'df': None, 'error': None}
+        result = {'lineups': None, 'df': None, 'error': None, 'master': None}
         
         def optimization_thread():
             """Thread function with defensive DataFrame copy"""
             try:
-                # CRITICAL: Make defensive deep copy
                 df_copy = df.copy(deep=True)
                 
-                lineups, processed_df = optimize_showdown(
-                    csv_path_or_df=df_copy,
+                # Create master optimizer
+                field_size = CONTEST_TYPE_MAPPING.get(contest_type, 'large_field')
+                field_config = OptimizerConfig.get_field_config(field_size)
+                field_config['name'] = field_size
+                
+                master = MasterOptimizer(
+                    df=df_copy,
+                    game_info=game_info,
+                    field_config=field_config,
+                    api_key=api_key
+                )
+                
+                lineups = master.run_full_optimization(
                     num_lineups=num_lineups,
-                    game_total=game_total,
-                    spread=spread,
-                    contest_type=contest_type,
-                    api_key=api_key,
                     use_ai=use_ai,
                     optimization_mode=optimization_mode,
                     ai_enforcement=ai_enforcement
                 )
                 
                 result['lineups'] = lineups
-                result['df'] = processed_df
+                result['df'] = df_copy
+                result['master'] = master
                 
             except Exception as e:
                 result['error'] = e
@@ -750,11 +757,19 @@ def run_optimization():
         if thread.is_alive():
             progress_bar.empty()
             status_text.empty()
+            
             st.error(f"Optimization timed out after {timeout_sec}s")
+            
+            # NEW: Show diagnostics on timeout
+            timeout_diagnostics = run_constraint_check(df, min_salary_pct)
+            if not timeout_diagnostics['is_feasible']:
+                st.warning(f"Root cause: {timeout_diagnostics['error']}")
+            
             st.info("Try these fixes:")
-            st.write("1. Lower 'Minimum Salary % of Cap' to 80% or less")
+            st.write("1. Lower 'Minimum Salary %' to 80% or less")
             st.write("2. Reduce number of lineups to 5-10")
-            st.write("3. Check Diagnostic Info for feasibility")
+            st.write("3. Disable AI analysis for faster optimization")
+            
             return
         
         # Check errors
@@ -764,6 +779,7 @@ def run_optimization():
             raise result['error']
         
         lineups = result['lineups']
+        master = result['master']
         elapsed_time = perf_monitor.stop_timer('full_optimization')
         
         # Complete
@@ -777,7 +793,7 @@ def run_optimization():
         # Validate results
         if not lineups:
             st.warning(
-                "No lineups generated. Try lowering minimum salary percentage."
+                "No lineups generated. Check constraint diagnostics above."
             )
             return
         
@@ -785,6 +801,10 @@ def run_optimization():
         st.session_state.lineups = lineups
         st.session_state.optimization_complete = True
         st.session_state.last_optimization_time = elapsed_time
+        
+        # NEW: Store optimizer summary
+        if master:
+            st.session_state.optimizer_summary = master.get_optimization_summary()
         
         # Success
         st.success(
@@ -809,11 +829,32 @@ def run_optimization():
             else:
                 st.metric("Lineups", len(lineups))
         
-        # Show profiling if enabled
-        if st.session_state.show_profiling:
-            with st.expander("Performance Profile", expanded=False):
-                stats = perf_monitor.get_operation_stats('full_optimization')
-                st.json(stats)
+        # NEW: Show optimizer diagnostics
+        if st.session_state.optimizer_summary:
+            with st.expander("Optimizer Performance Summary", expanded=False):
+                summary = st.session_state.optimizer_summary
+                
+                st.subheader("Performance Metrics")
+                if summary.get('performance_metrics'):
+                    for phase, stats in summary['performance_metrics'].items():
+                        if stats:
+                            st.write(f"**{phase.replace('_', ' ').title()}:**")
+                            st.json(stats)
+                
+                # Constraint diagnostics if available
+                if summary.get('constraint_diagnostics'):
+                    st.subheader("Constraint Diagnostics")
+                    diag = summary['constraint_diagnostics']
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Success Rate", f"{diag.get('success_rate', 0):.1f}%")
+                    with col2:
+                        st.metric("Total Attempts", diag.get('total_attempts', 0))
+                    
+                    if diag.get('violations'):
+                        st.write("**Violation Breakdown:**")
+                        st.json(diag['violations'])
         
         # Rerun to show results
         st.rerun()
@@ -821,7 +862,8 @@ def run_optimization():
     except Exception as e:
         snapshot.restore()
         logger.log_exception(e, "run_optimization", critical=True)
-        st.error(f"Error: {str(e)}")
+        
+        st.error(f"Optimization Error: {str(e)}")
         
         # Get suggestions
         error_summary = logger.get_error_summary()
@@ -926,7 +968,6 @@ def render_results_section():
                 
                 st.write("**FLEX:**")
                 for player in flex:
-                    # Get player info
                     player_info = df[df['Player'] == player]
                     if not player_info.empty:
                         pos = player_info.iloc[0]['Position']
@@ -1143,7 +1184,7 @@ def render_footer():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.caption("NFL DFS Optimizer v3.2.2")
+        st.caption("NFL DFS Optimizer v3.3.0")
     
     with col2:
         st.caption("Built with Streamlit & Claude AI")
