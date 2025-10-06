@@ -2761,6 +2761,247 @@ class ConstraintFeasibilityChecker:
         # All checks passed
         return True, "", []
 
+# ============================================================================
+# LINEUP EXPORT FORMATTING
+# ============================================================================
+
+def format_lineup_for_export(
+    lineups: List[Dict[str, Any]],
+    export_format: ExportFormat
+) -> pd.DataFrame:
+    """
+    Format lineups for export in various formats
+
+    Args:
+        lineups: List of lineup dictionaries
+        export_format: Export format enum
+
+    Returns:
+        DataFrame ready for export
+    """
+    try:
+        if not lineups:
+            return pd.DataFrame()
+
+        if export_format == ExportFormat.DRAFTKINGS:
+            # DraftKings CSV format
+            rows = []
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                # DraftKings format: CPT,FLEX,FLEX,FLEX,FLEX,FLEX
+                row = {
+                    'CPT': captain,
+                    'FLEX1': flex[0] if len(flex) > 0 else '',
+                    'FLEX2': flex[1] if len(flex) > 1 else '',
+                    'FLEX3': flex[2] if len(flex) > 2 else '',
+                    'FLEX4': flex[3] if len(flex) > 3 else '',
+                    'FLEX5': flex[4] if len(flex) > 4 else ''
+                }
+                rows.append(row)
+
+            return pd.DataFrame(rows)
+
+        elif export_format == ExportFormat.DETAILED:
+            # Detailed format with all metrics
+            rows = []
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                row = {
+                    'Lineup': lineup.get('Lineup', 0),
+                    'Captain': captain,
+                    'FLEX': ', '.join(flex),
+                    'Total_Salary': lineup.get('Total_Salary', 0),
+                    'Projected': lineup.get('Projected', 0),
+                    'Total_Ownership': lineup.get('Total_Ownership', 0),
+                    'Avg_Ownership': lineup.get('Avg_Ownership', 0)
+                }
+
+                # Add simulation results if available
+                if 'Ceiling_90th' in lineup:
+                    row['Ceiling_90th'] = lineup.get('Ceiling_90th', 0)
+                    row['Floor_10th'] = lineup.get('Floor_10th', 0)
+                    row['Sharpe_Ratio'] = lineup.get('Sharpe_Ratio', 0)
+                    row['Win_Probability'] = lineup.get('Win_Probability', 0)
+
+                rows.append(row)
+
+            return pd.DataFrame(rows)
+
+        else:  # STANDARD or CSV
+            # Standard format
+            rows = []
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                row = {
+                    'Lineup': lineup.get('Lineup', 0),
+                    'Captain': captain,
+                    'FLEX': ', '.join(flex),
+                    'Salary': lineup.get('Total_Salary', 0),
+                    'Projection': lineup.get('Projected', 0),
+                    'Ownership': lineup.get('Avg_Ownership', 0)
+                }
+                rows.append(row)
+
+            return pd.DataFrame(rows)
+
+    except Exception as e:
+        logger = get_logger()
+        logger.log_exception(e, "format_lineup_for_export")
+        return pd.DataFrame()
+
+
+def validate_export_format(
+    lineups: List[Dict[str, Any]],
+    export_format: ExportFormat
+) -> Tuple[bool, str]:
+    """
+    Validate that lineups can be exported in the specified format
+
+    Args:
+        lineups: List of lineup dictionaries
+        export_format: Export format to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    try:
+        if not lineups:
+            return False, "No lineups to export"
+
+        # Check that all lineups have required fields
+        for i, lineup in enumerate(lineups):
+            if 'Captain' not in lineup:
+                return False, f"Lineup {i+1} missing Captain"
+
+            if 'FLEX' not in lineup:
+                return False, f"Lineup {i+1} missing FLEX players"
+
+            flex = lineup.get('FLEX', [])
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+            if len(flex) != 5:
+                return False, f"Lineup {i+1} has {len(flex)} FLEX players (need 5)"
+
+        # Format-specific validation
+        if export_format == ExportFormat.DETAILED:
+            # Check for simulation results
+            has_simulation = any('Ceiling_90th' in l for l in lineups)
+            if not has_simulation:
+                return True, "Note: Detailed export without simulation results"
+
+        return True, ""
+
+    except Exception as e:
+        return False, f"Validation error: {str(e)}"
+
+
+# ============================================================================
+# LINEUP SIMILARITY & DIVERSITY
+# ============================================================================
+
+def calculate_lineup_similarity(
+    lineup1: Dict[str, Any],
+    lineup2: Dict[str, Any]
+) -> float:
+    """
+    Calculate Jaccard similarity between two lineups
+
+    Args:
+        lineup1: First lineup dictionary
+        lineup2: Second lineup dictionary
+
+    Returns:
+        Similarity score (0-1)
+    """
+    try:
+        # Get all players from each lineup
+        players1 = set([lineup1.get('Captain', '')])
+        flex1 = lineup1.get('FLEX', [])
+        if isinstance(flex1, str):
+            flex1 = [p.strip() for p in flex1.split(',') if p.strip()]
+        players1.update(flex1)
+
+        players2 = set([lineup2.get('Captain', '')])
+        flex2 = lineup2.get('FLEX', [])
+        if isinstance(flex2, str):
+            flex2 = [p.strip() for p in flex2.split(',') if p.strip()]
+        players2.update(flex2)
+
+        # Remove empty strings
+        players1.discard('')
+        players2.discard('')
+
+        # Calculate Jaccard similarity
+        if not players1 or not players2:
+            return 0.0
+
+        intersection = len(players1 & players2)
+        union = len(players1 | players2)
+
+        return intersection / union if union > 0 else 0.0
+
+    except Exception:
+        return 0.0
+
+
+def ensure_lineup_diversity(
+    lineups: List[Dict[str, Any]],
+    min_unique_players: int = 3
+) -> List[Dict[str, Any]]:
+    """
+    Filter lineups to ensure diversity
+
+    Args:
+        lineups: List of lineup dictionaries
+        min_unique_players: Minimum unique players between lineups
+
+    Returns:
+        Filtered list of diverse lineups
+    """
+    try:
+        if not lineups:
+            return []
+
+        diverse_lineups = [lineups[0]]  # Always keep first
+
+        for lineup in lineups[1:]:
+            is_diverse = True
+
+            for existing in diverse_lineups:
+                similarity = calculate_lineup_similarity(lineup, existing)
+
+                # If too similar, skip
+                max_allowed_similarity = 1.0 - (min_unique_players / 6.0)
+                if similarity > max_allowed_similarity:
+                    is_diverse = False
+                    break
+
+            if is_diverse:
+                diverse_lineups.append(lineup)
+
+        return diverse_lineups
+
+    except Exception as e:
+        logger = get_logger()
+        logger.log_exception(e, "ensure_lineup_diversity")
+        return lineups
+
 """
 PART 5 OF 13: DATA CLASSES & CONFIGURATION
 
