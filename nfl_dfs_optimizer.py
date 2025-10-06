@@ -3599,8 +3599,18 @@ class MonteCarloSimulationEngine:
         # Pre-extract arrays for faster access
         self._player_indices = {p: i for i, p in enumerate(df['Player'].values)}
         self._projections = df['Projected_Points'].values.copy()
-        self._positions = df['Position'].values.copy()
-        self._teams = df['Team'].values.copy()
+
+        # CRITICAL FIX: Convert categorical columns to strings for vectorization
+        # Memory optimization converts these to categorical, but vectorized operations need regular arrays
+        if pd.api.types.is_categorical_dtype(df['Position']):
+            self._positions = df['Position'].astype(str).values.copy()
+        else:
+            self._positions = df['Position'].values.copy()
+
+        if pd.api.types.is_categorical_dtype(df['Team']):
+            self._teams = df['Team'].astype(str).values.copy()
+        else:
+            self._teams = df['Team'].values.copy()
 
         # Pre-compute matrices
         try:
