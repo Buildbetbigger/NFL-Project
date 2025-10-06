@@ -1,18 +1,22 @@
 """
 NFL DFS Optimizer - Complete Streamlit Application
-Version: 3.1.0 - Production Ready
+Version: 3.2.0 - All Enhancements Applied
 
 COMPLETE FILE - Replaces entire streamlit_app.py
 
-ENHANCEMENTS INCLUDED:
-- Critical race condition fix (defensive DataFrame copy)
-- Streamlit caching for performance
-- Enhanced error handling with suggestions
-- Performance profiling integration
-- State snapshot for error recovery
-- Type safety improvements
-- Full diagnostics section
-- Complete results and analytics
+NEW ENHANCEMENTS:
+✅ IMMEDIATE:
+  - Quick fix buttons in diagnostics
+  - CSV header whitespace handling (in optimizer)
+  
+✅ HIGH VALUE:
+  - Memory leak prevention with file hash in cache
+  - GA early stopping (in optimizer)
+  
+✅ NICE TO HAVE:
+  - Rate limit UX improvements (in optimizer)
+  - Enhanced export validation messages
+  - Improved user feedback throughout
 """
 
 import streamlit as st
@@ -20,6 +24,7 @@ import pandas as pd
 import numpy as np
 import time
 import threading
+import hashlib
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple, Literal
 from itertools import combinations
@@ -173,15 +178,23 @@ class StreamlitStateSnapshot:
         return _context()
 
 # ============================================================================
-# STREAMLIT CACHING DECORATORS
+# STREAMLIT CACHING DECORATORS (ENHANCED)
 # ============================================================================
 
-@st.cache_data(ttl=StreamlitConstants.Cache.CSV_PROCESSING_TTL_SEC)
+@st.cache_data(
+    ttl=StreamlitConstants.Cache.CSV_PROCESSING_TTL_SEC,
+    max_entries=5  # NEW: Limit cache size to prevent memory leak
+)
 def cached_csv_processing(
     file_bytes: bytes,
-    file_name: str
+    file_name: str,
+    file_hash: str  # NEW: Include hash for proper cache invalidation
 ) -> Tuple[Optional[pd.DataFrame], List[str]]:
-    """Cache expensive CSV processing for 1 hour"""
+    """
+    Cache expensive CSV processing for 1 hour
+    
+    NEW: Uses file hash to ensure different files don't collide
+    """
     logger = get_logger()
     profiler = get_profiler()
     
@@ -220,22 +233,35 @@ def apply_custom_css():
         h3 {color: #4a90e2;}
         .stButton>button {width: 100%;}
         .stProgress > div > div > div {background-color: #4a90e2;}
+        .quick-fix-button {
+            background-color: #28a745;
+            color: white;
+            border-radius: 5px;
+            padding: 0.5rem 1rem;
+        }
         </style>
     """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING & VALIDATION
+# DATA LOADING & VALIDATION (ENHANCED)
 # ============================================================================
 
 def load_and_validate_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], List[str]]:
-    """Load and validate with caching and profiling"""
+    """
+    Load and validate with caching and profiling
+    
+    NEW: Includes file hash to prevent cache collisions
+    """
     logger = get_logger()
     
     try:
         file_bytes = uploaded_file.read()
         file_name = uploaded_file.name
         
-        df_processed, warnings = cached_csv_processing(file_bytes, file_name)
+        # NEW: Generate file hash for proper cache key
+        file_hash = hashlib.md5(file_bytes).hexdigest()[:8]
+        
+        df_processed, warnings = cached_csv_processing(file_bytes, file_name, file_hash)
         
         if df_processed is None:
             return None, warnings
@@ -297,7 +323,7 @@ def render_sidebar():
                         st.session_state.processed_df = df
                         st.session_state.warnings = warnings
                         st.session_state.data_validated = True
-                        st.success(f"Loaded {len(df)} players")
+                        st.success(f"✓ Loaded {len(df)} players")
                     else:
                         st.session_state.data_validated = False
                         st.error("Data validation failed")
@@ -389,7 +415,7 @@ def render_sidebar():
             st.session_state.ai_enforcement = ai_enforcement
             
             if not api_key:
-                st.warning("API key required for AI features")
+                st.warning("⚠️ API key required for AI features")
         
         st.divider()
         
@@ -404,7 +430,7 @@ def render_sidebar():
                 max_value=100,
                 value=int(st.session_state.min_salary_pct),
                 step=5,
-                help="Lower if you have low-salary players (default: 95%)"
+                help="Lower if optimization fails (default: 95%)"
             )
             st.session_state.min_salary_pct = min_salary_pct
             st.caption(
@@ -430,16 +456,20 @@ def render_sidebar():
             st.session_state.show_advanced = False
 
 # ============================================================================
-# DATA OVERVIEW SECTION
+# DATA OVERVIEW SECTION (ENHANCED WITH QUICK FIX)
 # ============================================================================
 
 def render_data_overview():
-    """Render complete data overview section"""
+    """
+    Render complete data overview section
+    
+    NEW: Quick fix buttons for common issues
+    """
     
     st.header("Data Overview")
     
     if st.session_state.processed_df is None:
-        st.info("Upload a CSV file in the sidebar to get started")
+        st.info("📁 Upload a CSV file in the sidebar to get started")
         return
     
     df = st.session_state.processed_df
@@ -488,8 +518,8 @@ def render_data_overview():
     
     st.dataframe(top_players, use_container_width=True, hide_index=True)
     
-    # COMPLETE DIAGNOSTIC SECTION
-    with st.expander("Diagnostic Info (Expand if optimization fails)", expanded=False):
+    # ENHANCED DIAGNOSTIC SECTION WITH QUICK FIX BUTTONS
+    with st.expander("🔧 Diagnostic Info (Expand if optimization fails)", expanded=False):
         st.subheader("Data Validation")
         
         # Check required columns
@@ -525,7 +555,7 @@ def render_data_overview():
             st.write(f"- {team}: {count} players")
         
         if df['Team'].nunique() < 2:
-            st.error("WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
+            st.error("⚠️ WARNING: Only 1 team found! Need at least 2 teams for valid lineups")
         
         # Check if any lineup is theoretically possible
         st.write("**Salary Cap Feasibility:**")
@@ -539,18 +569,39 @@ def render_data_overview():
         st.write(f"- Current min threshold ({st.session_state.min_salary_pct}%): ${current_threshold:,.0f}")
         
         if min_6_salary > DraftKingsRules.SALARY_CAP:
-            st.error("IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
+            st.error("🚫 IMPOSSIBLE: Cheapest 6 players exceed salary cap!")
         elif max_6_salary < current_threshold:
             st.error(
-                f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
+                f"🚫 IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
                 f"can't reach {st.session_state.min_salary_pct}% minimum (${current_threshold:,.0f})"
             )
-            suggested_pct = int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100)
-            st.info(f"Try setting 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options")
+            suggested_pct = max(50, int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100) - 5)
+            
+            # NEW: QUICK FIX BUTTON
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"💡 Recommended: Set minimum to {suggested_pct}% or less")
+            with col2:
+                if st.button("🔧 Apply Fix", key="fix_min_salary", help="Auto-adjust minimum salary"):
+                    st.session_state.min_salary_pct = suggested_pct
+                    st.success(f"✓ Set to {suggested_pct}%")
+                    st.rerun()
+                    
         elif min_6_salary > current_threshold:
-            st.warning("May be difficult: Even cheapest lineup exceeds minimum threshold")
+            st.warning("⚠️ May be difficult: Even cheapest lineup exceeds minimum threshold")
+            
+            # NEW: QUICK FIX for this case too
+            suggested_pct = max(50, int((min_6_salary / DraftKingsRules.SALARY_CAP) * 100) - 5)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"💡 Try lowering to {suggested_pct}%")
+            with col2:
+                if st.button("🔧 Apply Fix", key="fix_min_salary_2"):
+                    st.session_state.min_salary_pct = suggested_pct
+                    st.success(f"✓ Set to {suggested_pct}%")
+                    st.rerun()
         else:
-            st.success(f"Salary constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
+            st.success(f"✓ Salary constraints are feasible (${min_6_salary:,.0f} - ${max_6_salary:,.0f})")
         
         # Sample valid lineup attempt
         st.write("**Sample Lineup Test:**")
@@ -566,19 +617,19 @@ def render_data_overview():
                 
                 combo_players = df.iloc[list(combo_indices)]
                 total_sal = combo_players['Salary'].sum()
-                teams = combo_players['Team'].nunique()
+                teams_in_combo = combo_players['Team'].nunique()
                 max_from_team = combo_players['Team'].value_counts().max()
                 
                 if (current_threshold <= total_sal <= DraftKingsRules.SALARY_CAP 
-                    and teams >= DraftKingsRules.MIN_TEAMS_REQUIRED
+                    and teams_in_combo >= DraftKingsRules.MIN_TEAMS_REQUIRED
                     and max_from_team <= DraftKingsRules.MAX_PLAYERS_PER_TEAM):
-                    st.success(f"Found valid combination: ${total_sal:,.0f}, {teams} teams")
+                    st.success(f"✓ Found valid combination: ${total_sal:,.0f}, {teams_in_combo} teams")
                     st.write("Players:", ', '.join(combo_players['Player'].tolist()))
                     valid_found = True
                     break
             
             if not valid_found:
-                st.error(f"No valid combinations found after checking {sample_count} possibilities")
+                st.error(f"✗ No valid combinations found after checking {sample_count} possibilities")
                 st.write("**Common issues:**")
                 st.write("- Salaries too low (can't reach minimum threshold)")
                 st.write("- All players from same team")
@@ -597,7 +648,7 @@ def render_optimization_section():
     st.header("Optimization")
     
     if st.session_state.processed_df is None:
-        st.warning("Please load and validate data first")
+        st.warning("⚠️ Please load and validate data first")
         return
     
     # Show current settings
@@ -618,7 +669,7 @@ def render_optimization_section():
             st.write(f"- AI Enabled: {st.session_state.use_ai}")
     
     # Optimization button
-    if st.button("Generate Lineups", type="primary", use_container_width=True):
+    if st.button("🚀 Generate Lineups", type="primary", use_container_width=True):
         run_optimization()
 
 
@@ -634,7 +685,7 @@ def run_optimization():
         with snapshot.preserve_on_error():
             # Validate prerequisites
             if st.session_state.use_ai and not st.session_state.api_key:
-                st.error("AI enabled but no API key provided")
+                st.error("❌ AI enabled but no API key provided")
                 return
             
             # CRITICAL: Capture all session state BEFORE threading
@@ -655,13 +706,21 @@ def run_optimization():
             
             if max_6_salary < min_salary_threshold:
                 st.error(
-                    f"IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
+                    f"🚫 IMPOSSIBLE: Most expensive 6 players (${max_6_salary:,.0f}) "
                     f"cannot reach minimum salary (${min_salary_threshold:,.0f})"
                 )
                 suggested_pct = int((max_6_salary / DraftKingsRules.SALARY_CAP) * 100)
-                st.info(
-                    f"Lower 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options"
-                )
+                
+                # Quick fix option
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.info(
+                        f"💡 Lower 'Minimum Salary % of Cap' to {suggested_pct}% or less in Advanced Options"
+                    )
+                with col2:
+                    if st.button("🔧 Quick Fix"):
+                        st.session_state.min_salary_pct = max(50, suggested_pct - 5)
+                        st.rerun()
                 return
             
             # Progress tracking
@@ -738,8 +797,8 @@ def run_optimization():
             if thread.is_alive():
                 progress_bar.empty()
                 status_text.empty()
-                st.error(f"Optimization timed out after {timeout_sec}s")
-                st.info("Try these fixes:")
+                st.error(f"⏱️ Optimization timed out after {timeout_sec}s")
+                st.info("💡 Try these fixes:")
                 st.write("1. Lower 'Minimum Salary % of Cap' to 80% or less")
                 st.write("2. Reduce number of lineups to 5-10")
                 st.write("3. Check Diagnostic Info for feasibility")
@@ -765,7 +824,7 @@ def run_optimization():
             # Validate results
             if not lineups:
                 st.warning(
-                    "No lineups generated. Try lowering minimum salary percentage."
+                    "⚠️ No lineups generated. Try lowering minimum salary percentage."
                 )
                 return
             
@@ -776,7 +835,7 @@ def run_optimization():
             
             # Success
             st.success(
-                f"Successfully generated {len(lineups)} lineups in {elapsed_time:.1f}s"
+                f"✅ Successfully generated {len(lineups)} lineups in {elapsed_time:.1f}s"
             )
             
             # Summary
@@ -799,7 +858,7 @@ def run_optimization():
             
             # Show profiling if enabled
             if st.session_state.show_profiling:
-                with st.expander("Performance Profile", expanded=False):
+                with st.expander("📊 Performance Profile", expanded=False):
                     st.text(profiler.get_report())
             
             # Rerun to show results
@@ -807,19 +866,19 @@ def run_optimization():
             
     except Exception as e:
         logger.log_exception(e, "run_optimization", critical=True)
-        st.error(f"Error: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
         
         # Get suggestions
         error_summary = logger.get_error_summary()
         if error_summary.get('recent_errors'):
             recent = error_summary['recent_errors'][-1]
             if recent.get('suggestions'):
-                st.info("Suggestions:")
+                st.info("💡 Suggestions:")
                 for suggestion in recent['suggestions'][:3]:
                     st.write(f"- {suggestion}")
         
         if st.session_state.show_debug:
-            with st.expander("Debug Info"):
+            with st.expander("🐛 Debug Info"):
                 st.code(traceback.format_exc())
         
         st.info("Your settings have been preserved - adjust and try again")
@@ -971,7 +1030,7 @@ def render_export_section():
     is_valid, error_msg = validate_export_format(lineups, selected_format)
     
     if not is_valid:
-        st.error(f"{error_msg}")
+        st.error(f"❌ {error_msg}")
         return
     
     # Generate export
@@ -986,17 +1045,17 @@ def render_export_section():
         csv = export_df.to_csv(index=False)
         
         st.download_button(
-            label=f"Download {export_format} CSV",
+            label=f"📥 Download {export_format} CSV",
             data=csv,
             file_name=f"optimized_lineups_{export_format.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv",
             use_container_width=True
         )
         
-        st.success(f"Ready to export {len(export_df)} lineups in {export_format} format")
+        st.success(f"✅ Ready to export {len(export_df)} lineups in {export_format} format")
         
     except Exception as e:
-        st.error(f"Export failed: {str(e)}")
+        st.error(f"❌ Export failed: {str(e)}")
         
         if st.session_state.show_debug:
             st.code(traceback.format_exc())
@@ -1130,18 +1189,16 @@ def render_footer():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.caption("NFL DFS Optimizer v3.1.0")
+        st.caption("NFL DFS Optimizer v3.2.0")
     
     with col2:
         st.caption("Built with Streamlit & Claude AI")
     
     with col3:
         if st.session_state.optimization_complete:
-            perf_monitor = get_performance_monitor()
-            stats = perf_monitor.get_operation_stats('lineup_generation')
-            
-            if stats:
-                st.caption(f"Last optimization: {stats.get('avg_time', 0):.1f}s")
+            elapsed = st.session_state.last_optimization_time
+            if elapsed:
+                st.caption(f"Last optimization: {elapsed:.1f}s")
 
 # ============================================================================
 # MAIN APP
@@ -1165,10 +1222,10 @@ def main():
     
     # Main content tabs
     tab1, tab2, tab3, tab4 = st.tabs([
-        "Data Overview",
-        "Optimization",
-        "Results",
-        "Export & Analytics"
+        "📊 Data Overview",
+        "⚡ Optimization",
+        "📈 Results",
+        "💾 Export & Analytics"
     ])
     
     with tab1:
@@ -1186,7 +1243,7 @@ def main():
             st.divider()
             render_analytics_section()
         else:
-            st.info("Complete optimization to view export and analytics")
+            st.info("✨ Complete optimization to view export and analytics")
     
     # Footer
     render_footer()
