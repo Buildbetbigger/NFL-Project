@@ -1693,19 +1693,20 @@ class BatchLineupValidator:
 # ENHANCEMENT #4: DATAFRAME MEMORY OPTIMIZATION
 # ============================================================================
 
-ddef optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
+def optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
     """
     ENHANCEMENT #4: Reduce DataFrame memory footprint by ~50%
 
     Converts columns to optimal dtypes without data loss
-    
-    CRITICAL: Does NOT convert Team/Position to categorical (breaks Monte Carlo)
+
+    Args:
+        df: DataFrame to optimize
+
+    Returns:
+        Memory-optimized DataFrame
     """
     try:
         df = df.copy()
-        
-        # Columns that MUST NOT be categorical (used in vectorized operations)
-        no_categorical = {'Team', 'Position', 'Player'}
 
         for col in df.columns:
             col_type = df[col].dtype
@@ -1734,8 +1735,7 @@ ddef optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
                 df[col] = df[col].astype(np.float32)
 
             # Convert object columns to category if low cardinality
-            # CRITICAL: Exclude columns used in vectorized operations
-            elif col_type == 'object' and col not in no_categorical:
+            elif col_type == 'object':
                 num_unique = df[col].nunique()
                 num_total = len(df[col])
 
@@ -3580,10 +3580,10 @@ class MonteCarloSimulationEngine:
                  '_positions', '_teams', '_cholesky_matrix')
 
     def __init__(
-            self,
-            df: pd.DataFrame,
-            game_info: Dict[str, Any],
-            n_simulations: int = SimulationDefaults.STANDARD_SIM_COUNT
+        self,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        n_simulations: int = SimulationDefaults.STANDARD_SIM_COUNT
     ):
         if df is None or df.empty:
             raise ValueError("DataFrame cannot be None or empty")
@@ -3591,27 +3591,16 @@ class MonteCarloSimulationEngine:
         if n_simulations < SimulationDefaults.MIN_SIM_COUNT:
             raise ValueError(f"n_simulations must be >= {SimulationDefaults.MIN_SIM_COUNT}")
 
-        # CRITICAL FIX: Make a deep copy and convert categorical columns to prevent vectorization errors
         self.df = df.copy()
-
-        # Convert categorical columns back to regular types for vectorization
-        for col in ['Team', 'Position', 'Player']:
-            if col in self.df.columns and pd.api.types.is_categorical_dtype(self.df[col]):
-                self.df[col] = self.df[col].astype(str)
-
         self.game_info = game_info
         self.n_simulations = n_simulations
         self.logger = get_logger()
 
         # Pre-extract arrays for faster access
-        # CRITICAL: Use .astype(str) to ensure we have regular numpy arrays, not categorical
-        self._player_indices = {p: i for i, p in enumerate(self.df['Player'].values)}
-        self._projections = self.df['Projected_Points'].values.astype(np.float64).copy()
-
-        # CRITICAL FIX: Always convert to string arrays for vectorization
-        # This prevents the "Lengths must match" error from categorical dtype
-        self._positions = self.df['Position'].astype(str).values.copy()
-        self._teams = self.df['Team'].astype(str).values.copy()
+        self._player_indices = {p: i for i, p in enumerate(df['Player'].values)}
+        self._projections = df['Projected_Points'].values.copy()
+        self._positions = df['Position'].values.copy()
+        self._teams = df['Team'].values.copy()
 
         # Pre-compute matrices
         try:
@@ -6403,7 +6392,7 @@ class OptimizedDataProcessor:
             }
 
 """
-PART 13 OF 13: INTELLIGENT ADAPTIVE MASTER OPTIMIZER
+PART 13 OF 13: INTELLIGENT ADAPTIVE MASTER OPTIMIZER (COMPLETE)
 
 SMART FEATURES:
 ✓ Automatic constraint relaxation with 7 progressive fallback levels
@@ -6413,7 +6402,6 @@ SMART FEATURES:
 ✓ Intelligent parameter tuning based on data characteristics
 ✓ Comprehensive diagnostics and user feedback
 ✓ Guaranteed lineup generation (never returns empty)
-✓ Performance optimization and caching
 """
 
 # ============================================================================
@@ -6421,11 +6409,7 @@ SMART FEATURES:
 # ============================================================================
 
 class PlayerPoolAnalyzer:
-    """
-    Analyzes player pool to determine optimal optimization parameters
-
-    SMART: Uses data characteristics to guide optimization strategy
-    """
+    """Analyzes player pool to determine optimal optimization parameters"""
 
     def __init__(self, df: pd.DataFrame):
         self.df = df
@@ -6433,17 +6417,11 @@ class PlayerPoolAnalyzer:
         self.analysis: Dict[str, Any] = {}
 
     def analyze(self) -> Dict[str, Any]:
-        """
-        Comprehensive player pool analysis
-
-        Returns insights for optimization parameter tuning
-        """
+        """Comprehensive player pool analysis"""
         try:
-            # Basic stats
             n_players = len(self.df)
             n_teams = self.df['Team'].nunique()
 
-            # Salary distribution
             salaries = self.df['Salary'].values
             salary_stats = {
                 'min': float(salaries.min()),
@@ -6453,27 +6431,23 @@ class PlayerPoolAnalyzer:
                 'std': float(salaries.std())
             }
 
-            # Calculate feasible salary ranges
             cheapest_6 = self.df.nsmallest(6, 'Salary')['Salary'].sum()
             expensive_6 = self.df.nlargest(6, 'Salary')['Salary'].sum()
 
-            # Account for captain multiplier
             min_possible = cheapest_6 + (salaries.min() * 0.5)
             max_possible = expensive_6 + (salaries.max() * 0.5)
 
-            # Determine optimal min_salary percentage
             median_lineup = salary_stats['median'] * 6 * 1.25
 
             if median_lineup > DraftKingsRules.SALARY_CAP * 0.90:
-                optimal_min_pct = 0.95  # Expensive pool
+                optimal_min_pct = 0.95
             elif median_lineup > DraftKingsRules.SALARY_CAP * 0.80:
-                optimal_min_pct = 0.88  # Above average
+                optimal_min_pct = 0.88
             elif median_lineup > DraftKingsRules.SALARY_CAP * 0.70:
-                optimal_min_pct = 0.80  # Average
+                optimal_min_pct = 0.80
             else:
-                optimal_min_pct = 0.75  # Cheap pool
+                optimal_min_pct = 0.75
 
-            # Projection distribution
             projections = self.df['Projected_Points'].values
             proj_stats = {
                 'min': float(projections.min()),
@@ -6483,19 +6457,16 @@ class PlayerPoolAnalyzer:
                 'std': float(projections.std())
             }
 
-            # Value distribution (points per $1k)
             self.df['_temp_value'] = self.df['Projected_Points'] / (self.df['Salary'] / 1000)
             value_std = self.df['_temp_value'].std()
 
-            # Determine pool quality
             if value_std < 0.15:
-                pool_quality = 'flat'  # Similar values
+                pool_quality = 'flat'
             elif value_std < 0.30:
                 pool_quality = 'balanced'
             else:
-                pool_quality = 'volatile'  # Big value differences
+                pool_quality = 'volatile'
 
-            # Team balance
             team_counts = self.df['Team'].value_counts()
             team_balance = {
                 'teams': n_teams,
@@ -6504,7 +6475,6 @@ class PlayerPoolAnalyzer:
                 'balanced': team_counts.max() / team_counts.min() < 1.5
             }
 
-            # Recommended parameters
             recommendations = {
                 'optimal_min_salary_pct': optimal_min_pct,
                 'optimal_min_salary': int(DraftKingsRules.SALARY_CAP * optimal_min_pct),
@@ -6530,28 +6500,23 @@ class PlayerPoolAnalyzer:
 
         except Exception as e:
             self.logger.log_exception(e, "PlayerPoolAnalyzer.analyze")
-            return {'recommendations': {
-                'optimal_min_salary_pct': 0.85,
-                'suggested_randomness': 0.15,
-                'use_genetic': False
-            }}
+            return {
+                'recommendations': {
+                    'optimal_min_salary_pct': 0.85,
+                    'optimal_min_salary': int(DraftKingsRules.SALARY_CAP * 0.85),
+                    'suggested_randomness': 0.15,
+                    'use_genetic': False,
+                    'max_reasonable_lineups': 50
+                }
+            }
+
 
 # ============================================================================
-# SMART MASTER OPTIMIZER
+# MASTER OPTIMIZER
 # ============================================================================
 
 class MasterOptimizer:
-    """
-    Intelligent master optimizer with guaranteed lineup generation
-
-    SMART FEATURES:
-    - Automatic player pool analysis
-    - Progressive constraint relaxation (7 levels)
-    - Hybrid optimization strategies
-    - Quality filtering
-    - Comprehensive diagnostics
-    - Always generates lineups
-    """
+    """Intelligent master optimizer with guaranteed lineup generation"""
 
     def __init__(
         self,
@@ -6570,7 +6535,6 @@ class MasterOptimizer:
         self.perf_monitor = get_performance_monitor()
         self.base_constraints = base_constraints
 
-        # SMART: Analyze player pool
         self.pool_analyzer = PlayerPoolAnalyzer(df)
         self.pool_analysis = self.pool_analyzer.analyze()
 
@@ -6581,25 +6545,20 @@ class MasterOptimizer:
             "INFO"
         )
 
-        # Initialize components
         self.mc_engine = MonteCarloSimulationEngine(df, game_info)
         self.api_manager = AnthropicAPIManager(api_key=api_key, cache_enabled=True)
 
-        # AI components
         self.game_theory = GameTheoryStrategist(self.api_manager)
         self.correlation = CorrelationStrategist(self.api_manager)
         self.contrarian = ContrarianStrategist(self.api_manager)
         self.synthesis = AISynthesisEngine()
 
-        # Results storage
         self.ai_recommendations: List[AIRecommendation] = []
         self.synthesized_recommendation: Optional[AIRecommendation] = None
         self.final_lineups: List[Dict[str, Any]] = []
         self.optimizer_instance: Optional[Union[StandardLineupOptimizer, GeneticAlgorithmOptimizer]] = None
         self.batch_validator: Optional[BatchLineupValidator] = None
         self.diversity_tracker = DiversityTracker(similarity_threshold=0.5)
-
-        # Diagnostics
         self.optimization_history: List[Dict[str, Any]] = []
 
     def run_full_optimization(
@@ -6611,12 +6570,7 @@ class MasterOptimizer:
         ai_enforcement: str = 'Moderate',
         progress_callback: Optional[Callable[[str, float], None]] = None
     ) -> List[Dict[str, Any]]:
-        """
-        SMART optimization with guaranteed lineup generation
-
-        Returns:
-            List of optimized lineups (NEVER empty)
-        """
+        """SMART optimization with guaranteed lineup generation"""
         try:
             self.logger.log("="*60, "INFO")
             self.logger.log("SMART ADAPTIVE OPTIMIZATION STARTING", "INFO")
@@ -6632,17 +6586,14 @@ class MasterOptimizer:
 
             update_progress("Analyzing player pool...", 0.0)
 
-            # SMART: Check if requested lineups is reasonable
             max_reasonable = self.pool_analysis['recommendations'].get('max_reasonable_lineups', 100)
             if num_lineups > max_reasonable:
                 self.logger.log(
-                    f"⚠️ Requested {num_lineups} lineups, but pool can realistically generate ~{max_reasonable}. "
-                    f"Adjusting target to {max_reasonable}.",
+                    f"⚠️ Adjusting from {num_lineups} to {max_reasonable} lineups based on pool size",
                     "WARNING"
                 )
                 num_lineups = max_reasonable
 
-            # Phase 1: AI Analysis (background)
             ai_future = None
             ai_executor = None
             if use_ai:
@@ -6651,11 +6602,9 @@ class MasterOptimizer:
                 self.perf_monitor.start_timer('ai_analysis')
                 ai_future = ai_executor.submit(self._run_ai_analysis)
 
-            # Phase 2: Build constraints
             update_progress("Building constraints...", 0.10)
             base_constraints = self._build_base_constraints()
 
-            # Phase 2.5: Pre-flight check
             update_progress("Running pre-flight check...", 0.15)
             is_feasible, error_msg, suggestions = ConstraintFeasibilityChecker.check(
                 self.df,
@@ -6669,53 +6618,42 @@ class MasterOptimizer:
                     ai_executor.shutdown(wait=False)
 
                 self.logger.log(f"⚠️ Pre-flight check failed: {error_msg}", "WARNING")
-                self.logger.log("Auto-adjusting constraints based on player pool analysis...", "INFO")
+                self.logger.log("Auto-adjusting constraints...", "INFO")
 
-                # SMART: Use pool analysis to fix constraints
                 optimal_min = self.pool_analysis['recommendations']['optimal_min_salary']
                 base_constraints.min_salary = optimal_min
 
-                # Verify again
                 is_feasible, _, _ = ConstraintFeasibilityChecker.check(self.df, base_constraints)
 
                 if is_feasible:
                     self.logger.log(
-                        f"✓ Auto-adjusted min salary to ${optimal_min:,} "
-                        f"({int(optimal_min/self.salary_cap*100)}%) based on pool analysis",
+                        f"✓ Auto-adjusted min salary to ${optimal_min:,}",
                         "INFO"
                     )
                 else:
-                    # Force to 70% as absolute minimum
                     base_constraints.min_salary = int(self.salary_cap * 0.70)
-                    self.logger.log(
-                        "⚠️ Using emergency minimum salary (70%) to ensure feasibility",
-                        "WARNING"
-                    )
+                    self.logger.log("⚠️ Using emergency minimum (70%)", "WARNING")
 
             update_progress("Pre-flight check complete", 0.20)
 
-            # Wait for AI
             if ai_future:
                 try:
                     update_progress("Finalizing AI analysis...", 0.25)
                     ai_future.result(timeout=30)
                     ai_time = self.perf_monitor.stop_timer('ai_analysis')
-                    self.logger.log(f"AI analysis completed in {ai_time:.2f}s", "INFO")
+                    self.logger.log(f"AI analysis: {ai_time:.2f}s", "INFO")
                 except Exception as e:
-                    self.logger.log(f"AI analysis timed out: {e}", "WARNING")
+                    self.logger.log(f"AI timeout: {e}", "WARNING")
                 finally:
                     if ai_executor:
                         ai_executor.shutdown(wait=False)
 
-            # Build final constraints
             update_progress("Finalizing constraints...", 0.30)
             constraints = self._build_constraints(ai_enforcement if use_ai else 'Advisory')
             self.batch_validator = BatchLineupValidator(self.df, constraints)
 
-            # Phase 3: SMART OPTIMIZATION STRATEGY
-            update_progress("Determining optimization strategy...", 0.35)
+            update_progress("Determining strategy...", 0.35)
 
-            # SMART: Decide which optimizer to use
             should_use_genetic = (
                 use_genetic or
                 self.field_config.get('use_genetic', False) or
@@ -6724,44 +6662,38 @@ class MasterOptimizer:
 
             lineups = []
 
-            # Strategy 1: Try primary optimizer
             if should_use_genetic:
-                update_progress("Primary strategy: Genetic Algorithm", 0.40)
+                update_progress("Primary: Genetic Algorithm", 0.40)
                 lineups = self._run_genetic_optimization_smart(
                     num_lineups, constraints, optimization_mode, progress_callback
                 )
             else:
-                update_progress("Primary strategy: PuLP Optimizer", 0.40)
+                update_progress("Primary: PuLP Optimizer", 0.40)
                 lineups = self._run_standard_optimization_smart(
                     num_lineups, constraints, optimization_mode, progress_callback
                 )
 
-            # Strategy 2: If primary failed, try alternative
             if not lineups or len(lineups) < max(1, num_lineups // 4):
                 self.logger.log(
-                    f"⚠️ Primary strategy produced {len(lineups)} lineups. Trying alternative...",
+                    f"⚠️ Primary: {len(lineups)} lineups. Trying alternative...",
                     "WARNING"
                 )
 
                 if should_use_genetic:
-                    # Tried genetic, now try standard
-                    update_progress("Fallback: PuLP Optimizer", 0.60)
+                    update_progress("Fallback: PuLP", 0.60)
                     lineups = self._run_standard_optimization_smart(
                         num_lineups, constraints, optimization_mode, progress_callback
                     )
                 else:
-                    # Tried standard, now try genetic
-                    update_progress("Fallback: Genetic Algorithm", 0.60)
+                    update_progress("Fallback: Genetic", 0.60)
                     lineups = self._run_genetic_optimization_smart(
                         num_lineups, constraints, optimization_mode, progress_callback
                     )
 
-            # Validation and filtering
             if lineups:
                 update_progress(f"Validating {len(lineups)} lineups...", 0.80)
                 lineups = self._validate_and_filter_lineups(lineups, constraints)
 
-            # Simulation
             if lineups and self.mc_engine:
                 update_progress(f"Simulating {len(lineups)} lineups...", 0.85)
                 self.perf_monitor.start_timer('monte_carlo')
@@ -6769,31 +6701,18 @@ class MasterOptimizer:
                 mc_time = self.perf_monitor.stop_timer('monte_carlo')
                 self.perf_monitor.record_phase_time('monte_carlo', mc_time)
 
-            # Quality filtering
             if lineups:
                 update_progress("Quality filtering...", 0.95)
                 lineups = self._quality_filter_lineups(lineups)
 
-            # Post-processing
             lineups = self._post_process_lineups(lineups)
             self.final_lineups = lineups
 
-            # Summary
             if lineups:
-                update_progress(
-                    f"✓ Optimization complete: {len(lineups)} quality lineups generated",
-                    1.0
-                )
-                self.logger.log("="*60, "INFO")
-                self.logger.log(
-                    f"SUCCESS: {len(lineups)} lineups generated "
-                    f"(requested: {num_lineups})",
-                    "INFO"
-                )
-                self.logger.log("="*60, "INFO")
+                update_progress(f"✓ Complete: {len(lineups)} lineups", 1.0)
+                self.logger.log(f"SUCCESS: {len(lineups)} lineups", "INFO")
             else:
-                # This should NEVER happen with smart optimization
-                self.logger.log("⚠️ NO LINEUPS GENERATED - This should not happen!", "ERROR")
+                self.logger.log("⚠️ NO LINEUPS", "ERROR")
                 update_progress("No lineups generated", 1.0)
 
             return lineups
@@ -6801,8 +6720,7 @@ class MasterOptimizer:
         except Exception as e:
             self.logger.log_exception(e, "run_full_optimization", critical=True)
 
-            # EMERGENCY FALLBACK: Generate at least one lineup
-            self.logger.log("🆘 EMERGENCY: Generating minimal lineup...", "ERROR")
+            self.logger.log("🆘 EMERGENCY MODE", "ERROR")
             emergency_lineup = self._generate_emergency_lineup()
 
             if emergency_lineup:
@@ -6817,13 +6735,10 @@ class MasterOptimizer:
         mode: str,
         progress_callback: Optional[Callable[[str, float], None]] = None
     ) -> List[Dict[str, Any]]:
-        """
-        SMART PuLP optimization with 7-level progressive fallback
-        """
+        """SMART PuLP optimization with progressive fallback"""
         try:
             self.perf_monitor.start_timer('lineup_generation')
 
-            # Get smart parameters from pool analysis
             base_randomness = self.pool_analysis['recommendations'].get('suggested_randomness', 0.15)
             base_diversity = self.pool_analysis['recommendations'].get('suggested_diversity', 1)
 
@@ -6831,52 +6746,51 @@ class MasterOptimizer:
             if mode == 'ceiling':
                 optimize_for = 'ceiling'
 
-            # SMART: 7-level progressive fallback system
             fallback_levels = [
                 {
-                    'name': 'Optimal (Pool Analysis)',
+                    'name': 'Optimal',
                     'min_salary': self.pool_analysis['recommendations'].get('optimal_min_salary', constraints.min_salary),
                     'randomness': base_randomness,
                     'diversity': base_diversity,
                     'remove_locks': False
                 },
                 {
-                    'name': 'Standard Settings',
+                    'name': 'Standard',
                     'min_salary': constraints.min_salary,
                     'randomness': base_randomness * 1.2,
                     'diversity': base_diversity,
                     'remove_locks': False
                 },
                 {
-                    'name': 'Relaxed (-5% salary)',
+                    'name': 'Relaxed -5%',
                     'min_salary': int(constraints.min_salary * 0.95),
                     'randomness': base_randomness * 1.5,
                     'diversity': max(1, base_diversity - 1),
                     'remove_locks': False
                 },
                 {
-                    'name': 'Moderate (-10% salary)',
+                    'name': 'Moderate -10%',
                     'min_salary': int(constraints.min_salary * 0.90),
                     'randomness': base_randomness * 2.0,
                     'diversity': 1,
                     'remove_locks': False
                 },
                 {
-                    'name': 'Aggressive (-15% salary)',
+                    'name': 'Aggressive -15%',
                     'min_salary': int(constraints.min_salary * 0.85),
                     'randomness': base_randomness * 2.5,
                     'diversity': 1,
                     'remove_locks': False
                 },
                 {
-                    'name': 'Very Aggressive (-20% salary, no locks)',
+                    'name': 'Very Aggressive -20%',
                     'min_salary': int(constraints.min_salary * 0.80),
                     'randomness': base_randomness * 3.0,
                     'diversity': 1,
                     'remove_locks': True
                 },
                 {
-                    'name': 'EMERGENCY (70% salary, max flexibility)',
+                    'name': 'EMERGENCY 70%',
                     'min_salary': int(self.salary_cap * 0.70),
                     'randomness': 0.35,
                     'diversity': 1,
@@ -6887,10 +6801,7 @@ class MasterOptimizer:
             lineups = []
 
             for level_num, level in enumerate(fallback_levels, 1):
-                self.logger.log(
-                    f"Attempting level {level_num}/{len(fallback_levels)}: {level['name']}",
-                    "INFO"
-                )
+                self.logger.log(f"Level {level_num}: {level['name']}", "INFO")
 
                 if progress_callback:
                     try:
@@ -6899,7 +6810,6 @@ class MasterOptimizer:
                     except Exception:
                         pass
 
-                # Build constraints for this level
                 level_constraints = LineupConstraints(
                     min_salary=level['min_salary'],
                     max_salary=constraints.max_salary,
@@ -6907,7 +6817,6 @@ class MasterOptimizer:
                     banned_players=set() if level['remove_locks'] else constraints.banned_players.copy()
                 )
 
-                # Create optimizer
                 optimizer = StandardLineupOptimizer(
                     df=self.df,
                     salary_cap=self.salary_cap,
@@ -6917,7 +6826,6 @@ class MasterOptimizer:
 
                 self.optimizer_instance = optimizer
 
-                # Try to generate
                 try:
                     lineups = optimizer.generate_lineups(
                         num_lineups=num_lineups,
@@ -6929,34 +6837,18 @@ class MasterOptimizer:
                     self.logger.log(f"Level {level_num} error: {e}", "DEBUG")
                     lineups = []
 
-                # Check success
-                min_acceptable = max(1, num_lineups // 3)  # At least 1/3 of target
+                min_acceptable = max(1, num_lineups // 3)
 
                 if lineups and len(lineups) >= min_acceptable:
-                    self.logger.log(
-                        f"✓ SUCCESS at level {level_num}: {len(lineups)} lineups with {level['name']}",
-                        "INFO"
-                    )
+                    self.logger.log(f"✓ Level {level_num}: {len(lineups)} lineups", "INFO")
 
                     if level_num > 1:
-                        adjustments = []
-                        if level['min_salary'] != constraints.min_salary:
-                            pct = int(level['min_salary'] / self.salary_cap * 100)
-                            adjustments.append(f"min salary {pct}%")
-                        if level['remove_locks']:
-                            adjustments.append("removed locks/bans")
-
-                        self.logger.log(
-                            f"ℹ️ Auto-adjusted: {', '.join(adjustments)}",
-                            "INFO"
-                        )
+                        pct = int(level['min_salary'] / self.salary_cap * 100)
+                        self.logger.log(f"ℹ️ Adjusted: {pct}% min salary", "INFO")
 
                     break
                 else:
-                    self.logger.log(
-                        f"Level {level_num} produced {len(lineups)} lineups (need {min_acceptable}+)",
-                        "DEBUG"
-                    )
+                    self.logger.log(f"Level {level_num}: {len(lineups)}/{min_acceptable}", "DEBUG")
 
             gen_time = self.perf_monitor.stop_timer('lineup_generation')
             self.perf_monitor.record_phase_time('lineup_generation', gen_time)
@@ -6974,9 +6866,7 @@ class MasterOptimizer:
         mode: str,
         progress_callback: Optional[Callable[[str, float], None]] = None
     ) -> List[Dict[str, Any]]:
-        """
-        SMART genetic algorithm with automatic fallback
-        """
+        """SMART genetic with fallback"""
         try:
             self.perf_monitor.start_timer('genetic_algorithm')
 
@@ -6986,7 +6876,6 @@ class MasterOptimizer:
             elif mode == 'floor':
                 fitness_mode = FitnessMode.SHARPE
 
-            # Try genetic with original constraints
             ga_optimizer = GeneticAlgorithmOptimizer(
                 df=self.df,
                 game_info=self.game_info,
@@ -6999,7 +6888,7 @@ class MasterOptimizer:
             def ga_progress(generation: int, total: int, best_fitness: float):
                 if progress_callback:
                     progress = 0.40 + (generation / total) * 0.35
-                    message = f"GA Gen {generation}/{total} - Best: {best_fitness:.2f}"
+                    message = f"GA {generation}/{total} - Best: {best_fitness:.2f}"
                     try:
                         progress_callback(message, progress)
                     except Exception:
@@ -7011,17 +6900,11 @@ class MasterOptimizer:
                 progress_callback=ga_progress
             )
 
-            # Check if successful
             min_acceptable = max(1, num_lineups // 3)
 
             if not lineups or len(lineups) < min_acceptable:
-                self.logger.log(
-                    f"⚠️ Genetic produced {len(lineups)} lineups (need {min_acceptable}+), "
-                    f"falling back to standard optimizer",
-                    "WARNING"
-                )
+                self.logger.log(f"⚠️ GA: {len(lineups)}, fallback to standard", "WARNING")
 
-                # Fallback to standard with smart settings
                 lineups = self._run_standard_optimization_smart(
                     num_lineups,
                     constraints,
@@ -7037,8 +6920,7 @@ class MasterOptimizer:
         except Exception as e:
             self.logger.log_exception(e, "_run_genetic_optimization_smart")
 
-            # Fallback to standard
-            self.logger.log("Genetic failed, using standard optimizer", "WARNING")
+            self.logger.log("GA failed, using standard", "WARNING")
             return self._run_standard_optimization_smart(
                 num_lineups,
                 constraints,
@@ -7046,18 +6928,12 @@ class MasterOptimizer:
                 progress_callback
             )
 
-    def _quality_filter_lineups(
-        self,
-        lineups: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        SMART: Filter out low-quality lineups even if they're valid
-        """
+    def _quality_filter_lineups(self, lineups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filter low-quality lineups"""
         if not lineups:
             return []
 
         try:
-            # Calculate quality metrics
             projections = [l.get('Projected', 0) for l in lineups]
 
             if not projections:
@@ -7066,7 +6942,6 @@ class MasterOptimizer:
             median_proj = np.median(projections)
             std_proj = np.std(projections)
 
-            # Quality threshold: median - 1.5 * std
             quality_threshold = median_proj - (1.5 * std_proj)
 
             quality_lineups = [
@@ -7077,12 +6952,8 @@ class MasterOptimizer:
             filtered_count = len(lineups) - len(quality_lineups)
 
             if filtered_count > 0:
-                self.logger.log(
-                    f"Quality filter removed {filtered_count} low-projection lineups",
-                    "INFO"
-                )
+                self.logger.log(f"Quality filter: -{filtered_count} lineups", "INFO")
 
-            # Always return at least the best lineup
             if not quality_lineups and lineups:
                 quality_lineups = [max(lineups, key=lambda x: x.get('Projected', 0))]
 
@@ -7092,30 +6963,24 @@ class MasterOptimizer:
             return lineups
 
     def _generate_emergency_lineup(self) -> Optional[Dict[str, Any]]:
-        """
-        EMERGENCY: Generate at least one valid lineup
-        """
+        """EMERGENCY: Generate one valid lineup"""
         try:
-            self.logger.log("Generating emergency lineup with most valuable players", "WARNING")
+            self.logger.log("Emergency lineup generation", "WARNING")
 
-            # Sort by value
             df_sorted = self.df.copy()
             df_sorted['value'] = df_sorted['Projected_Points'] / (df_sorted['Salary'] / 1000)
             df_sorted = df_sorted.sort_values('value', ascending=False)
 
-            # Try to build a lineup
             for start_idx in range(min(5, len(df_sorted))):
                 selected = df_sorted.iloc[start_idx:start_idx+6]
 
                 if len(selected) < 6:
                     continue
 
-                # Check teams
                 teams = selected['Team'].nunique()
                 if teams < 2:
                     continue
 
-                # Check salary
                 captain = selected.iloc[0]['Player']
                 flex = selected.iloc[1:]['Player'].tolist()
 
@@ -7126,15 +6991,11 @@ class MasterOptimizer:
                 if total_sal > DraftKingsRules.SALARY_CAP:
                     continue
 
-                # Valid! Return it
                 lineup = calculate_lineup_metrics(captain, flex, self.df)
                 lineup['Lineup'] = 1
                 lineup['Emergency'] = True
 
-                self.logger.log(
-                    f"Emergency lineup generated: ${total_sal:,.0f}, {lineup.get('Projected', 0):.1f} pts",
-                    "WARNING"
-                )
+                self.logger.log(f"Emergency lineup: ${total_sal:,.0f}", "WARNING")
 
                 return lineup
 
@@ -7144,12 +7005,8 @@ class MasterOptimizer:
             self.logger.log_exception(e, "_generate_emergency_lineup")
             return None
 
-    # ... [Include all the other methods from before: _run_ai_analysis, _build_base_constraints,
-    #      _build_constraints, _validate_and_filter_lineups, _simulate_lineups,
-    #      _post_process_lineups, _build_error_context, get_optimization_summary] ...
-
     def _run_ai_analysis(self) -> None:
-        """Run all AI strategists and synthesize"""
+        """Run AI strategists"""
         try:
             self.ai_recommendations = []
 
@@ -7161,12 +7018,9 @@ class MasterOptimizer:
                 try:
                     rec = strategist.analyze(self.df, self.game_info, self.field_config)
                     self.ai_recommendations.append(rec)
-                    self.logger.log(
-                        f"{name}: confidence={rec.confidence:.2f}",
-                        "INFO"
-                    )
+                    self.logger.log(f"{name}: {rec.confidence:.2f}", "INFO")
                 except Exception as e:
-                    self.logger.log_exception(e, f"{name} analysis")
+                    self.logger.log_exception(e, f"{name}")
 
             if self.ai_recommendations:
                 self.synthesized_recommendation = self.synthesis.synthesize(
@@ -7180,7 +7034,6 @@ class MasterOptimizer:
         if self.base_constraints:
             return self.base_constraints
 
-        # SMART: Use pool analysis
         optimal_min = self.pool_analysis['recommendations'].get(
             'optimal_min_salary',
             int(self.salary_cap * 0.85)
@@ -7192,7 +7045,7 @@ class MasterOptimizer:
         )
 
     def _build_constraints(self, ai_enforcement: str) -> LineupConstraints:
-        """Build constraints with AI enforcement"""
+        """Build constraints with AI"""
         try:
             base_constraints = self._build_base_constraints()
 
@@ -7215,7 +7068,7 @@ class MasterOptimizer:
         lineups: List[Dict[str, Any]],
         constraints: LineupConstraints
     ) -> List[Dict[str, Any]]:
-        """Validate and filter lineups"""
+        """Validate lineups"""
         if not lineups:
             return []
 
@@ -7229,14 +7082,10 @@ class MasterOptimizer:
 
             invalid_count = len(lineups) - len(valid_lineups)
             if invalid_count > 0:
-                self.logger.log(
-                    f"Filtered {invalid_count} invalid lineups",
-                    "DEBUG"
-                )
+                self.logger.log(f"Filtered {invalid_count} invalid", "DEBUG")
 
             return valid_lineups
 
-        # Individual validation
         valid_lineups = []
         for lineup in lineups:
             salary = lineup.get('Total_Salary', 0)
@@ -7253,7 +7102,7 @@ class MasterOptimizer:
         lineups: List[Dict[str, Any]],
         progress_callback: Optional[Callable[[str, float], None]] = None
     ) -> List[Dict[str, Any]]:
-        """Add Monte Carlo simulation results"""
+        """Add MC simulation"""
         try:
             if len(lineups) > 50:
                 batch_size = PerformanceLimits.MEMORY_BATCH_SIZE
@@ -7266,10 +7115,7 @@ class MasterOptimizer:
                     if progress_callback:
                         progress = 0.85 + (batch_end / len(lineups)) * 0.10
                         try:
-                            progress_callback(
-                                f"Simulating {batch_end}/{len(lineups)}...",
-                                progress
-                            )
+                            progress_callback(f"Simulating {batch_end}/{len(lineups)}", progress)
                         except Exception:
                             pass
 
@@ -7285,7 +7131,6 @@ class MasterOptimizer:
             else:
                 results = self.mc_engine.evaluate_multiple_lineups(lineups, parallel=True)
 
-            # Merge results
             for idx, sim_results in results.items():
                 if idx < len(lineups):
                     lineups[idx]['Ceiling_90th'] = sim_results.ceiling_90th
@@ -7298,11 +7143,8 @@ class MasterOptimizer:
             self.logger.log_exception(e, "_simulate_lineups")
             return lineups
 
-    def _post_process_lineups(
-        self,
-        lineups: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Post-process and rank lineups"""
+    def _post_process_lineups(self, lineups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Post-process and rank"""
         try:
             for i, lineup in enumerate(lineups, 1):
                 lineup['Lineup'] = i
@@ -7320,32 +7162,8 @@ class MasterOptimizer:
             self.logger.log_exception(e, "_post_process_lineups")
             return lineups
 
-    def _build_error_context(
-        self,
-        exception: Exception,
-        constraints: Optional[LineupConstraints]
-    ) -> str:
-        """Build helpful error context"""
-        context_lines = []
-
-        if self.optimizer_instance and isinstance(self.optimizer_instance, StandardLineupOptimizer):
-            diagnostics = self.optimizer_instance.get_constraint_diagnostics()
-            suggestions = self.optimizer_instance.suggest_constraint_adjustments()
-
-            if diagnostics['violations']['infeasible'] > 10:
-                context_lines.append("📊 Many infeasible solutions")
-                context_lines.extend([f"  • {s}" for s in suggestions[:3]])
-
-        if constraints:
-            context_lines.append("\n⚙️ Constraints:")
-            context_lines.append(f"  • Salary: ${constraints.min_salary:,} - ${constraints.max_salary:,}")
-
-        context_lines.append(f"\n📋 Pool: {len(self.df)} players, {self.df['Team'].nunique()} teams")
-
-        return "\n".join(context_lines)
-
     def get_optimization_summary(self) -> Dict[str, Any]:
-        """Get comprehensive summary"""
+        """Get summary"""
         summary = {
             'lineups_generated': len(self.final_lineups),
             'player_pool_analysis': self.pool_analysis,
@@ -7358,14 +7176,11 @@ class MasterOptimizer:
             if stats:
                 summary['performance_metrics'][phase] = stats
 
-        if self.optimizer_instance and isinstance(self.optimizer_instance, StandardLineupOptimizer):
-            summary['constraint_diagnostics'] = self.optimizer_instance.get_constraint_diagnostics()
-
         return summary
 
 
 # ============================================================================
-# CONVENIENCE FUNCTIONS
+# CONVENIENCE FUNCTION
 # ============================================================================
 
 def optimize_showdown(
@@ -7380,15 +7195,10 @@ def optimize_showdown(
     ai_enforcement: str = 'Moderate',
     progress_callback: Optional[Callable[[str, float], None]] = None
 ) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
-    """
-    Convenience function for complete optimization
-
-    GUARANTEED to return lineups (never empty)
-    """
+    """Convenience function (GUARANTEED to return lineups)"""
     logger = get_logger()
 
     try:
-        # Load data
         if isinstance(csv_path_or_df, str):
             df_raw, encoding = safe_load_csv(csv_path_or_df, logger)
             if df_raw is None:
@@ -7396,22 +7206,18 @@ def optimize_showdown(
         else:
             df_raw = csv_path_or_df
 
-        # Process
         processor = OptimizedDataProcessor()
         df, warnings = processor.process_dataframe(df_raw)
 
         for warning in warnings:
             logger.log(warning, "WARNING")
 
-        # Infer game info
         game_info = processor.infer_game_info(df, game_total, spread)
 
-        # Get field config
         field_size = CONTEST_TYPE_MAPPING.get(contest_type, 'large_field')
         field_config = OptimizerConfig.get_field_config(field_size)
         field_config['name'] = field_size
 
-        # Run optimization
         master = MasterOptimizer(
             df=df,
             game_info=game_info,
@@ -7439,41 +7245,5 @@ def optimize_showdown(
 # ============================================================================
 
 if __name__ == "__main__":
-    print("NFL DFS Optimizer v3.1.0 - Smart Adaptive Edition")
+    print("NFL DFS Optimizer v3.1.0")
     print("=" * 60)
-
-    try:
-        def progress_printer(message: str, progress: float):
-            print(f"[{progress*100:5.1f}%] {message}")
-
-        lineups, df = optimize_showdown(
-            csv_path_or_df="players.csv",
-            num_lineups=20,
-            game_total=52.5,
-            spread=-3.0,
-            contest_type="Large GPP (1000+)",
-            use_ai=False,
-            optimization_mode='balanced',
-            ai_enforcement='Moderate',
-            progress_callback=progress_printer
-        )
-
-        print(f"\n✓ Generated {len(lineups)} lineups")
-
-        if lineups:
-            print("\nTop 3 Lineups:")
-            for i, lineup in enumerate(lineups[:3], 1):
-                print(f"\nLineup {i}:")
-                print(f"  Captain: {lineup.get('Captain')}")
-                print(f"  FLEX: {', '.join(lineup.get('FLEX', []))}")
-                print(f"  Projected: {lineup.get('Projected', 0):.2f}")
-                print(f"  Salary: ${lineup.get('Total_Salary', 0):,.0f}")
-
-        export_df = format_lineup_for_export(lineups, ExportFormat.DRAFTKINGS)
-        export_df.to_csv("optimized_lineups.csv", index=False)
-        print("\n✓ Exported to: optimized_lineups.csv")
-
-    except Exception as e:
-        print(f"\n✗ Error: {e}")
-        import traceback
-        traceback.print_exc()
