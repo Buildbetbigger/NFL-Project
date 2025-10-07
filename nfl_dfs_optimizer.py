@@ -6444,7 +6444,8 @@ class MasterOptimizer:
         game_info: Dict[str, Any],
         salary_cap: int = DraftKingsRules.SALARY_CAP,
         field_config: Optional[Dict[str, Any]] = None,
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
+        base_constraints: Optional[LineupConstraints] = None  # NEW
     ):
         self.df = df
         self.game_info = game_info
@@ -6452,6 +6453,7 @@ class MasterOptimizer:
         self.field_config = field_config or OptimizerConfig.get_field_config('large_field')
         self.logger = get_logger()
         self.perf_monitor = get_performance_monitor()
+        self.base_constraints = base_constraints  # NEW: Store it
 
         # Initialize components
         self.mc_engine = MonteCarloSimulationEngine(df, game_info)
@@ -6726,6 +6728,11 @@ class MasterOptimizer:
 
     def _build_base_constraints(self) -> LineupConstraints:
         """Build base constraints without AI"""
+        # NEW: Use provided constraints if available
+        if self.base_constraints:
+            return self.base_constraints
+
+        # Fallback to default 95%
         return LineupConstraints(
             min_salary=int(self.salary_cap * 0.95),
             max_salary=self.salary_cap
