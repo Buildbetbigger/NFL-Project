@@ -709,12 +709,21 @@ def run_optimization():
                 field_size = CONTEST_TYPE_MAPPING.get(contest_type, 'large_field')
                 field_config = OptimizerConfig.get_field_config(field_size)
                 field_config['name'] = field_size
-                
+
+                # Create constraints with the actual min_salary_pct from sidebar
+                from nfl_dfs_optimizer import LineupConstraints
+
+                base_constraints = LineupConstraints(
+                    min_salary=int(DraftKingsRules.SALARY_CAP * (min_salary_pct / 100)),
+                    max_salary=DraftKingsRules.SALARY_CAP
+                )
+
                 master = MasterOptimizer(
                     df=df_copy,
                     game_info=game_info,
                     field_config=field_config,
-                    api_key=api_key
+                    api_key=api_key,
+                    base_constraints=base_constraints  # Pass the constraints
                 )
                 
                 lineups = master.run_full_optimization(
