@@ -3557,7 +3557,73 @@ CRITICAL FIXES:
 - FIX #15: Enhanced correlation matrix decomposition
 - NEW: Numba JIT compilation for 3-5x speedup (ENHANCEMENT #1)
 - NEW: Unified LRU cache integration (ENHANCEMENT #3)
+- DEFENSIVE: Robust handling of categorical dtypes from memory optimization
 """
+
+# ============================================================================
+# DEFENSIVE ARRAY CONVERSION UTILITIES
+# ============================================================================
+
+def safe_array_conversion(array_like: Any, dtype: type = object) -> np.ndarray:
+    """
+    Defensively convert any array-like to numpy array
+
+    Handles categorical, pandas arrays, lists, etc.
+
+    Args:
+        array_like: Any array-like object
+        dtype: Target numpy dtype
+
+    Returns:
+        Pure numpy array
+    """
+    try:
+        # Handle pandas categorical specifically
+        if hasattr(array_like, 'dtype') and pd.api.types.is_categorical_dtype(array_like):
+            # Convert categorical to its string representation
+            return np.array([str(x) for x in array_like], dtype=dtype)
+
+        # Handle pandas Series/Index
+        if hasattr(array_like, 'to_numpy'):
+            numpy_array = array_like.to_numpy()
+            # If still categorical after to_numpy, force conversion
+            if hasattr(numpy_array, 'categories'):
+                return np.array([str(x) for x in numpy_array], dtype=dtype)
+            return np.array(numpy_array, dtype=dtype)
+
+        # Handle regular iterables
+        return np.array(array_like, dtype=dtype)
+
+    except Exception:
+        # Last resort: force string conversion
+        return np.array([str(x) for x in array_like], dtype=dtype)
+
+
+def ensure_numeric_array(array_like: Any) -> np.ndarray:
+    """
+    Ensure array is numeric (float64)
+
+    Args:
+        array_like: Any array-like object
+
+    Returns:
+        Float64 numpy array
+    """
+    try:
+        if hasattr(array_like, 'to_numpy'):
+            array_like = array_like.to_numpy()
+
+        result = np.array(array_like, dtype=np.float64)
+
+        # Replace any non-finite values
+        result = np.nan_to_num(result, nan=0.0, posinf=100.0, neginf=0.0)
+
+        return result
+
+    except Exception:
+        # Fallback: try to convert element by element
+        return np.array([float(x) if np.isfinite(float(x)) else 0.0 for x in array_like], dtype=np.float64)
+
 
 # ============================================================================
 # MONTE CARLO SIMULATION ENGINE
@@ -3573,6 +3639,7 @@ class MonteCarloSimulationEngine:
     - Vectorized operations
     - ENHANCEMENT #1: Numba JIT for 3-5x speedup
     - ENHANCEMENT #3: Unified caching
+    - DEFENSIVE: Robust categorical dtype handling
     """
 
     __slots__ = ('df', 'game_info', 'n_simulations', 'correlation_matrix',
@@ -3596,11 +3663,19 @@ class MonteCarloSimulationEngine:
         self.n_simulations = n_simulations
         self.logger = get_logger()
 
-        # Pre-extract arrays for faster access
-        self._player_indices = {p: i for i, p in enumerate(df['Player'].values)}
-        self._projections = df['Projected_Points'].values.copy()
-        self._positions = df['Position'].values.copy()
-        self._teams = df['Team'].values.copy()
+        # DEFENSIVE: Pre-process DataFrame to handle categorical columns
+        try:
+            self._prepare_dataframe()
+        except Exception as e:
+            self.logger.log_exception(e, "DataFrame preparation")
+            raise
+
+        # Pre-extract arrays for faster access with defensive conversion
+        try:
+            self._extract_arrays()
+        except Exception as e:
+            self.logger.log_exception(e, "Array extraction")
+            raise
 
         # Pre-compute matrices
         try:
@@ -3608,8 +3683,75 @@ class MonteCarloSimulationEngine:
             self.player_variance = self._calculate_variance_vectorized()
             self._cholesky_matrix = None  # Computed lazily
         except Exception as e:
-            self.logger.log_exception(e, "MC engine initialization")
+            self.logger.log_exception(e, "Matrix computation")
             raise
+
+    def _prepare_dataframe(self) -> None:
+        """
+        DEFENSIVE: Prepare DataFrame by converting categorical columns
+
+        This ensures vectorized operations work correctly
+        """
+        # Convert any categorical columns to strings
+        for col in self.df.columns:
+            if pd.api.types.is_categorical_dtype(self.df[col]):
+                self.df[col] = self.df[col].astype(str)
+                self.logger.log(
+                    f"Converted categorical column '{col}' to string for vectorization",
+                    "DEBUG"
+                )
+
+        # Ensure critical columns are proper types
+        if 'Player' in self.df.columns:
+            self.df['Player'] = self.df['Player'].astype(str)
+
+        if 'Team' in self.df.columns:
+            self.df['Team'] = self.df['Team'].astype(str)
+
+        if 'Position' in self.df.columns:
+            self.df['Position'] = self.df['Position'].astype(str)
+
+        # Ensure numeric columns are float64
+        for col in ['Projected_Points', 'Salary', 'Ownership']:
+            if col in self.df.columns:
+                self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0).astype(np.float64)
+
+    def _extract_arrays(self) -> None:
+        """
+        DEFENSIVE: Extract arrays with robust conversion
+
+        Uses safe_array_conversion to handle any dtype
+        """
+        # Player indices
+        players = safe_array_conversion(self.df['Player'].values, dtype=object)
+        self._player_indices = {str(p): i for i, p in enumerate(players)}
+
+        # Projections (numeric)
+        self._projections = ensure_numeric_array(self.df['Projected_Points'].values)
+
+        # Positions (string/object array for comparison operations)
+        self._positions = safe_array_conversion(self.df['Position'].values, dtype=object)
+
+        # Teams (string/object array for comparison operations)
+        self._teams = safe_array_conversion(self.df['Team'].values, dtype=object)
+
+        # Validation
+        n_players = len(self.df)
+        if len(self._projections) != n_players:
+            raise ValueError(f"Projections length mismatch: {len(self._projections)} vs {n_players}")
+
+        if len(self._positions) != n_players:
+            raise ValueError(f"Positions length mismatch: {len(self._positions)} vs {n_players}")
+
+        if len(self._teams) != n_players:
+            raise ValueError(f"Teams length mismatch: {len(self._teams)} vs {n_players}")
+
+        self.logger.log(
+            f"Extracted arrays: {n_players} players, "
+            f"positions dtype={self._positions.dtype}, "
+            f"teams dtype={self._teams.dtype}",
+            "DEBUG"
+        )
 
     # ENHANCEMENT #1: Numba JIT compiled simulation
     @staticmethod
@@ -3669,47 +3811,97 @@ class MonteCarloSimulationEngine:
         return scores
 
     def _build_correlation_matrix_vectorized(self) -> np.ndarray:
-        """Vectorized correlation matrix building"""
+        """
+        DEFENSIVE: Vectorized correlation matrix building
+
+        Uses string comparison on regular numpy arrays
+        """
         n_players = len(self.df)
-        corr_matrix = np.eye(n_players)
+        corr_matrix = np.eye(n_players, dtype=np.float64)
 
-        team_matrix = self._teams[:, np.newaxis] == self._teams[np.newaxis, :]
+        try:
+            # Create team comparison matrix using object array comparison
+            # This works with regular numpy arrays but not categorical
+            team_matrix = np.equal.outer(self._teams, self._teams)
 
-        for i in range(n_players):
-            pos_i = self._positions[i]
+            # Vectorized correlation assignment
+            for i in range(n_players):
+                pos_i = str(self._positions[i])
 
-            for j in range(i + 1, n_players):
-                pos_j = self._positions[j]
-                same_team = team_matrix[i, j]
+                for j in range(i + 1, n_players):
+                    pos_j = str(self._positions[j])
+                    same_team = team_matrix[i, j]
 
-                corr = self._get_correlation_coefficient(pos_i, pos_j, same_team)
+                    corr = self._get_correlation_coefficient(pos_i, pos_j, same_team)
 
-                if abs(corr) > 0.1:
-                    corr_matrix[i, j] = corr
-                    corr_matrix[j, i] = corr
+                    if abs(corr) > 0.1:
+                        corr_matrix[i, j] = corr
+                        corr_matrix[j, i] = corr
 
-        return corr_matrix
+            return corr_matrix
+
+        except Exception as e:
+            self.logger.log_exception(e, "_build_correlation_matrix_vectorized")
+
+            # Fallback: element-by-element comparison
+            self.logger.log("Using fallback correlation matrix construction", "WARNING")
+
+            for i in range(n_players):
+                team_i = str(self._teams[i])
+                pos_i = str(self._positions[i])
+
+                for j in range(i + 1, n_players):
+                    team_j = str(self._teams[j])
+                    pos_j = str(self._positions[j])
+                    same_team = (team_i == team_j)
+
+                    corr = self._get_correlation_coefficient(pos_i, pos_j, same_team)
+
+                    if abs(corr) > 0.1:
+                        corr_matrix[i, j] = corr
+                        corr_matrix[j, i] = corr
+
+            return corr_matrix
 
     def _calculate_variance_vectorized(self) -> np.ndarray:
         """Vectorized variance calculation"""
-        position_cv = np.vectorize(lambda pos: VARIANCE_BY_POSITION.get(pos, 0.40))(self._positions)
+        try:
+            # Vectorize position CV lookup
+            position_cv = np.vectorize(
+                lambda pos: VARIANCE_BY_POSITION.get(str(pos), 0.40)
+            )(self._positions)
 
-        salaries = self.df['Salary'].values
-        salary_range = max(salaries.max() - 3000, 1)
-        salary_factor = np.maximum(0.7, 1.0 - (salaries - 3000) / salary_range * 0.3)
+            # Salary-based adjustment
+            if 'Salary' in self.df.columns:
+                salaries = ensure_numeric_array(self.df['Salary'].values)
+                salary_max = np.max(salaries)
+                salary_range = max(salary_max - 3000, 1)
+                salary_factor = np.maximum(0.7, 1.0 - (salaries - 3000) / salary_range * 0.3)
+            else:
+                salary_factor = np.ones_like(position_cv)
 
-        cv = position_cv * salary_factor
+            cv = position_cv * salary_factor
 
-        safe_projections = np.maximum(self._projections, 0.1)
-        variance = (safe_projections * cv) ** 2
+            safe_projections = np.maximum(self._projections, 0.1)
+            variance = (safe_projections * cv) ** 2
 
-        variance = np.nan_to_num(variance, nan=1.0, posinf=100.0, neginf=0.0)
+            variance = np.nan_to_num(variance, nan=1.0, posinf=100.0, neginf=0.0)
 
-        return variance
+            return variance
+
+        except Exception as e:
+            self.logger.log_exception(e, "_calculate_variance_vectorized")
+
+            # Fallback: use default variance
+            return np.ones(len(self.df)) * 16.0  # Default: std=4
 
     def _get_correlation_coefficient(self, pos1: str, pos2: str, same_team: bool) -> float:
         """Fast correlation lookup"""
         coeffs = CORRELATION_COEFFICIENTS
+
+        # Ensure string comparison
+        pos1 = str(pos1)
+        pos2 = str(pos2)
 
         if same_team:
             if pos1 == 'QB' and pos2 in ['WR', 'TE']:
@@ -3928,7 +4120,7 @@ class MonteCarloSimulationEngine:
         if parallel:
             num_threads = get_optimal_thread_count(
                 len(lineups),
-                task_weight='heavy'
+                workload_type='heavy'
             )
         else:
             num_threads = 1
@@ -4005,8 +4197,8 @@ class MonteCarloSimulationEngine:
             if player_data.empty:
                 return 0.0
 
-            projections = player_data['Projected_Points'].values
-            ownership = player_data['Ownership'].values
+            projections = ensure_numeric_array(player_data['Projected_Points'].values)
+            ownership = ensure_numeric_array(player_data['Ownership'].values)
 
             # FIX #2: Increased minimum ownership from 0.5 to 1.0
             ownership = np.clip(ownership, 1.0, 100)
@@ -4022,7 +4214,7 @@ class MonteCarloSimulationEngine:
             )
 
             avg_projection = total_projection / len(players)
-            avg_ownership = max(total_ownership / len(players), 1.0)  # Changed from 0.5
+            avg_ownership = max(total_ownership / len(players), 1.0)
 
             base_leverage = avg_projection / avg_ownership
 
