@@ -1693,20 +1693,19 @@ class BatchLineupValidator:
 # ENHANCEMENT #4: DATAFRAME MEMORY OPTIMIZATION
 # ============================================================================
 
-def optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
+ddef optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
     """
     ENHANCEMENT #4: Reduce DataFrame memory footprint by ~50%
 
     Converts columns to optimal dtypes without data loss
-
-    Args:
-        df: DataFrame to optimize
-
-    Returns:
-        Memory-optimized DataFrame
+    
+    CRITICAL: Does NOT convert Team/Position to categorical (breaks Monte Carlo)
     """
     try:
         df = df.copy()
+        
+        # Columns that MUST NOT be categorical (used in vectorized operations)
+        no_categorical = {'Team', 'Position', 'Player'}
 
         for col in df.columns:
             col_type = df[col].dtype
@@ -1735,7 +1734,8 @@ def optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
                 df[col] = df[col].astype(np.float32)
 
             # Convert object columns to category if low cardinality
-            elif col_type == 'object':
+            # CRITICAL: Exclude columns used in vectorized operations
+            elif col_type == 'object' and col not in no_categorical:
                 num_unique = df[col].nunique()
                 num_total = len(df[col])
 
@@ -3580,10 +3580,10 @@ class MonteCarloSimulationEngine:
                  '_positions', '_teams', '_cholesky_matrix')
 
     def __init__(
-        self,
-        df: pd.DataFrame,
-        game_info: Dict[str, Any],
-        n_simulations: int = SimulationDefaults.STANDARD_SIM_COUNT
+            self,
+            df: pd.DataFrame,
+            game_info: Dict[str, Any],
+            n_simulations: int = SimulationDefaults.STANDARD_SIM_COUNT
     ):
         if df is None or df.empty:
             raise ValueError("DataFrame cannot be None or empty")
@@ -3591,16 +3591,27 @@ class MonteCarloSimulationEngine:
         if n_simulations < SimulationDefaults.MIN_SIM_COUNT:
             raise ValueError(f"n_simulations must be >= {SimulationDefaults.MIN_SIM_COUNT}")
 
+        # CRITICAL FIX: Make a deep copy and convert categorical columns to prevent vectorization errors
         self.df = df.copy()
+
+        # Convert categorical columns back to regular types for vectorization
+        for col in ['Team', 'Position', 'Player']:
+            if col in self.df.columns and pd.api.types.is_categorical_dtype(self.df[col]):
+                self.df[col] = self.df[col].astype(str)
+
         self.game_info = game_info
         self.n_simulations = n_simulations
         self.logger = get_logger()
 
         # Pre-extract arrays for faster access
-        self._player_indices = {p: i for i, p in enumerate(df['Player'].values)}
-        self._projections = df['Projected_Points'].values.copy()
-        self._positions = df['Position'].values.copy()
-        self._teams = df['Team'].values.copy()
+        # CRITICAL: Use .astype(str) to ensure we have regular numpy arrays, not categorical
+        self._player_indices = {p: i for i, p in enumerate(self.df['Player'].values)}
+        self._projections = self.df['Projected_Points'].values.astype(np.float64).copy()
+
+        # CRITICAL FIX: Always convert to string arrays for vectorization
+        # This prevents the "Lengths must match" error from categorical dtype
+        self._positions = self.df['Position'].astype(str).values.copy()
+        self._teams = self.df['Team'].astype(str).values.copy()
 
         # Pre-compute matrices
         try:
