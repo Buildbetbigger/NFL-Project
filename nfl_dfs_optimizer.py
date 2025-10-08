@@ -1,1410 +1,393 @@
 
 """
-NFL DFS AI-Driven Optimizer - ENHANCED VERSION
-Version: 3.1.0 - All Recommendations Implemented
+NFL DFS Showdown Optimizer - Ultimate State (UPDATE 2)
+Professional-grade DFS lineup optimization with AI integration
 
-IMPROVEMENTS IMPLEMENTED:
-✅ CRITICAL:
-  - Fixed race condition in threading (defensive DataFrame copies)
-  - Improved Sharpe ratio calculation (handle edge cases)
-  - Enhanced numeric coercion with explicit error reporting
+COMPLETE SYSTEM - 13 PARTS:
+1. Imports & Dependencies
+2. Core Data Classes & Enums
+3. Logging, Performance, Caching
+4. Data Processing & Loading
+5. Player Pool Analysis & Constraints
+5B. Advanced Scoring & Intelligence (NEW - UPDATE 2)
+6. Monte Carlo Simulation Engine
+7. Constraints & Validation
+8. Genetic Algorithm + Advanced Optimizers (ENHANCED - UPDATE 2)
+9. Standard Lineup Optimizer (PuLP) (ENHANCED - UPDATE 2)
+10. AI Strategists & Dynamic Prompting (ENHANCED - UPDATE 2)
+11. AI Synthesis & Iterative Refinement (ENHANCED - UPDATE 2)
+12. Output Formatting & Export
+13. Master Optimizer & Main Execution (ENHANCED - UPDATE 2)
 
-✅ HIGH PRIORITY:
-  - Optimized cache cleanup (avoid memory spikes)
-  - Vectorized correlation matrix building
-  - Reduced redundant DataFrame copies
-
-✅ MEDIUM TERM:
-  - Added type safety with Literal types
-  - Input validation decorators
-  - Enhanced error context
-  - Streamlit caching opportunities
-
-✅ LONG TERM:
-  - Extracted magic numbers to constants
-  - Reduced cyclomatic complexity
-  - Structured logging
-  - Performance profiling hooks
-  - Comprehensive unit test foundation
-
-✅ PERFORMANCE ENHANCEMENTS:
-  - Numba JIT compilation for Monte Carlo
-  - Unified LRU cache system
-  - Vectorized batch validation
-  - DataFrame memory optimization
-  - Diversity tracking with set operations
-  - Progress callbacks for UI
-
-PART 1: IMPORTS, CONFIGURATION, ENUMS & ENHANCED CONSTANTS
+Version: 5.0.0
+Update: UPDATE 2 - Advanced AI System
+Author: DFS Optimizer Team
 """
 
-from __future__ import annotations
+# ============================================================================
+# PART 1 OF 13: IMPORTS & DEPENDENCIES
+# ============================================================================
 
 # Standard library imports
+import os
+import sys
 import json
 import hashlib
-import threading
 import time
-import traceback
-import re
-import warnings
-import os
-import io
-import signal
 import gc
-from datetime import datetime, timedelta
-from typing import (
-    Dict, List, Optional, Tuple, Set, Any, Callable, Union,
-    Deque, DefaultDict, FrozenSet, Protocol, TypedDict, TypeVar, ParamSpec, Literal
-)
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from collections import defaultdict, deque, Counter, OrderedDict
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from pathlib import Path
-from contextlib import contextmanager
+import threading
+import warnings
 from abc import ABC, abstractmethod
-from functools import wraps
-import weakref
+from collections import Counter, defaultdict, deque, OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    DefaultDict,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union
+)
 
-# Third-party imports
-import pandas as pd
-import numpy as np
+# Suppress warnings for cleaner output
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
-# Optimization
+# Third-party imports - Scientific Computing
+try:
+    import numpy as np
+except ImportError:
+    print("ERROR: NumPy not installed. Install: pip install numpy")
+    sys.exit(1)
+
+try:
+    import pandas as pd
+except ImportError:
+    print("ERROR: Pandas not installed. Install: pip install pandas")
+    sys.exit(1)
+
+# PuLP for linear programming optimization
 try:
     import pulp
     PULP_AVAILABLE = True
 except ImportError:
     PULP_AVAILABLE = False
-    raise ImportError("PuLP is required. Install with: pip install pulp")
+    print("⚠️  WARNING: PuLP not installed. Linear programming optimizer unavailable.")
+    print("    Install with: pip install pulp")
+    print("    The system will use alternative optimizers.")
 
-# Optional: Performance (Numba)
-try:
-    from numba import jit
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
-    def jit(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator if args and callable(args[0]) else decorator
-
-# Optional: Visualization
-try:
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    VISUALIZATION_AVAILABLE = True
-except ImportError:
-    VISUALIZATION_AVAILABLE = False
-
-# Optional: AI
+# Anthropic API for AI features
 try:
     from anthropic import Anthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
+    print("ℹ️  INFO: Anthropic API not installed. AI features will be disabled.")
+    print("    Install with: pip install anthropic")
+    print("    The system will use statistical fallbacks.")
 
-# Optional: Security
-try:
-    from cryptography.fernet import Fernet
-    CRYPTOGRAPHY_AVAILABLE = True
-except ImportError:
-    CRYPTOGRAPHY_AVAILABLE = False
+# Version and metadata
+__version__ = "5.0.0"
+__update__ = "UPDATE 2 - Advanced AI System"
+__author__ = "DFS Optimizer Team"
+__license__ = "MIT"
 
-# Configuration
-warnings.filterwarnings('ignore', category=FutureWarning)
-warnings.filterwarnings('ignore', category=RuntimeWarning)
-np.random.seed(None)
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', None)
-pd.set_option('display.max_colwidth', 50)
+# Display startup banner
+print("=" * 70)
+print(f"NFL DFS Showdown Optimizer v{__version__}")
+print(f"{__update__}")
+print("=" * 70)
+print(f"System Status:")
+print(f"  • NumPy: ✓ Available")
+print(f"  • Pandas: ✓ Available")
+print(f"  • PuLP (Linear Programming): {'✓ Available' if PULP_AVAILABLE else '✗ Not Available'}")
+print(f"  • Anthropic AI: {'✓ Available' if ANTHROPIC_AVAILABLE else '✗ Not Available'}")
+print("=" * 70)
 
-# Version & Metadata
-__version__ = "3.1.0"
-__author__ = "NFL DFS Optimizer Team"
-__description__ = "AI-Driven NFL DFS Optimizer - Enhanced with All Recommendations"
+"""
+PART 2 OF 13: CORE DATA CLASSES & ENUMS
 
-# ============================================================================
-# NEW: STREAMLIT CONSTANTS (Extracted Magic Numbers)
-# ============================================================================
-
-@dataclass(frozen=True)
-class StreamlitConstants:
-    """Constants for Streamlit UI behavior"""
-    LINEUP_SIMILARITY_THRESHOLD: float = 0.5
-    PROGRESS_UPDATE_INTERVAL_SEC: int = 15
-    INITIAL_PROGRESS_THRESHOLD_SEC: int = 10
-
-    class Timeouts:
-        OPTIMIZATION_SEC: int = 120
-        API_CALL_SEC: int = 30
-        THREAD_JOIN_SEC: int = 1
-
-    class Display:
-        MAX_WARNINGS_SHOW: int = 10
-        DEFAULT_LINEUP_PREVIEW: int = 10
-        TOP_PLAYERS_COUNT: int = 15
-
-    class Cache:
-        CSV_PROCESSING_TTL_SEC: int = 3600
-        OPTIMIZER_INSTANCE_MAX: int = 5
+Complete type definitions and data structures for the optimizer system.
+"""
 
 # ============================================================================
-# ENHANCED ENUMS & TYPE DEFINITIONS
+# ENUMERATIONS
 # ============================================================================
+
 
 class AIStrategistType(Enum):
-    """Types of AI strategists"""
-    GAME_THEORY = "Game Theory"
-    CORRELATION = "Correlation"
-    CONTRARIAN_NARRATIVE = "Contrarian Narrative"
+    """
+    Types of AI strategists available in the system
+
+    UPDATE 2: Added STACKING_EXPERT and LEVERAGE_SPECIALIST
+    """
+    GAME_THEORY = "game_theory"
+    CORRELATION = "correlation"
+    CONTRARIAN_NARRATIVE = "contrarian_narrative"
+    STACKING_EXPERT = "stacking_expert"
+    LEVERAGE_SPECIALIST = "leverage_specialist"
+
 
 class AIEnforcementLevel(Enum):
-    """AI enforcement levels"""
-    ADVISORY = "Advisory"
-    MODERATE = "Moderate"
-    STRONG = "Strong"
-    MANDATORY = "Mandatory"
+    """
+    AI constraint enforcement levels
 
-class OptimizationMode(Enum):
-    """Optimization modes"""
-    BALANCED = "balanced"
-    CEILING = "ceiling"
-    FLOOR = "floor"
-    BOOM_OR_BUST = "boom_or_bust"
+    ADVISORY: Log recommendations only, don't enforce
+    MODERATE: Enforce high-confidence recommendations (>0.7)
+    STRONG: Enforce moderate-confidence recommendations (>0.5)
+    MANDATORY: Enforce all recommendations regardless of confidence
+    """
+    ADVISORY = "advisory"
+    MODERATE = "moderate"
+    STRONG = "strong"
+    MANDATORY = "mandatory"
 
-# NEW: Type-safe mode literals (for external imports like Streamlit)
-OptimizationModeType = Literal['balanced', 'ceiling', 'floor', 'boom_or_bust']
-AIEnforcementType = Literal['Advisory', 'Moderate', 'Strong', 'Mandatory']
-ExportFormatType = Literal['Standard', 'DraftKings', 'Detailed']
-
-class StackType(Enum):
-    """Stack types"""
-    QB_RECEIVER = "qb_receiver"
-    ONSLAUGHT = "onslaught"
-    LEVERAGE = "leverage"
-    BRING_BACK = "bring_back"
-    DEFENSIVE = "defensive"
-    HIDDEN = "hidden"
-
-class ConstraintPriority(Enum):
-    """Constraint priority levels"""
-    CRITICAL = 100
-    AI_HIGH_CONFIDENCE = 90
-    AI_CONSENSUS = 85
-    AI_MODERATE = 70
-    SOFT_PREFERENCE = 50
 
 class FitnessMode(Enum):
-    """Genetic algorithm fitness modes"""
+    """
+    Genetic algorithm fitness evaluation modes
+
+    MEAN: Optimize for average projection
+    CEILING: Optimize for upside/ceiling scenarios
+    SHARPE: Optimize for risk-adjusted returns (Sharpe ratio)
+    WIN_PROBABILITY: Optimize for tournament win probability
+    """
     MEAN = "mean"
     CEILING = "ceiling"
     SHARPE = "sharpe"
-    WIN_PROBABILITY = "win_prob"
+    WIN_PROBABILITY = "win_probability"
 
-class FieldSize(Enum):
-    """Field size enumeration"""
-    SMALL = "small_field"
-    MEDIUM = "medium_field"
-    LARGE = "large_field"
-    LARGE_AGGRESSIVE = "large_field_aggressive"
-    MILLY_MAKER = "milly_maker"
-
-class ExportFormat(Enum):
-    """Lineup export format options"""
-    STANDARD = "standard"
-    DRAFTKINGS = "draftkings"
-    DETAILED = "detailed"
-    CSV = "csv"
-    JSON = "json"
-
-class OptimizerAlgorithm(Enum):
-    """Optimizer algorithm options"""
-    STANDARD_PULP = auto()
-    GENETIC = auto()
-    SIMULATED_ANNEALING = auto()
-    HYBRID = auto()
-
-class ValidationLevel(Enum):
-    """Data validation strictness"""
-    STRICT = auto()
-    MODERATE = auto()
-    PERMISSIVE = auto()
 
 # ============================================================================
-# CONSTANTS - DraftKings Rules
+# DRAFTKINGS RULES
 # ============================================================================
 
-@dataclass(frozen=True)
+
+@dataclass
 class DraftKingsRules:
-    """DraftKings Showdown contest rules"""
+    """
+    DraftKings Showdown slate rules and constants
+
+    These are immutable rules that define the DraftKings Showdown format.
+    """
     SALARY_CAP: int = 50000
-    MIN_SALARY: int = 100
-    MAX_SALARY: int = 12000
-    CAPTAIN_MULTIPLIER: float = 1.5
     ROSTER_SIZE: int = 6
+    CAPTAIN_SPOTS: int = 1
     FLEX_SPOTS: int = 5
+    CAPTAIN_MULTIPLIER: float = 1.5
     MIN_TEAMS_REQUIRED: int = 2
     MAX_PLAYERS_PER_TEAM: int = 5
 
-@dataclass(frozen=True)
-class PerformanceLimits:
-    """Performance and optimization limits"""
-    MAX_ITERATIONS: int = 1000
-    OPTIMIZATION_TIMEOUT: int = 90
-    MAX_PARALLEL_THREADS: int = 4
-    MAX_HISTORY_ENTRIES: int = 50
-    CACHE_SIZE: int = 100
-    MIN_PARALLELIZATION_THRESHOLD: int = 10
-    MEMORY_BATCH_SIZE: int = 10
+    @classmethod
+    def validate_lineup_size(cls, lineup_size: int) -> bool:
+        """Validate lineup has correct number of players"""
+        return lineup_size == cls.ROSTER_SIZE
 
-@dataclass(frozen=True)
-class SimulationDefaults:
-    """Monte Carlo simulation defaults"""
-    STANDARD_SIM_COUNT: int = 5000
-    FAST_SIM_COUNT: int = 1000
-    MIN_SIM_COUNT: int = 100
-    CORRELATION_STRENGTH: float = 0.65
-    PERCENTILE_FLOOR: int = 10
-    PERCENTILE_CEILING: int = 90
-    PERCENTILE_EXTREME: int = 99
+    @classmethod
+    def calculate_captain_salary(cls, base_salary: int) -> int:
+        """Calculate captain salary (1.5x base)"""
+        return int(base_salary * cls.CAPTAIN_MULTIPLIER)
 
-@dataclass(frozen=True)
-class GeneticAlgorithmDefaults:
-    """Genetic algorithm default parameters"""
-    POPULATION_SIZE: int = 100
-    GENERATIONS: int = 50
-    MUTATION_RATE: float = 0.15
-    ELITE_SIZE: int = 10
-    TOURNAMENT_SIZE: int = 5
-    CROSSOVER_RATE: float = 0.8
-    MAX_REPAIR_ATTEMPTS: int = 20
-    MAX_RANDOM_ATTEMPTS: int = 10
+    @classmethod
+    def get_rules_summary(cls) -> str:
+        """Get human-readable rules summary"""
+        return f"""DraftKings Showdown Rules:
+  • Salary Cap: ${cls.SALARY_CAP:,}
+  • Roster Size: {cls.ROSTER_SIZE} players
+  • Captain: {cls.CAPTAIN_SPOTS} (earns {cls.CAPTAIN_MULTIPLIER}x points)
+  • FLEX: {cls.FLEX_SPOTS} players
+  • Team Diversity: {cls.MIN_TEAMS_REQUIRED} teams minimum
+  • Max Per Team: {cls.MAX_PLAYERS_PER_TEAM} players"""
 
-@dataclass(frozen=True)
-class LineupSimilarityThresholds:
-    """Thresholds for lineup similarity checks"""
-    SMALL_FIELD: int = 5
-    MEDIUM_FIELD: int = 4
-    LARGE_FIELD: int = 3
-    MILLY_MAKER: int = 2
-    MIN_SIMILARITY_FILTER: float = 0.5
-
-@dataclass(frozen=True)
-class APIDefaults:
-    """API configuration defaults"""
-    RATE_LIMIT_PER_MINUTE: int = 50
-    MAX_RETRIES: int = 5
-    RETRY_DELAYS: Tuple[int, ...] = (1, 2, 5, 10, 30)
-    DEFAULT_TIMEOUT: int = 30
-    MAX_TOKENS: int = 2000
-    TEMPERATURE: float = 0.7
-
-# Variance, correlation, ownership, etc.
-VARIANCE_BY_POSITION: Dict[str, float] = {
-    'QB': 0.30, 'RB': 0.40, 'WR': 0.45, 'TE': 0.42, 'DST': 0.50, 'K': 0.55, 'FLEX': 0.40
-}
-
-CORRELATION_COEFFICIENTS: Dict[str, float] = {
-    'qb_wr_same_team': 0.65, 'qb_te_same_team': 0.60, 'qb_rb_same_team': -0.15,
-    'qb_qb_opposing': 0.35, 'wr_wr_same_team': -0.20, 'rb_dst_opposing': -0.45,
-    'wr_dst_opposing': -0.30,
-}
-
-AI_WEIGHTS: Dict[str, float] = {
-    'game_theory': 0.35, 'correlation': 0.35, 'contrarian': 0.30
-}
-
-OWNERSHIP_BY_POSITION: Dict[str, Dict[str, float]] = {
-    'QB': {'base': 15, 'salary_factor': 0.002, 'scarcity_multiplier': 1.2},
-    'RB': {'base': 12, 'salary_factor': 0.0015, 'scarcity_multiplier': 1.0},
-    'WR': {'base': 10, 'salary_factor': 0.0018, 'scarcity_multiplier': 0.95},
-    'TE': {'base': 8, 'salary_factor': 0.001, 'scarcity_multiplier': 1.1},
-    'DST': {'base': 5, 'salary_factor': 0.0005, 'scarcity_multiplier': 1.0},
-    'K': {'base': 3, 'salary_factor': 0.0003, 'scarcity_multiplier': 0.9},
-    'FLEX': {'base': 5, 'salary_factor': 0.001, 'scarcity_multiplier': 1.0}
-}
-
-POSITION_ALIASES: Dict[str, List[str]] = {
-    'QB': ['QB', 'QUARTERBACK', 'Q'],
-    'RB': ['RB', 'RUNNINGBACK', 'RUNNING BACK', 'HALFBACK', 'HB'],
-    'WR': ['WR', 'WIDERECEIVER', 'WIDE RECEIVER', 'RECEIVER'],
-    'TE': ['TE', 'TIGHTEND', 'TIGHT END'],
-    'K': ['K', 'KICKER', 'PK', 'PLACEKICKER'],
-    'DST': ['DST', 'DEF', 'D/ST', 'DEFENSE', 'D'],
-}
-
-POSITION_SALARY_RANGES: Dict[str, Tuple[int, int]] = {
-    'QB': (3000, 12000), 'RB': (200, 11000), 'WR': (200, 11000),
-    'TE': (200, 10000), 'K': (200, 6000), 'DST': (200, 6000),
-}
-
-CSV_COLUMN_PATTERNS: Dict[str, List[str]] = {
-    'Player': ['player', 'name', 'player_name', 'playername', 'full_name', 'fullname'],
-    'Position': ['position', 'pos', 'Pos'],
-    'Team': ['team', 'tm', 'team_name', 'teamname'],
-    'Salary': ['salary', 'sal', 'cost', 'price'],
-    'Projected_Points': ['projected_points', 'projection', 'proj', 'points',
-                         'point_projection', 'fpts', 'fantasy_points', 'pts', 'projected'],
-    'Ownership': ['ownership', 'own', 'own%', 'ownership%', 'proj_own', 'projected_ownership']
-}
-
-FIELD_SIZE_CONFIGS: Dict[str, Dict[str, Any]] = {
-    'small_field': {
-        'max_exposure': 0.4, 'min_unique_captains': 5, 'max_chalk_players': 3,
-        'min_leverage_players': 1, 'ownership_leverage_weight': 0.3,
-        'correlation_weight': 0.4, 'narrative_weight': 0.3, 'ai_enforcement': 'Moderate',
-        'min_total_ownership': 70, 'max_total_ownership': 110,
-        'similarity_threshold': 0.7, 'use_genetic': False
-    },
-    'medium_field': {
-        'max_exposure': 0.3, 'min_unique_captains': 10, 'max_chalk_players': 2,
-        'min_leverage_players': 2, 'ownership_leverage_weight': 0.35,
-        'correlation_weight': 0.35, 'narrative_weight': 0.3, 'ai_enforcement': 'Strong',
-        'min_total_ownership': 60, 'max_total_ownership': 90,
-        'similarity_threshold': 0.67, 'use_genetic': False
-    },
-    'large_field': {
-        'max_exposure': 0.25, 'min_unique_captains': 15, 'max_chalk_players': 2,
-        'min_leverage_players': 2, 'ownership_leverage_weight': 0.4,
-        'correlation_weight': 0.3, 'narrative_weight': 0.3, 'ai_enforcement': 'Strong',
-        'min_total_ownership': 50, 'max_total_ownership': 80,
-        'similarity_threshold': 0.67, 'use_genetic': True
-    },
-    'large_field_aggressive': {
-        'max_exposure': 0.2, 'min_unique_captains': 20, 'max_chalk_players': 1,
-        'min_leverage_players': 3, 'ownership_leverage_weight': 0.45,
-        'correlation_weight': 0.25, 'narrative_weight': 0.3, 'ai_enforcement': 'Mandatory',
-        'min_total_ownership': 40, 'max_total_ownership': 70,
-        'similarity_threshold': 0.6, 'use_genetic': True
-    },
-    'milly_maker': {
-        'max_exposure': 0.15, 'min_unique_captains': 30, 'max_chalk_players': 1,
-        'min_leverage_players': 4, 'ownership_leverage_weight': 0.5,
-        'correlation_weight': 0.2, 'narrative_weight': 0.3, 'ai_enforcement': 'Mandatory',
-        'min_total_ownership': 30, 'max_total_ownership': 60,
-        'similarity_threshold': 0.5, 'use_genetic': True
-    }
-}
-
-CONTEST_TYPE_MAPPING: Dict[str, str] = {
-    'Single Entry': 'small_field', '3-Max': 'small_field', '5-Max': 'small_field',
-    '20-Max': 'medium_field', '150-Max': 'large_field',
-    'Large GPP (1000+)': 'large_field_aggressive', 'Milly Maker': 'milly_maker',
-    'Showdown Special': 'large_field_aggressive'
-}
-
-OPTIMIZATION_MODE_WEIGHTS: Dict[str, Dict[str, float]] = {
-    'balanced': {'ceiling_weight': 0.5, 'floor_weight': 0.5},
-    'ceiling': {'ceiling_weight': 0.8, 'floor_weight': 0.2},
-    'floor': {'ceiling_weight': 0.2, 'floor_weight': 0.8},
-    'boom_or_bust': {'ceiling_weight': 1.0, 'floor_weight': 0.0}
-}
 
 # ============================================================================
-# CUSTOM EXCEPTIONS
+# SIMULATION RESULTS
 # ============================================================================
 
-class OptimizerError(Exception):
-    """Base exception for optimizer errors"""
-    pass
-
-class ValidationError(OptimizerError):
-    """Raised when data validation fails"""
-    pass
-
-class ConstraintError(OptimizerError):
-    """Raised when constraints are infeasible"""
-    pass
-
-class OptimizationError(OptimizerError):
-    """Raised when optimization fails"""
-    pass
-
-class APIError(OptimizerError):
-    """Raised when API calls fail"""
-    pass
-
-class TimeoutError(OptimizerError):
-    """Raised when operation times out"""
-    pass
-
-# ============================================================================
-# TYPE DEFINITIONS
-# ============================================================================
-
-class PlayerData(TypedDict):
-    """Type definition for player dictionary"""
-    Player: str
-    Position: str
-    Team: str
-    Salary: float
-    Projected_Points: float
-    Ownership: float
-
-class LineupDict(TypedDict, total=False):
-    """Type definition for lineup dictionary"""
-    Lineup: int
-    Captain: str
-    FLEX: Union[List[str], str]
-    Total_Salary: float
-    Projected: float
-    Total_Ownership: float
-    Avg_Ownership: float
-    Ceiling_90th: Optional[float]
-    Floor_10th: Optional[float]
-    Sharpe_Ratio: Optional[float]
-    Win_Probability: Optional[float]
-    Team_Distribution: Optional[Dict[str, int]]
-    Position_Distribution: Optional[Dict[str, int]]
-    Valid: bool
-
-class GameInfoDict(TypedDict):
-    """Type definition for game information"""
-    game_total: float
-    spread: float
-    home_team: str
-    away_team: str
-    teams: List[str]
-
-class FieldConfigDict(TypedDict):
-    """Type definition for field configuration"""
-    max_exposure: float
-    min_unique_captains: int
-    max_chalk_players: int
-    min_leverage_players: int
-    ownership_leverage_weight: float
-    correlation_weight: float
-    narrative_weight: float
-    ai_enforcement: str
-    min_total_ownership: int
-    max_total_ownership: int
-    similarity_threshold: float
-    use_genetic: bool
-
-# ============================================================================
-# PROTOCOLS
-# ============================================================================
-
-class SimulationEngine(Protocol):
-    """Protocol for simulation engines"""
-    def evaluate_lineup(
-        self, captain: str, flex: List[str], use_cache: bool = True
-    ) -> 'SimulationResults':
-        ...
-
-class LineupOptimizer(Protocol):
-    """Protocol for lineup optimizers"""
-    def generate_lineups(self, num_lineups: int, **kwargs) -> List[LineupDict]:
-        ...
-
-class AIAPIManager(Protocol):
-    """Protocol for AI API managers"""
-    def get_ai_analysis(
-        self, prompt: str, context: Dict[str, Any], max_tokens: int = 2000,
-        temperature: float = 0.7, use_cache: bool = True, timeout_seconds: int = 30
-    ) -> Dict[str, Any]:
-        ...
-
-P = ParamSpec('P')
-T = TypeVar('T')
-R = TypeVar('R')
-
-# ============================================================================
-# NEW: INPUT VALIDATION DECORATOR
-# ============================================================================
-
-def validate_dataframe(min_rows: int = 6, required_cols: Optional[List[str]] = None):
-    """
-    Decorator to validate DataFrame inputs
-
-    Args:
-        min_rows: Minimum number of rows required
-        required_cols: List of required column names
-    """
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        @wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            # Find DataFrame in args
-            df = None
-            for arg in args:
-                if isinstance(arg, pd.DataFrame):
-                    df = arg
-                    break
-
-            if df is None:
-                df = kwargs.get('df')
-
-            if df is None:
-                raise ValueError(f"{func.__name__} requires a DataFrame argument")
-
-            if len(df) < min_rows:
-                raise ValueError(
-                    f"{func.__name__} requires at least {min_rows} rows, got {len(df)}"
-                )
-
-            if required_cols:
-                missing = [col for col in required_cols if col not in df.columns]
-                if missing:
-                    raise ValueError(
-                        f"{func.__name__} missing required columns: {missing}"
-                    )
-
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-# ============================================================================
-# NEW: PERFORMANCE PROFILER
-# ============================================================================
-
-class PerformanceProfiler:
-    """Decorator-based performance profiling with detailed statistics"""
-
-    def __init__(self):
-        self.profiles: DefaultDict[str, List[float]] = defaultdict(list)
-        self._lock = threading.RLock()
-
-    def profile(self, func_name: Optional[str] = None):
-        """Profile a function's execution time"""
-        def decorator(func: Callable) -> Callable:
-            name = func_name or func.__name__
-
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                start = time.perf_counter()
-                try:
-                    result = func(*args, **kwargs)
-                    return result
-                finally:
-                    elapsed = time.perf_counter() - start
-                    with self._lock:
-                        self.profiles[name].append(elapsed)
-
-            return wrapper
-        return decorator
-
-    def get_report(self) -> str:
-        """Generate comprehensive performance report"""
-        with self._lock:
-            if not self.profiles:
-                return "No profiling data collected"
-
-            lines = ["=" * 60, "Performance Profile Report", "=" * 60]
-
-            for func_name, times in sorted(
-                self.profiles.items(),
-                key=lambda x: sum(x[1]),
-                reverse=True
-            ):
-                total_time = sum(times)
-                avg_time = np.mean(times)
-                median_time = np.median(times)
-                call_count = len(times)
-                min_time = min(times)
-                max_time = max(times)
-
-                lines.append(f"\n{func_name}:")
-                lines.append(f"  Total: {total_time:.2f}s | Calls: {call_count}")
-                lines.append(
-                    f"  Avg: {avg_time:.4f}s | Median: {median_time:.4f}s"
-                )
-                lines.append(
-                    f"  Range: {min_time:.4f}s - {max_time:.4f}s"
-                )
-
-            lines.append("=" * 60)
-            return "\n".join(lines)
-
-    def reset(self) -> None:
-        """Reset all profiling data"""
-        with self._lock:
-            self.profiles.clear()
-
-# Global profiler instance
-_global_profiler = PerformanceProfiler()
-
-def get_profiler() -> PerformanceProfiler:
-    """Get global profiler instance"""
-    return _global_profiler
-
-# ============================================================================
-# ENHANCED GLOBAL LOGGER WITH STRUCTURED LOGGING
-# ============================================================================
-
-class StructuredLogger:
-    """
-    Enhanced logger with structured logging and comprehensive error tracking
-
-    IMPROVEMENTS:
-    - Structured JSON-compatible logging
-    - Enhanced API key sanitization
-    - Better error categorization
-    - Contextual error suggestions
-    """
-
-    _API_KEY_PATTERNS = [
-        re.compile(r'sk-ant-[a-zA-Z0-9-]{20,}'),
-        re.compile(r'sk-[a-zA-Z0-9]{32,}'),
-        re.compile(r'Bearer\s+[a-zA-Z0-9-_.]+'),
-        re.compile(r'"api_?key"\s*:\s*"[^"]{10,}"'),
-    ]
-
-    _PATTERN_NUMBER = re.compile(r'\d+')
-    _PATTERN_DOUBLE_QUOTE = re.compile(r'"[^"]*"')
-    _PATTERN_SINGLE_QUOTE = re.compile(r"'[^']*'")
-
-    def __init__(self):
-        self.logs: Deque[Dict[str, Any]] = deque(maxlen=PerformanceLimits.MAX_HISTORY_ENTRIES)
-        self.error_logs: Deque[Dict[str, Any]] = deque(maxlen=20)
-        self.ai_decisions: Deque[Dict[str, Any]] = deque(maxlen=50)
-        self.optimization_events: Deque[Dict[str, Any]] = deque(maxlen=30)
-        self.performance_metrics: DefaultDict[str, List] = defaultdict(list)
-        self._lock = threading.RLock()
-
-        self.error_patterns: DefaultDict[str, int] = defaultdict(int)
-        self.error_suggestions_cache: Dict[str, List[str]] = {}
-        self.last_cleanup = datetime.now()
-
-        self.failure_categories: Dict[str, int] = {
-            'constraint': 0, 'salary': 0, 'ownership': 0, 'api': 0,
-            'validation': 0, 'timeout': 0, 'simulation': 0, 'genetic': 0, 'other': 0
-        }
-
-    def log_with_context(
-        self,
-        message: str,
-        level: str = "INFO",
-        **context_kwargs
-    ) -> None:
-        """
-        NEW: Log with structured context for better debugging
-
-        Args:
-            message: Log message
-            level: Log level
-            **context_kwargs: Additional context fields
-        """
-        with self._lock:
-            try:
-                sanitized_message = self._sanitize_message(str(message))
-
-                entry = {
-                    'timestamp': datetime.now().isoformat(),
-                    'level': level.upper(),
-                    'message': sanitized_message,
-                    **context_kwargs
-                }
-
-                self.logs.append(entry)
-
-                if level.upper() in ["ERROR", "CRITICAL"]:
-                    self.error_logs.append(entry)
-                    error_key = self._extract_error_pattern(sanitized_message)
-                    self.error_patterns[error_key] += 1
-                    self._categorize_failure(sanitized_message)
-
-                self._cleanup_if_needed()
-
-            except Exception as e:
-                print(f"Logger error: {e}")
-
-    def log(
-        self,
-        message: str,
-        level: str = "INFO",
-        context: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Standard logging with optional context"""
-        if context:
-            self.log_with_context(message, level, **context)
-        else:
-            self.log_with_context(message, level)
-
-    def _sanitize_message(self, message: str) -> str:
-        """ENHANCED: Remove API keys and sensitive data"""
-        sanitized = message
-        for pattern in self._API_KEY_PATTERNS:
-            sanitized = pattern.sub('[REDACTED_KEY]', sanitized)
-        return sanitized
-
-    def log_exception(
-        self,
-        exception: Exception,
-        context: str = "",
-        critical: bool = False,
-        **extra_context
-    ) -> None:
-        """
-        ENHANCED: Log exception with context and suggestions
-
-        Args:
-            exception: The exception to log
-            context: Context string describing where error occurred
-            critical: Whether this is a critical error
-            **extra_context: Additional context fields
-        """
-        with self._lock:
-            try:
-                error_msg = f"{context}: {str(exception)}" if context else str(exception)
-                error_msg = self._sanitize_message(error_msg)
-
-                suggestions = self._get_error_suggestions(exception, context)
-
-                entry = {
-                    'timestamp': datetime.now().isoformat(),
-                    'level': "CRITICAL" if critical else "ERROR",
-                    'message': error_msg,
-                    'exception_type': type(exception).__name__,
-                    'traceback': traceback.format_exc(),
-                    'suggestions': suggestions,
-                    'context': context,
-                    **extra_context
-                }
-
-                self.error_logs.append(entry)
-
-                if suggestions:
-                    self.log(
-                        f"Error: {error_msg}\nSuggestion: {suggestions[0]}",
-                        "ERROR",
-                        {'has_suggestion': True}
-                    )
-
-            except Exception as e:
-                print(f"Logger exception error: {e}")
-
-    def _extract_error_pattern(self, message: str) -> str:
-        """Extract error pattern for tracking"""
-        try:
-            message = message[:500]
-            pattern = self._PATTERN_NUMBER.sub('N', message)
-            pattern = self._PATTERN_DOUBLE_QUOTE.sub('"X"', pattern)
-            pattern = self._PATTERN_SINGLE_QUOTE.sub("'X'", pattern)
-            return pattern[:100]
-        except Exception:
-            return "unknown_pattern"
-
-    def _categorize_failure(self, message: str) -> None:
-        """Categorize failure type for analytics"""
-        try:
-            message_lower = message.lower()
-
-            if any(word in message_lower for word in ['constraint', 'infeasible', 'no solution']):
-                self.failure_categories['constraint'] += 1
-            elif any(word in message_lower for word in ['salary', 'cap', 'budget']):
-                self.failure_categories['salary'] += 1
-            elif 'ownership' in message_lower:
-                self.failure_categories['ownership'] += 1
-            elif any(word in message_lower for word in ['api', 'connection', 'timeout']):
-                self.failure_categories['api'] += 1
-            elif 'validation' in message_lower:
-                self.failure_categories['validation'] += 1
-            elif 'timeout' in message_lower:
-                self.failure_categories['timeout'] += 1
-            elif any(word in message_lower for word in ['simulation', 'monte carlo']):
-                self.failure_categories['simulation'] += 1
-            elif 'genetic' in message_lower:
-                self.failure_categories['genetic'] += 1
-            else:
-                self.failure_categories['other'] += 1
-
-        except Exception:
-            self.failure_categories['other'] += 1
-
-    def _get_error_suggestions(
-        self,
-        exception: Exception,
-        context: str
-    ) -> List[str]:
-        """ENHANCED: Provide helpful suggestions based on error type"""
-        try:
-            exception_type = type(exception).__name__
-            cache_key = f"{exception_type}_{context}"
-
-            if cache_key in self.error_suggestions_cache:
-                return self.error_suggestions_cache[cache_key]
-
-            suggestions = []
-
-            if isinstance(exception, KeyError):
-                suggestions = [
-                    "Check that all required columns are present in CSV",
-                    "Verify player names match exactly between data and AI recommendations",
-                    "Ensure DataFrame has been properly validated",
-                    "Check column names for extra spaces or different capitalization"
-                ]
-            elif isinstance(exception, ValueError):
-                error_str = str(exception).lower()
-                if "salary" in error_str:
-                    suggestions = [
-                        "Check salary cap constraints - may be too restrictive",
-                        "Verify required players fit within salary cap",
-                        "Try relaxing minimum salary requirement"
-                    ]
-                elif "ownership" in error_str:
-                    suggestions = [
-                        "Verify ownership projections are between 0-100",
-                        "Check for missing ownership data"
-                    ]
-                else:
-                    suggestions = ["Check data types and value ranges"]
-            elif isinstance(exception, IndexError):
-                suggestions = [
-                    "DataFrame may be empty - check data loading",
-                    "Check that player pool has sufficient size (need at least 6 players)"
-                ]
-            elif "pulp" in exception_type.lower():
-                suggestions = [
-                    "Optimization constraints may be infeasible",
-                    "Try relaxing AI enforcement level (use Advisory or Moderate)",
-                    "Reduce number of hard constraints (locked players, must-play)"
-                ]
-            elif "timeout" in str(exception).lower():
-                suggestions = [
-                    "Reduce number of lineups or increase timeout setting",
-                    "Try fewer hard constraints to speed up optimization"
-                ]
-            elif "api" in str(exception).lower():
-                suggestions = [
-                    "Check API key is valid (should start with 'sk-ant-')",
-                    "Verify internet connection is working",
-                    "Try using statistical fallback mode (disable API)"
-                ]
-            else:
-                suggestions = ["Check logs for more details"]
-
-            self._cache_suggestions(cache_key, suggestions)
-            return suggestions
-
-        except Exception:
-            return ["Check logs for more details"]
-
-    def _cache_suggestions(self, cache_key: str, suggestions: List[str]) -> None:
-        """Cache suggestions with size management"""
-        try:
-            if len(self.error_suggestions_cache) > 100:
-                old_keys = list(self.error_suggestions_cache.keys())[:50]
-                for key in old_keys:
-                    del self.error_suggestions_cache[key]
-
-            self.error_suggestions_cache[cache_key] = suggestions
-        except Exception:
-            pass
-
-    def _cleanup_if_needed(self) -> None:
-        """Automatic cleanup check"""
-        try:
-            now = datetime.now()
-            if (now - self.last_cleanup).seconds > 300:
-                self._cleanup()
-                self.last_cleanup = now
-        except Exception:
-            pass
-
-    def _cleanup(self) -> None:
-        """Memory cleanup"""
-        try:
-            cutoff = datetime.now() - timedelta(hours=1)
-
-            for key in list(self.performance_metrics.keys()):
-                self.performance_metrics[key] = [
-                    m for m in self.performance_metrics[key]
-                    if m.get('timestamp', datetime.now()) > cutoff
-                ]
-                if not self.performance_metrics[key]:
-                    del self.performance_metrics[key]
-
-            if len(self.error_patterns) > 50:
-                sorted_patterns = sorted(
-                    self.error_patterns.items(),
-                    key=lambda x: x[1],
-                    reverse=True
-                )
-                self.error_patterns = defaultdict(int, dict(sorted_patterns[:30]))
-
-        except Exception:
-            pass
-
-    def get_error_summary(self) -> Dict[str, Any]:
-        """Get summary of errors"""
-        with self._lock:
-            try:
-                return {
-                    'total_errors': len(self.error_logs),
-                    'error_categories': dict(self.failure_categories),
-                    'top_patterns': sorted(
-                        self.error_patterns.items(),
-                        key=lambda x: x[1],
-                        reverse=True
-                    )[:5],
-                    'recent_errors': list(self.error_logs)[-5:]
-                }
-            except Exception:
-                return {
-                    'total_errors': 0,
-                    'error_categories': {},
-                    'top_patterns': [],
-                    'recent_errors': []
-                }
-
-# Alias for backward compatibility
-GlobalLogger = StructuredLogger
-
-"""
-PART 2 OF 13: GLOBAL SINGLETONS, UTILITIES & INFRASTRUCTURE
-
-CRITICAL INFRASTRUCTURE:
-- PerformanceMonitor for timing operations
-- OptimizerConfig for field configurations
-- Global singleton getters
-- Utility functions for threading, data processing
-- Helper classes for optimization
-"""
-
-# ============================================================================
-# PERFORMANCE MONITOR
-# ============================================================================
-
-class PerformanceMonitor:
-    """
-    Thread-safe performance monitoring with operation tracking
-
-    Tracks execution times for different operations and provides
-    statistical summaries for performance analysis.
-    """
-
-    def __init__(self):
-        self._timers: Dict[str, float] = {}
-        self._operation_times: DefaultDict[str, List[float]] = defaultdict(list)
-        self._lock = threading.RLock()
-
-    def start_timer(self, operation: str) -> None:
-        """Start timing an operation"""
-        with self._lock:
-            self._timers[operation] = time.perf_counter()
-
-    def stop_timer(self, operation: str) -> float:
-        """Stop timing and return elapsed time"""
-        with self._lock:
-            if operation not in self._timers:
-                return 0.0
-
-            elapsed = time.perf_counter() - self._timers[operation]
-            del self._timers[operation]
-            return elapsed
-
-    def record_phase_time(self, phase: str, elapsed: float) -> None:
-        """Record a phase execution time"""
-        with self._lock:
-            self._operation_times[phase].append(elapsed)
-
-    def get_operation_stats(self, operation: str) -> Optional[Dict[str, float]]:
-        """Get statistics for an operation"""
-        with self._lock:
-            times = self._operation_times.get(operation, [])
-            if not times:
-                return None
-
-            return {
-                'count': len(times),
-                'total': sum(times),
-                'mean': np.mean(times),
-                'median': np.median(times),
-                'min': min(times),
-                'max': max(times)
-            }
-
-    def get_summary(self) -> Dict[str, Any]:
-        """Get complete performance summary"""
-        with self._lock:
-            return {
-                operation: self.get_operation_stats(operation)
-                for operation in self._operation_times.keys()
-            }
-
-    def reset(self) -> None:
-        """Reset all tracking"""
-        with self._lock:
-            self._timers.clear()
-            self._operation_times.clear()
-
-# ============================================================================
-# GENETIC ALGORITHM CONFIG
-# ============================================================================
 
 @dataclass
-class GeneticConfig:
-    """Configuration for genetic algorithm"""
-    population_size: int = 100
-    generations: int = 50
-    mutation_rate: float = 0.15
-    elite_size: int = 10
-    tournament_size: int = 5
-    crossover_rate: float = 0.8
+class SimulationResults:
+    """
+    Monte Carlo simulation results for a lineup
+
+    Contains statistical measures from Monte Carlo simulation including
+    expected value, variance, ceiling, floor, and risk metrics.
+    """
+    mean_points: float
+    median_points: float
+    std_points: float
+    min_points: float
+    max_points: float
+    ceiling_90th: float
+    floor_10th: float
+    sharpe_ratio: float
+    win_probability: float
+    percentiles: Dict[int, float] = field(default_factory=dict)
+
+    def get_summary(self) -> str:
+        """Get human-readable summary"""
+        return f"""Simulation Results:
+  • Mean: {self.mean_points:.2f} pts
+  • Median: {self.median_points:.2f} pts
+  • Ceiling (90th): {self.ceiling_90th:.2f} pts
+  • Floor (10th): {self.floor_10th:.2f} pts
+  • Std Dev: {self.std_points:.2f}
+  • Sharpe Ratio: {self.sharpe_ratio:.3f}
+  • Win Probability: {self.win_probability:.1%}"""
+
+    def is_high_ceiling(self, threshold: float = 200.0) -> bool:
+        """Check if lineup has high ceiling potential"""
+        return self.ceiling_90th >= threshold
+
+    def is_safe_floor(self, threshold: float = 100.0) -> bool:
+        """Check if lineup has safe floor"""
+        return self.floor_10th >= threshold
+
 
 # ============================================================================
-# OPTIMIZER CONFIGURATION
+# AI RECOMMENDATION
 # ============================================================================
 
-class OptimizerConfig:
+
+@dataclass
+class AIRecommendation:
     """
-    Central configuration for optimizer behavior
+    AI strategist recommendation output
 
-    Provides field-specific configurations and parameter optimization
+    UPDATE 2: Enhanced with correlation_matrix, ownership_leverage, ceiling_plays
     """
+    captain_targets: List[str] = field(default_factory=list)
+    must_play: List[str] = field(default_factory=list)
+    never_play: List[str] = field(default_factory=list)
+    stacks: List[Dict[str, Any]] = field(default_factory=list)
+    key_insights: List[str] = field(default_factory=list)
+    contrarian_angles: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    narrative: str = ""
+    source_ai: Optional[AIStrategistType] = None
 
-    @staticmethod
-    def get_field_config(field_size: str) -> Dict[str, Any]:
-        """
-        Get configuration for a specific field size
+    # UPDATE 2: New fields
+    correlation_matrix: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    ownership_leverage: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    ceiling_plays: List[str] = field(default_factory=list)
 
-        Args:
-            field_size: Field size key (e.g., 'large_field', 'milly_maker')
+    def get_summary(self) -> str:
+        """Get human-readable summary"""
+        source = self.source_ai.value if self.source_ai else "synthesized"
+        return f"""AI Recommendation ({source}):
+  • Confidence: {self.confidence:.2%}
+  • Captain Targets: {len(self.captain_targets)}
+  • Must Play: {len(self.must_play)}
+  • Avoid: {len(self.never_play)}
+  • Stacks: {len(self.stacks)}
+  • Insights: {len(self.key_insights)}
+  • Narrative: {self.narrative[:100]}..."""
 
-        Returns:
-            Configuration dictionary
-        """
-        return FIELD_SIZE_CONFIGS.get(field_size, FIELD_SIZE_CONFIGS['large_field']).copy()
+    def has_high_confidence(self, threshold: float = 0.7) -> bool:
+        """Check if recommendation has high confidence"""
+        return self.confidence >= threshold
 
-    @staticmethod
-    def get_genetic_config(
-        num_players: int,
-        num_lineups: int,
-        time_budget_seconds: float = 60.0
-    ) -> GeneticConfig:
-        """
-        Calculate optimal genetic algorithm parameters
+    def get_all_recommended_players(self) -> Set[str]:
+        """Get all positively recommended players"""
+        players = set(self.captain_targets + self.must_play + self.ceiling_plays)
+        for stack in self.stacks:
+            for key in ['player1', 'player2', 'player3']:
+                if key in stack and stack[key]:
+                    players.add(stack[key])
+        return players
 
-        Auto-tunes GA parameters based on problem size and time constraints
-
-        Args:
-            num_players: Number of players in pool
-            num_lineups: Number of lineups to generate
-            time_budget_seconds: Maximum time allowed
-
-        Returns:
-            Optimized GeneticConfig
-        """
-        # Scale population with problem size
-        base_population = 100
-        population_size = min(200, max(50, base_population + (num_players // 5)))
-
-        # Scale generations based on time budget
-        target_time_per_generation = 0.5  # seconds
-        max_generations = int(time_budget_seconds / target_time_per_generation)
-        generations = min(100, max(20, max_generations))
-
-        # Adjust mutation rate based on diversity needs
-        if num_lineups <= 10:
-            mutation_rate = 0.10
-        elif num_lineups <= 50:
-            mutation_rate = 0.15
-        else:
-            mutation_rate = 0.20
-
-        return GeneticConfig(
-            population_size=population_size,
-            generations=generations,
-            mutation_rate=mutation_rate,
-            elite_size=max(5, population_size // 10),
-            tournament_size=min(7, population_size // 20),
-            crossover_rate=0.8
-        )
-
-# Helper function for Part 8 compatibility
-def calculate_optimal_ga_params(
-    num_players: int,
-    num_lineups: int,
-    time_budget_seconds: float = 60.0
-) -> GeneticConfig:
-    """Wrapper for OptimizerConfig.get_genetic_config"""
-    return OptimizerConfig.get_genetic_config(num_players, num_lineups, time_budget_seconds)
 
 # ============================================================================
-# THREADING UTILITIES
+# LINEUP CONSTRAINTS
 # ============================================================================
 
-def get_optimal_thread_count(
-    data_size: int,
-    workload_type: str = 'light'
-) -> int:
+
+@dataclass
+class LineupConstraints:
     """
-    Calculate optimal thread count based on data size and workload
+    Lineup construction constraints
 
-    Args:
-        data_size: Size of data to process
-        workload_type: 'light', 'medium', or 'heavy'
-
-    Returns:
-        Optimal number of threads
+    Defines all rules and restrictions for lineup generation.
     """
-    try:
-        cpu_count = os.cpu_count() or 4
+    min_salary: int = 47500
+    max_salary: int = 50000
+    min_projection: float = 0.0
+    max_ownership: float = 100.0
+    min_ownership: float = 0.0
+    required_positions: Dict[str, int] = field(default_factory=dict)
+    banned_players: Set[str] = field(default_factory=set)
+    locked_players: Set[str] = field(default_factory=set)
+    required_stacks: List[Dict[str, Any]] = field(default_factory=list)
+    max_exposure: Dict[str, float] = field(default_factory=dict)
+    team_limits: Dict[str, int] = field(default_factory=dict)
 
-        # Minimum data per thread to avoid overhead
-        min_data_per_thread = {
-            'light': 100,
-            'medium': 50,
-            'heavy': 20
-        }.get(workload_type, 50)
+    def get_summary(self) -> str:
+        """Get human-readable summary"""
+        return f"""Lineup Constraints:
+  • Salary Range: ${self.min_salary:,} - ${self.max_salary:,}
+  • Locked Players: {len(self.locked_players)}
+  • Banned Players: {len(self.banned_players)}
+  • Required Stacks: {len(self.required_stacks)}
+  • Ownership Range: {self.min_ownership:.1f}% - {self.max_ownership:.1f}%"""
 
-        # Calculate based on data size
-        max_threads_by_data = max(1, data_size // min_data_per_thread)
+    def add_locked_player(self, player: str) -> None:
+        """Add a player to locked set"""
+        self.locked_players.add(player)
+        # Remove from banned if present
+        self.banned_players.discard(player)
 
-        # Cap at system resources
-        max_threads = min(
-            max_threads_by_data,
-            cpu_count,
-            PerformanceLimits.MAX_PARALLEL_THREADS
-        )
+    def add_banned_player(self, player: str) -> None:
+        """Add a player to banned set"""
+        self.banned_players.add(player)
+        # Remove from locked if present
+        self.locked_players.discard(player)
 
-        # Only parallelize if worth it
-        if data_size < PerformanceLimits.MIN_PARALLELIZATION_THRESHOLD:
-            return 1
+    def is_player_allowed(self, player: str) -> bool:
+        """Check if player is allowed in lineups"""
+        return player not in self.banned_players
 
-        return max_threads
+    def is_player_required(self, player: str) -> bool:
+        """Check if player is required in lineups"""
+        return player in self.locked_players
 
-    except Exception:
-        return 1
 
 # ============================================================================
-# CSV LOADING UTILITIES
+# VALIDATION RESULT
 # ============================================================================
 
-def safe_load_csv(
-    file_path_or_buffer: Union[str, Path, io.BytesIO],
-    logger: StructuredLogger
-) -> Tuple[Optional[pd.DataFrame], str]:
-    """
-    Safely load CSV with encoding detection and error handling
-
-    Args:
-        file_path_or_buffer: File path or buffer
-        logger: Logger instance
-
-    Returns:
-        Tuple of (DataFrame or None, encoding_info or error_message)
-    """
-    encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
-
-    for encoding in encodings:
-        try:
-            if isinstance(file_path_or_buffer, io.BytesIO):
-                file_path_or_buffer.seek(0)
-                df = pd.read_csv(file_path_or_buffer, encoding=encoding)
-            else:
-                df = pd.read_csv(file_path_or_buffer, encoding=encoding)
-
-            if df.empty:
-                continue
-
-            return df, encoding
-
-        except UnicodeDecodeError:
-            continue
-        except Exception as e:
-            logger.log_exception(e, f"CSV load error with {encoding}")
-            continue
-
-    return None, "All encodings failed"
-
-# ============================================================================
-# DATA COERCION UTILITIES
-# ============================================================================
-
-def safe_numeric_coercion(
-    value: Any,
-    default: float = 0.0,
-    field_name: str = "unknown"
-) -> float:
-    """
-    ENHANCED: Safely coerce value to numeric with detailed error logging
-
-    Args:
-        value: Value to coerce
-        default: Default if coercion fails
-        field_name: Field name for logging
-
-    Returns:
-        Numeric value or default
-    """
-    try:
-        if pd.isna(value):
-            return default
-
-        if isinstance(value, (int, float)):
-            if np.isnan(value) or np.isinf(value):
-                return default
-            return float(value)
-
-        if isinstance(value, str):
-            # Remove common formatting
-            cleaned = value.strip().replace('$', '').replace(',', '').replace('%', '')
-            if cleaned:
-                return float(cleaned)
-
-        return default
-
-    except (ValueError, TypeError) as e:
-        logger = get_logger()
-        logger.log(
-            f"Failed to coerce {field_name}='{value}' to numeric: {e}",
-            "WARNING"
-        )
-        return default
-
-def safe_int_coercion(
-    value: Any,
-    default: int = 0,
-    field_name: str = "unknown"
-) -> int:
-    """
-    Safely coerce value to integer
-
-    Args:
-        value: Value to coerce
-        default: Default if coercion fails
-        field_name: Field name for logging
-
-    Returns:
-        Integer value or default
-    """
-    numeric = safe_numeric_coercion(value, float(default), field_name)
-    return int(numeric)
-
-# ============================================================================
-# TIMEOUT CONTEXT MANAGER
-# ============================================================================
-
-class TimeoutContext:
-    """
-    Context manager for operation timeouts using threading
-
-    Usage:
-        with TimeoutContext(30, "optimization"):
-            # Your code here
-            pass
-    """
-
-    def __init__(self, seconds: int, operation_name: str = "operation"):
-        self.seconds = seconds
-        self.operation_name = operation_name
-        self.timer = None
-        self.timed_out = False
-
-    def _timeout_handler(self):
-        """Handler called when timeout occurs"""
-        self.timed_out = True
-        logger = get_logger()
-        logger.log(f"{self.operation_name} timed out after {self.seconds}s", "WARNING")
-
-    def __enter__(self):
-        """Start timeout timer"""
-        if self.seconds > 0:
-            self.timer = threading.Timer(self.seconds, self._timeout_handler)
-            self.timer.daemon = True
-            self.timer.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Stop timeout timer"""
-        if self.timer:
-            self.timer.cancel()
-
-        if self.timed_out:
-            raise TimeoutError(f"{self.operation_name} exceeded {self.seconds}s timeout")
-
-        return False
-
-# ============================================================================
-# MEMORY MANAGEMENT UTILITIES
-# ============================================================================
-
-def estimate_dataframe_memory(df: pd.DataFrame) -> float:
-    """
-    Estimate DataFrame memory usage in MB
-
-    Args:
-        df: DataFrame to estimate
-
-    Returns:
-        Memory usage in MB
-    """
-    try:
-        memory_bytes = df.memory_usage(deep=True).sum()
-        memory_mb = memory_bytes / (1024 * 1024)
-        return memory_mb
-    except Exception:
-        return 0.0
-
-def cleanup_memory(force: bool = False) -> None:
-    """
-    Trigger garbage collection
-
-    Args:
-        force: If True, force immediate collection
-    """
-    try:
-        if force:
-            gc.collect()
-        else:
-            # Suggest collection without forcing
-            gc.collect(generation=0)
-    except Exception:
-        pass
-
-# ============================================================================
-# HASH UTILITIES
-# ============================================================================
-
-def hash_lineup(captain: str, flex: List[str]) -> str:
-    """
-    Create consistent hash for lineup
-
-    Args:
-        captain: Captain player name
-        flex: List of flex player names
-
-    Returns:
-        MD5 hash string
-    """
-    try:
-        # Sort flex for consistency
-        sorted_flex = sorted(flex)
-        lineup_str = f"{captain}|{'|'.join(sorted_flex)}"
-        return hashlib.md5(lineup_str.encode()).hexdigest()
-    except Exception:
-        return ""
-
-def hash_players(players: List[str]) -> str:
-    """
-    Create consistent hash for player list
-
-    Args:
-        players: List of player names
-
-    Returns:
-        MD5 hash string
-    """
-    try:
-        sorted_players = sorted(players)
-        players_str = '|'.join(sorted_players)
-        return hashlib.md5(players_str.encode()).hexdigest()
-    except Exception:
-        return ""
-
-# ============================================================================
-# VALIDATION RESULT CLASS
-# ============================================================================
 
 @dataclass
 class ValidationResult:
-    """Result of validation operation"""
+    """
+    Lineup validation result
+
+    Contains validation status, errors, warnings, and lineup statistics.
+    """
     is_valid: bool
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    total_salary: int = 0
+    total_projection: float = 0.0
+    team_distribution: Dict[str, int] = field(default_factory=dict)
+
+    def get_summary(self) -> str:
+        """Get human-readable summary"""
+        status = "✓ VALID" if self.is_valid else "✗ INVALID"
+        return f"""Validation Result: {status}
+  • Salary: ${self.total_salary:,}
+  • Projection: {self.total_projection:.2f} pts
+  • Errors: {len(self.errors)}
+  • Warnings: {len(self.warnings)}
+  • Teams: {len(self.team_distribution)}"""
 
     def add_error(self, error: str) -> None:
         """Add an error"""
@@ -1415,552 +398,3861 @@ class ValidationResult:
         """Add a warning"""
         self.warnings.append(warning)
 
-    def merge(self, other: 'ValidationResult') -> None:
-        """Merge another validation result"""
-        self.errors.extend(other.errors)
-        self.warnings.extend(other.warnings)
-        if not other.is_valid:
-            self.is_valid = False
+    def get_all_issues(self) -> List[str]:
+        """Get all errors and warnings"""
+        return self.errors + self.warnings
+
 
 # ============================================================================
-# GLOBAL SINGLETON INSTANCES
+# GENETIC LINEUP
 # ============================================================================
 
-_global_logger: Optional[StructuredLogger] = None
-_global_perf_monitor: Optional[PerformanceMonitor] = None
-_singleton_lock = threading.RLock()
-
-def get_logger() -> StructuredLogger:
-    """
-    Get global logger instance (thread-safe singleton)
-
-    Returns:
-        StructuredLogger instance
-    """
-    global _global_logger
-
-    if _global_logger is None:
-        with _singleton_lock:
-            if _global_logger is None:
-                _global_logger = StructuredLogger()
-
-    return _global_logger
-
-def get_performance_monitor() -> PerformanceMonitor:
-    """
-    Get global performance monitor instance (thread-safe singleton)
-
-    Returns:
-        PerformanceMonitor instance
-    """
-    global _global_perf_monitor
-
-    if _global_perf_monitor is None:
-        with _singleton_lock:
-            if _global_perf_monitor is None:
-                _global_perf_monitor = PerformanceMonitor()
-
-    return _global_perf_monitor
-
-# ============================================================================
-# POSITION NORMALIZATION
-# ============================================================================
-
-def normalize_position(position: str) -> str:
-    """
-    Normalize position string to standard format
-
-    Args:
-        position: Raw position string
-
-    Returns:
-        Normalized position (QB, RB, WR, TE, K, DST, or FLEX)
-    """
-    try:
-        pos_upper = str(position).strip().upper()
-
-        # Check each position's aliases
-        for standard_pos, aliases in POSITION_ALIASES.items():
-            if pos_upper in [alias.upper() for alias in aliases]:
-                return standard_pos
-
-        # Default to FLEX if unknown
-        return 'FLEX'
-
-    except Exception:
-        return 'FLEX'
-
-# ============================================================================
-# TEAM NORMALIZATION
-# ============================================================================
-
-def normalize_team_name(team: str) -> str:
-    """
-    Normalize team name to consistent format
-
-    Args:
-        team: Raw team string
-
-    Returns:
-        Normalized team name (uppercase, trimmed)
-    """
-    try:
-        return str(team).strip().upper()
-    except Exception:
-        return "UNKNOWN"
-
-"""
-PART 3 OF 13: VALIDATION, CONSTRAINTS & UTILITY FUNCTIONS
-
-ENHANCEMENTS INCLUDED:
-- ENHANCEMENT #2: Vectorized batch validation
-- ENHANCEMENT #4: DataFrame memory optimization
-- ENHANCEMENT #6: DiversityTracker with set operations
-- NEW: ConstraintFeasibilityChecker for pre-flight validation
-- Comprehensive lineup validation
-- Constraint management
-"""
-
-# ============================================================================
-# ENHANCEMENT #6: DIVERSITY TRACKER
-# ============================================================================
-
-class DiversityTracker:
-    """
-    ENHANCEMENT #6: Efficient diversity tracking using set operations
-
-    Tracks generated lineups and checks similarity using optimized set operations
-    2-3x faster than previous list-based approach
-    """
-
-    def __init__(self, similarity_threshold: float = 0.5):
-        """
-        Args:
-            similarity_threshold: Minimum Jaccard similarity to consider duplicate (0-1)
-        """
-        self.similarity_threshold = similarity_threshold
-        self.lineup_sets: List[Set[str]] = []
-        self._lock = threading.RLock()
-
-    def add_lineup(self, captain: str, flex: List[str]) -> None:
-        """Add a lineup to tracking"""
-        with self._lock:
-            all_players = {captain} | set(flex)
-            self.lineup_sets.append(all_players)
-
-    def is_diverse(self, captain: str, flex: List[str]) -> bool:
-        """
-        Check if lineup is sufficiently different from existing lineups
-
-        Uses Jaccard similarity with set operations for speed
-        """
-        with self._lock:
-            if not self.lineup_sets:
-                return True
-
-            new_lineup = {captain} | set(flex)
-
-            for existing_lineup in self.lineup_sets:
-                # Jaccard similarity = intersection / union
-                intersection = len(new_lineup & existing_lineup)
-                union = len(new_lineup | existing_lineup)
-                similarity = intersection / union if union > 0 else 0
-
-                if similarity >= self.similarity_threshold:
-                    return False
-
-            return True
-
-    def reset(self) -> None:
-        """Clear all tracked lineups"""
-        with self._lock:
-            self.lineup_sets.clear()
-
-    def count(self) -> int:
-        """Get number of tracked lineups"""
-        with self._lock:
-            return len(self.lineup_sets)
-
-# ============================================================================
-# ENHANCEMENT #2: BATCH LINEUP VALIDATOR
-# ============================================================================
-
-class BatchLineupValidator:
-    """
-    ENHANCEMENT #2: Vectorized batch validation for 2x speedup
-
-    Validates multiple lineups simultaneously using NumPy vectorization
-    """
-
-    def __init__(self, df: pd.DataFrame, constraints: 'LineupConstraints'):
-        """
-        Args:
-            df: Player DataFrame
-            constraints: Lineup constraints
-        """
-        self.df = df
-        self.constraints = constraints
-
-        # Pre-compute lookups for speed
-        self.salaries = df.set_index('Player')['Salary'].to_dict()
-        self.teams = df.set_index('Player')['Team'].to_dict()
-        self.valid_players = set(df['Player'].tolist())
-
-    def validate_batch(
-        self,
-        lineups: List[Dict[str, Any]]
-    ) -> Tuple[np.ndarray, List[str]]:
-        """
-        Validate multiple lineups at once
-
-        Args:
-            lineups: List of lineup dictionaries
-
-        Returns:
-            Tuple of (is_valid_array, error_messages)
-        """
-        n = len(lineups)
-        is_valid = np.ones(n, dtype=bool)
-        errors = [""] * n
-
-        # Extract all players for each lineup
-        all_lineups_players = []
-        for i, lineup in enumerate(lineups):
-            captain = lineup.get('Captain', '')
-            flex = lineup.get('FLEX', [])
-
-            if isinstance(flex, str):
-                flex = [p.strip() for p in flex.split(',') if p.strip()]
-
-            all_players = [captain] + flex
-            all_lineups_players.append(all_players)
-
-        # Vectorized validation
-        for i, all_players in enumerate(all_lineups_players):
-            try:
-                # Check player count
-                if len(all_players) != DraftKingsRules.ROSTER_SIZE:
-                    is_valid[i] = False
-                    errors[i] = f"Wrong roster size: {len(all_players)}"
-                    continue
-
-                # Check duplicates
-                if len(set(all_players)) != len(all_players):
-                    is_valid[i] = False
-                    errors[i] = "Duplicate players"
-                    continue
-
-                # Check all players exist
-                if not all(p in self.valid_players for p in all_players):
-                    is_valid[i] = False
-                    errors[i] = "Invalid player names"
-                    continue
-
-                # Salary validation
-                captain = all_players[0]
-                flex = all_players[1:]
-
-                captain_sal = self.salaries.get(captain, 0)
-                flex_sal = sum(self.salaries.get(p, 0) for p in flex)
-                total_sal = captain_sal * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_sal
-
-                if total_sal < self.constraints.min_salary or total_sal > self.constraints.max_salary:
-                    is_valid[i] = False
-                    errors[i] = f"Salary ${total_sal:,.0f} out of range"
-                    continue
-
-                # Team diversity
-                teams = [self.teams.get(p, 'UNK') for p in all_players]
-                team_counts = Counter(teams)
-
-                if len(team_counts) < DraftKingsRules.MIN_TEAMS_REQUIRED:
-                    is_valid[i] = False
-                    errors[i] = "Insufficient team diversity"
-                    continue
-
-                if max(team_counts.values()) > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
-                    is_valid[i] = False
-                    errors[i] = "Too many from one team"
-                    continue
-
-            except Exception as e:
-                is_valid[i] = False
-                errors[i] = f"Validation error: {str(e)}"
-
-        return is_valid, errors
-
-# ============================================================================
-# ENHANCEMENT #4: DATAFRAME MEMORY OPTIMIZATION
-# ============================================================================
-
-def optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    ENHANCEMENT #4: Reduce DataFrame memory footprint by ~50%
-
-    Converts columns to optimal dtypes without data loss
-
-    Args:
-        df: DataFrame to optimize
-
-    Returns:
-        Memory-optimized DataFrame
-    """
-    try:
-        df = df.copy()
-
-        for col in df.columns:
-            col_type = df[col].dtype
-
-            # Optimize numeric columns
-            if col_type in ['int64', 'int32']:
-                c_min = df[col].min()
-                c_max = df[col].max()
-
-                if c_min >= 0:
-                    if c_max < 255:
-                        df[col] = df[col].astype(np.uint8)
-                    elif c_max < 65535:
-                        df[col] = df[col].astype(np.uint16)
-                    elif c_max < 4294967295:
-                        df[col] = df[col].astype(np.uint32)
-                else:
-                    if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
-                        df[col] = df[col].astype(np.int8)
-                    elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
-                        df[col] = df[col].astype(np.int16)
-                    elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
-                        df[col] = df[col].astype(np.int32)
-
-            elif col_type == 'float64':
-                df[col] = df[col].astype(np.float32)
-
-            # Convert object columns to category if low cardinality
-            elif col_type == 'object':
-                num_unique = df[col].nunique()
-                num_total = len(df[col])
-
-                if num_unique / num_total < 0.5:
-                    df[col] = df[col].astype('category')
-
-        return df
-
-    except Exception as e:
-        logger = get_logger()
-        logger.log_exception(e, "optimize_dataframe_memory")
-        return df
-
-# ============================================================================
-# LINEUP CONSTRAINTS
-# ============================================================================
 
 @dataclass
-class LineupConstraints:
-    """Constraints for lineup generation"""
-    min_salary: int = int(DraftKingsRules.SALARY_CAP * 0.95)
-    max_salary: int = DraftKingsRules.SALARY_CAP
-    locked_players: Set[str] = field(default_factory=set)
-    banned_players: Set[str] = field(default_factory=set)
-    must_include_teams: Set[str] = field(default_factory=set)
-    max_from_team: Dict[str, int] = field(default_factory=dict)
-    min_unique_players_vs_others: int = 0
-
-    def add_locked_player(self, player: str) -> None:
-        """Add a locked player"""
-        self.locked_players.add(player)
-
-    def add_banned_player(self, player: str) -> None:
-        """Add a banned player"""
-        self.banned_players.add(player)
-
-    def is_valid_salary(self, total_salary: float) -> bool:
-        """Check if salary is within bounds"""
-        return self.min_salary <= total_salary <= self.max_salary
-
-# ============================================================================
-# NEW: CONSTRAINT FEASIBILITY CHECKER
-# ============================================================================
-
-class ConstraintFeasibilityChecker:
+class GeneticLineup:
     """
-    NEW: Pre-flight constraint validation to prevent optimization failures
+    Genetic algorithm lineup representation
 
-    Checks if constraints are mathematically feasible before optimization
+    Represents a lineup individual in the genetic algorithm population.
+    """
+    captain: str
+    flex: List[str]
+    fitness: float = 0.0
+    validated: bool = False
+    sim_results: Optional[SimulationResults] = None
+
+    def get_all_players(self) -> List[str]:
+        """Get all players in lineup"""
+        return [self.captain] + self.flex
+
+    def get_player_count(self) -> int:
+        """Get number of players"""
+        return len(self.get_all_players())
+
+    def has_player(self, player: str) -> bool:
+        """Check if lineup contains player"""
+        return player in self.get_all_players()
+
+    def get_similarity(self, other: 'GeneticLineup') -> float:
+        """Calculate similarity to another lineup (0-1)"""
+        self_players = set(self.get_all_players())
+        other_players = set(other.get_all_players())
+        intersection = len(self_players & other_players)
+        union = len(self_players | other_players)
+        return intersection / union if union > 0 else 0.0
+
+    def __hash__(self):
+        """Make lineup hashable"""
+        return hash((self.captain, tuple(sorted(self.flex))))
+
+    def __eq__(self, other):
+        """Check lineup equality"""
+        if not isinstance(other, GeneticLineup):
+            return False
+        return (self.captain == other.captain and
+                set(self.flex) == set(other.flex))
+
+
+# ============================================================================
+# GENETIC CONFIGURATION
+# ============================================================================
+
+
+@dataclass
+class GeneticConfig:
+    """
+    Genetic algorithm configuration parameters
+
+    Controls population size, mutation rates, and evolutionary parameters.
+    """
+    population_size: int = 100
+    generations: int = 50
+    elite_size: int = 10
+    mutation_rate: float = 0.15
+    crossover_rate: float = 0.8
+    tournament_size: int = 5
+
+    def validate(self) -> Tuple[bool, List[str]]:
+        """Validate configuration parameters"""
+        errors = []
+
+        if self.population_size < 10:
+            errors.append("Population size must be >= 10")
+
+        if self.generations < 1:
+            errors.append("Generations must be >= 1")
+
+        if self.elite_size >= self.population_size:
+            errors.append("Elite size must be < population size")
+
+        if not 0 <= self.mutation_rate <= 1:
+            errors.append("Mutation rate must be between 0 and 1")
+
+        if not 0 <= self.crossover_rate <= 1:
+            errors.append("Crossover rate must be between 0 and 1")
+
+        if self.tournament_size < 2:
+            errors.append("Tournament size must be >= 2")
+
+        return len(errors) == 0, errors
+
+    def get_summary(self) -> str:
+        """Get human-readable summary"""
+        return f"""Genetic Algorithm Configuration:
+  • Population Size: {self.population_size}
+  • Generations: {self.generations}
+  • Elite Size: {self.elite_size}
+  • Mutation Rate: {self.mutation_rate:.2%}
+  • Crossover Rate: {self.crossover_rate:.2%}
+  • Tournament Size: {self.tournament_size}"""
+
+
+# ============================================================================
+# CONSTANT CLASSES
+# ============================================================================
+
+
+class GeneticAlgorithmDefaults:
+    """Default values for genetic algorithm"""
+    POPULATION_SIZE = 100
+    GENERATIONS = 50
+    ELITE_SIZE = 10
+    MUTATION_RATE = 0.15
+    CROSSOVER_RATE = 0.8
+    TOURNAMENT_SIZE = 5
+    MAX_REPAIR_ATTEMPTS = 10
+    MAX_RANDOM_ATTEMPTS = 20
+
+
+class APIDefaults:
+    """Default values for API configuration"""
+    MAX_TOKENS = 2000
+    TEMPERATURE = 0.7
+    RATE_LIMIT_PER_MINUTE = 50
+    DEFAULT_TIMEOUT = 30
+    RETRY_DELAYS = [1, 2, 4, 8]
+
+
+class PerformanceLimits:
+    """Performance optimization limits"""
+    MEMORY_BATCH_SIZE = 20
+    MAX_THREADS_LIGHT = 4
+    MAX_THREADS_MEDIUM = 8
+    MAX_THREADS_HEAVY = 12
+
+
+# ============================================================================
+# OPTIMIZER CONFIGURATION
+# ============================================================================
+
+
+class OptimizerConfig:
+    """
+    Optimizer configuration helper with auto-tuning
+
+    Provides intelligent defaults based on problem size and constraints.
     """
 
     @staticmethod
-    def check(
-        df: pd.DataFrame,
-        constraints: LineupConstraints
-    ) -> Tuple[bool, str, List[str]]:
+    def get_genetic_config(
+        num_players: int,
+        num_lineups: int,
+        time_budget_seconds: float = 60.0
+    ) -> GeneticConfig:
         """
-        Check if constraints are feasible
+        Auto-tune genetic algorithm configuration
+
+        Args:
+            num_players: Number of players in pool
+            num_lineups: Number of lineups to generate
+            time_budget_seconds: Time budget for optimization
+
+        Returns:
+            Optimized GeneticConfig
+        """
+        # Scale population based on player pool size
+        if num_players < 20:
+            pop_size = 50
+            generations = 30
+        elif num_players < 40:
+            pop_size = 100
+            generations = 50
+        else:
+            pop_size = 150
+            generations = 75
+
+        # Scale for large lineup requests
+        if num_lineups > 50:
+            pop_size = int(pop_size * 1.5)
+
+        # Adjust for time constraints
+        if time_budget_seconds < 30:
+            generations = int(generations * 0.5)
+        elif time_budget_seconds > 120:
+            generations = int(generations * 1.5)
+
+        return GeneticConfig(
+            population_size=pop_size,
+            generations=generations,
+            elite_size=max(5, pop_size // 10),
+            mutation_rate=0.15,
+            crossover_rate=0.8,
+            tournament_size=5
+        )
+
+    @staticmethod
+    def get_field_config(field_size: str) -> Dict[str, Any]:
+        """
+        Get field-specific configuration
+
+        Args:
+            field_size: Contest size identifier
+
+        Returns:
+            Configuration dictionary for field size
+        """
+        configs = {
+            'small_field': {
+                'ownership_threshold': 20,
+                'leverage_weight': 0.3,
+                'correlation_weight': 0.4,
+                'name': 'small_field',
+                'min_unique_players': 4
+            },
+            'medium_field': {
+                'ownership_threshold': 15,
+                'leverage_weight': 0.5,
+                'correlation_weight': 0.35,
+                'name': 'medium_field',
+                'min_unique_players': 3
+            },
+            'large_field': {
+                'ownership_threshold': 10,
+                'leverage_weight': 0.7,
+                'correlation_weight': 0.3,
+                'name': 'large_field',
+                'min_unique_players': 2
+            },
+            'milly_maker': {
+                'ownership_threshold': 8,
+                'leverage_weight': 0.85,
+                'correlation_weight': 0.25,
+                'name': 'milly_maker',
+                'min_unique_players': 1
+            }
+        }
+
+        return configs.get(field_size, configs['large_field'])
+
+
+# ============================================================================
+# CONTEST TYPE MAPPING
+# ============================================================================
+
+CONTEST_TYPE_MAPPING = {
+    'Single Entry': 'small_field',
+    'Small Field (3-20)': 'small_field',
+    'Medium Field (21-150)': 'medium_field',
+    'Large GPP (150-1000)': 'large_field',
+    'Large GPP (1000+)': 'large_field',
+    'Milly Maker': 'milly_maker',
+    'Tournament': 'large_field',
+    'GPP': 'large_field',
+    'Cash Game': 'small_field',
+    'Double Up': 'small_field',
+    'H2H': 'small_field'
+}
+
+
+# ============================================================================
+# EXCEPTIONS
+# ============================================================================
+
+
+class OptimizerError(Exception):
+    """Base exception for optimizer errors"""
+    pass
+
+
+class DataProcessingError(OptimizerError):
+    """Exception raised for data processing errors"""
+    pass
+
+
+class ValidationError(OptimizerError):
+    """Exception raised for validation errors"""
+    pass
+
+
+class APIError(OptimizerError):
+    """Exception raised for API errors"""
+    pass
+
+
+class ConstraintError(OptimizerError):
+    """Exception raised for constraint violations"""
+    pass
+
+
+class ConfigurationError(OptimizerError):
+    """Exception raised for configuration errors"""
+    pass
+
+"""
+PART 3 OF 13: LOGGING, PERFORMANCE MONITORING, CACHING SYSTEMS
+
+Complete infrastructure for logging, performance tracking, and caching.
+Thread-safe implementations with comprehensive monitoring capabilities.
+"""
+
+# ============================================================================
+# LOGGING SYSTEM
+# ============================================================================
+
+
+class OptimizerLogger:
+    """
+    Thread-safe logger with multiple output levels and history tracking
+
+    Provides structured logging with timestamps, levels, and exception handling.
+    Maintains rolling history for debugging and analysis.
+    """
+
+    def __init__(self, log_level: str = "INFO", enable_file_logging: bool = False):
+        """
+        Initialize logger
+
+        Args:
+            log_level: Minimum logging level (DEBUG, INFO, WARNING, ERROR)
+            enable_file_logging: Enable logging to file
+        """
+        self.log_level = log_level.upper()
+        self.enable_file_logging = enable_file_logging
+
+        # Logging levels
+        self.levels = {
+            'DEBUG': 0,
+            'INFO': 1,
+            'WARNING': 2,
+            'ERROR': 3,
+            'CRITICAL': 4
+        }
+
+        # Thread safety
+        self._lock = threading.RLock()
+
+        # Log history (rolling buffer)
+        self.log_history: Deque[str] = deque(maxlen=1000)
+
+        # Statistics
+        self.log_counts: DefaultDict[str, int] = defaultdict(int)
+
+        # File logging
+        self.log_file: Optional[Path] = None
+        if enable_file_logging:
+            self._setup_file_logging()
+
+    def _setup_file_logging(self) -> None:
+        """Setup file logging"""
+        try:
+            log_dir = Path("logs")
+            log_dir.mkdir(exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.log_file = log_dir / f"optimizer_{timestamp}.log"
+        except Exception as e:
+            print(f"Failed to setup file logging: {e}")
+            self.enable_file_logging = False
+
+    def log(self, message: str, level: str = "INFO") -> None:
+        """
+        Log a message
+
+        Args:
+            message: Message to log
+            level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        """
+        level = level.upper()
+
+        # Check if message should be logged based on level
+        if self.levels.get(level, 1) >= self.levels.get(self.log_level, 1):
+            with self._lock:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                formatted = f"[{timestamp}] [{level:8}] {message}"
+
+                # Console output
+                print(formatted)
+
+                # History tracking
+                self.log_history.append(formatted)
+
+                # Statistics
+                self.log_counts[level] += 1
+
+                # File logging
+                if self.enable_file_logging and self.log_file:
+                    try:
+                        with open(self.log_file, 'a', encoding='utf-8') as f:
+                            f.write(formatted + '\n')
+                    except Exception:
+                        pass
+
+    def log_exception(
+        self,
+        exception: Exception,
+        context: str = "",
+        critical: bool = False
+    ) -> None:
+        """
+        Log an exception with context
+
+        Args:
+            exception: Exception to log
+            context: Context description
+            critical: Whether this is a critical error
+        """
+        level = "CRITICAL" if critical else "ERROR"
+
+        exception_type = type(exception).__name__
+        exception_msg = str(exception)
+
+        if context:
+            msg = f"{context}: {exception_type}: {exception_msg}"
+        else:
+            msg = f"{exception_type}: {exception_msg}"
+
+        self.log(msg, level)
+
+        # Log traceback for critical errors
+        if critical:
+            import traceback
+            tb = traceback.format_exc()
+            for line in tb.split('\n'):
+                if line.strip():
+                    self.log(f"  {line}", "DEBUG")
+
+    def debug(self, message: str) -> None:
+        """Log debug message"""
+        self.log(message, "DEBUG")
+
+    def info(self, message: str) -> None:
+        """Log info message"""
+        self.log(message, "INFO")
+
+    def warning(self, message: str) -> None:
+        """Log warning message"""
+        self.log(message, "WARNING")
+
+    def error(self, message: str) -> None:
+        """Log error message"""
+        self.log(message, "ERROR")
+
+    def critical(self, message: str) -> None:
+        """Log critical message"""
+        self.log(message, "CRITICAL")
+
+    def get_history(self, last_n: int = 100) -> List[str]:
+        """
+        Get recent log history
+
+        Args:
+            last_n: Number of recent logs to retrieve
+
+        Returns:
+            List of log messages
+        """
+        with self._lock:
+            return list(self.log_history)[-last_n:]
+
+    def get_statistics(self) -> Dict[str, int]:
+        """
+        Get logging statistics
+
+        Returns:
+            Dictionary of log counts by level
+        """
+        with self._lock:
+            return dict(self.log_counts)
+
+    def clear_history(self) -> None:
+        """Clear log history"""
+        with self._lock:
+            self.log_history.clear()
+
+    def set_level(self, level: str) -> None:
+        """
+        Set minimum log level
+
+        Args:
+            level: New log level
+        """
+        level = level.upper()
+        if level in self.levels:
+            self.log_level = level
+            self.log(f"Log level set to {level}", "INFO")
+        else:
+            self.log(f"Invalid log level: {level}", "WARNING")
+
+
+# Singleton logger instance
+_logger_instance: Optional[OptimizerLogger] = None
+_logger_lock = threading.Lock()
+
+
+def get_logger() -> OptimizerLogger:
+    """
+    Get singleton logger instance
+
+    Returns:
+        Global OptimizerLogger instance
+    """
+    global _logger_instance
+    if _logger_instance is None:
+        with _logger_lock:
+            if _logger_instance is None:
+                _logger_instance = OptimizerLogger()
+    return _logger_instance
+
+
+# ============================================================================
+# PERFORMANCE MONITORING
+# ============================================================================
+
+
+class PerformanceMonitor:
+    """
+    Monitor optimization performance with detailed timing and statistics
+
+    Tracks operation timings, phase durations, and provides analytics.
+    Thread-safe for concurrent operations.
+    """
+
+    def __init__(self):
+        """Initialize performance monitor"""
+        # Active timers
+        self.timers: Dict[str, float] = {}
+
+        # Completed operation times
+        self.operation_times: DefaultDict[str, List[float]] = defaultdict(list)
+
+        # Phase completion times
+        self.phase_times: Dict[str, float] = {}
+
+        # Operation counts
+        self.operation_counts: DefaultDict[str, int] = defaultdict(int)
+
+        # Thread safety
+        self._lock = threading.RLock()
+
+        # Overall start time
+        self.start_time = time.time()
+
+    def start_timer(self, operation: str) -> None:
+        """
+        Start timing an operation
+
+        Args:
+            operation: Operation identifier
+        """
+        with self._lock:
+            self.timers[operation] = time.time()
+
+    def stop_timer(self, operation: str) -> float:
+        """
+        Stop timer and return elapsed time
+
+        Args:
+            operation: Operation identifier
+
+        Returns:
+            Elapsed time in seconds
+        """
+        with self._lock:
+            if operation in self.timers:
+                elapsed = time.time() - self.timers[operation]
+                self.operation_times[operation].append(elapsed)
+                self.operation_counts[operation] += 1
+                del self.timers[operation]
+                return elapsed
+            return 0.0
+
+    def record_phase_time(self, phase: str, elapsed: float) -> None:
+        """
+        Record phase completion time
+
+        Args:
+            phase: Phase identifier
+            elapsed: Elapsed time in seconds
+        """
+        with self._lock:
+            self.phase_times[phase] = elapsed
+
+    def get_operation_stats(self, operation: str) -> Optional[Dict[str, float]]:
+        """
+        Get statistics for an operation
+
+        Args:
+            operation: Operation identifier
+
+        Returns:
+            Statistics dictionary or None if no data
+        """
+        with self._lock:
+            times = self.operation_times.get(operation)
+            if not times:
+                return None
+
+            return {
+                'count': len(times),
+                'total': float(sum(times)),
+                'mean': float(np.mean(times)),
+                'median': float(np.median(times)),
+                'min': float(min(times)),
+                'max': float(max(times)),
+                'std': float(np.std(times)) if len(times) > 1 else 0.0
+            }
+
+    def get_total_elapsed(self) -> float:
+        """
+        Get total elapsed time since monitor creation
+
+        Returns:
+            Total elapsed seconds
+        """
+        return time.time() - self.start_time
+
+    def get_summary(self) -> Dict[str, Any]:
+        """
+        Get complete performance summary
+
+        Returns:
+            Comprehensive performance statistics
+        """
+        with self._lock:
+            return {
+                'total_elapsed': self.get_total_elapsed(),
+                'phase_times': self.phase_times.copy(),
+                'operation_stats': {
+                    op: self.get_operation_stats(op)
+                    for op in self.operation_times.keys()
+                },
+                'active_timers': list(self.timers.keys()),
+                'total_operations': sum(self.operation_counts.values())
+            }
+
+    def print_summary(self) -> None:
+        """Print formatted performance summary"""
+        summary = self.get_summary()
+
+        print("\n" + "=" * 70)
+        print("PERFORMANCE SUMMARY")
+        print("=" * 70)
+        print(f"Total Elapsed: {summary['total_elapsed']:.2f}s")
+        print(f"Total Operations: {summary['total_operations']}")
+
+        if summary['phase_times']:
+            print("\nPhase Times:")
+            for phase, elapsed in sorted(
+                summary['phase_times'].items(),
+                key=lambda x: x[1],
+                reverse=True
+            ):
+                print(f"  {phase:30s}: {elapsed:8.2f}s")
+
+        if summary['operation_stats']:
+            print("\nOperation Statistics:")
+            for op, stats in sorted(
+                summary['operation_stats'].items(),
+                key=lambda x: x[1]['total'] if x[1] else 0,
+                reverse=True
+            ):
+                if stats:
+                    print(f"  {op:30s}: "
+                          f"{stats['count']:4d} calls, "
+                          f"{stats['total']:8.2f}s total, "
+                          f"{stats['mean']:6.3f}s avg")
+
+        print("=" * 70)
+
+    def reset(self) -> None:
+        """Reset all performance data"""
+        with self._lock:
+            self.timers.clear()
+            self.operation_times.clear()
+            self.phase_times.clear()
+            self.operation_counts.clear()
+            self.start_time = time.time()
+
+
+# Singleton performance monitor
+_perf_monitor_instance: Optional[PerformanceMonitor] = None
+_perf_monitor_lock = threading.Lock()
+
+
+def get_performance_monitor() -> PerformanceMonitor:
+    """
+    Get singleton performance monitor instance
+
+    Returns:
+        Global PerformanceMonitor instance
+    """
+    global _perf_monitor_instance
+    if _perf_monitor_instance is None:
+        with _perf_monitor_lock:
+            if _perf_monitor_instance is None:
+                _perf_monitor_instance = PerformanceMonitor()
+    return _perf_monitor_instance
+
+
+# ============================================================================
+# UNIFIED CACHING SYSTEM
+# ============================================================================
+
+
+class UnifiedCache:
+    """
+    Thread-safe unified caching system with LRU eviction
+
+    Provides caching for API responses, calculations, and other expensive operations.
+    Implements LRU (Least Recently Used) eviction policy.
+    """
+
+    def __init__(self, max_size: int = 1000):
+        """
+        Initialize cache
+
+        Args:
+            max_size: Maximum number of cached items
+        """
+        self.max_size = max_size
+
+        # Cache storage (OrderedDict for LRU)
+        self.cache: OrderedDict = OrderedDict()
+
+        # Cache statistics
+        self.hits = 0
+        self.misses = 0
+        self.evictions = 0
+
+        # Thread safety
+        self._lock = threading.RLock()
+
+    def get(self, key: str) -> Optional[Any]:
+        """
+        Get value from cache
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Cached value or None if not found
+        """
+        with self._lock:
+            if key in self.cache:
+                # Move to end (most recently used)
+                self.cache.move_to_end(key)
+                self.hits += 1
+                return self.cache[key]
+            else:
+                self.misses += 1
+                return None
+
+    def set(self, key: str, value: Any) -> None:
+        """
+        Set value in cache
+
+        Args:
+            key: Cache key
+            value: Value to cache
+        """
+        with self._lock:
+            # Update existing or add new
+            if key in self.cache:
+                self.cache.move_to_end(key)
+
+            self.cache[key] = value
+
+            # Evict oldest if over size
+            while len(self.cache) > self.max_size:
+                self.cache.popitem(last=False)
+                self.evictions += 1
+
+    def has(self, key: str) -> bool:
+        """
+        Check if key exists in cache
+
+        Args:
+            key: Cache key
+
+        Returns:
+            True if key exists
+        """
+        with self._lock:
+            return key in self.cache
+
+    def delete(self, key: str) -> bool:
+        """
+        Delete key from cache
+
+        Args:
+            key: Cache key
+
+        Returns:
+            True if key was deleted
+        """
+        with self._lock:
+            if key in self.cache:
+                del self.cache[key]
+                return True
+            return False
+
+    def clear(self) -> None:
+        """Clear all cached items"""
+        with self._lock:
+            self.cache.clear()
+
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics
+
+        Returns:
+            Statistics dictionary
+        """
+        with self._lock:
+            total_requests = self.hits + self.misses
+            hit_rate = (self.hits / total_requests * 100) if total_requests > 0 else 0
+
+            return {
+                'size': len(self.cache),
+                'max_size': self.max_size,
+                'hits': self.hits,
+                'misses': self.misses,
+                'total_requests': total_requests,
+                'hit_rate': hit_rate,
+                'evictions': self.evictions
+            }
+
+    def print_stats(self) -> None:
+        """Print formatted cache statistics"""
+        stats = self.get_stats()
+
+        print("\nCache Statistics:")
+        print(f"  Size: {stats['size']}/{stats['max_size']}")
+        print(f"  Hits: {stats['hits']}")
+        print(f"  Misses: {stats['misses']}")
+        print(f"  Hit Rate: {stats['hit_rate']:.1f}%")
+        print(f"  Evictions: {stats['evictions']}")
+
+    def reset_stats(self) -> None:
+        """Reset cache statistics"""
+        with self._lock:
+            self.hits = 0
+            self.misses = 0
+            self.evictions = 0
+
+
+# Singleton cache instance
+_cache_instance: Optional[UnifiedCache] = None
+_cache_lock = threading.Lock()
+
+
+def get_unified_cache() -> UnifiedCache:
+    """
+    Get singleton cache instance
+
+    Returns:
+        Global UnifiedCache instance
+    """
+    global _cache_instance
+    if _cache_instance is None:
+        with _cache_lock:
+            if _cache_instance is None:
+                _cache_instance = UnifiedCache()
+    return _cache_instance
+
+
+# ============================================================================
+# THREAD POOL HELPER
+# ============================================================================
+
+
+def get_optimal_thread_count(
+    num_tasks: int,
+    workload: str = 'medium'
+) -> int:
+    """
+    Calculate optimal thread count for task
+
+    Args:
+        num_tasks: Number of tasks to process
+        workload: Workload type ('light', 'medium', 'heavy')
+
+    Returns:
+        Optimal thread count
+    """
+    if workload == 'light':
+        max_threads = PerformanceLimits.MAX_THREADS_LIGHT
+    elif workload == 'heavy':
+        max_threads = PerformanceLimits.MAX_THREADS_HEAVY
+    else:
+        max_threads = PerformanceLimits.MAX_THREADS_MEDIUM
+
+    # Don't create more threads than tasks
+    optimal = min(num_tasks, max_threads)
+
+    # At least 1 thread
+    return max(1, optimal)
+
+"""
+PART 4 OF 13: DATA PROCESSING & LOADING
+
+Complete data loading, validation, cleaning, and processing pipeline.
+Handles CSV imports, column standardization, data validation, and inference.
+"""
+
+# ============================================================================
+# CSV LOADING UTILITIES
+# ============================================================================
+
+
+def safe_load_csv(
+    file_path: str,
+    logger: Optional[OptimizerLogger] = None
+) -> Tuple[Optional[pd.DataFrame], str]:
+    """
+    Safely load CSV with multiple encoding attempts
+
+    Args:
+        file_path: Path to CSV file
+        logger: Optional logger instance
+
+    Returns:
+        Tuple of (DataFrame or None, status message)
+    """
+    if logger is None:
+        logger = get_logger()
+
+    encodings = ['utf-8', 'utf-8-sig', 'latin1', 'iso-8859-1', 'cp1252']
+
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(file_path, encoding=encoding)
+            logger.log(
+                f"Successfully loaded CSV with {encoding} encoding: "
+                f"{len(df)} rows, {len(df.columns)} columns",
+                "INFO"
+            )
+            return df, f"Success ({encoding})"
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            logger.log_exception(e, f"Failed to load CSV with {encoding}")
+            continue
+
+    logger.log(f"Failed to load CSV with all encodings: {file_path}", "ERROR")
+    return None, "Failed (all encodings)"
+
+
+def detect_csv_delimiter(file_path: str) -> str:
+    """
+    Detect CSV delimiter by analyzing first few lines
+
+    Args:
+        file_path: Path to CSV file
+
+    Returns:
+        Detected delimiter character
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            first_lines = [f.readline() for _ in range(3)]
+
+        # Count occurrences of common delimiters
+        delimiters = [',', '\t', '|', ';']
+        counts = {delim: sum(line.count(delim) for line in first_lines)
+                  for delim in delimiters}
+
+        # Return most common
+        return max(counts, key=counts.get)
+    except Exception:
+        return ','
+
+
+# ============================================================================
+# COLUMN STANDARDIZATION
+# ============================================================================
+
+
+class ColumnStandardizer:
+    """
+    Standardize column names from various DFS platforms
+
+    Handles variations in column naming across different data sources.
+    """
+
+    # Column mapping from various sources to standard names
+    COLUMN_MAPPINGS = {
+        'Name': ['Name', 'Player', 'player', 'NAME', 'PlayerName', 'Player Name'],
+        'Player': ['Name', 'Player', 'player', 'NAME', 'PlayerName', 'Player Name'],
+        'Position': ['Position', 'Pos', 'position', 'POS', 'Roster Position'],
+        'Team': ['Team', 'TeamAbbrev', 'team', 'TEAM', 'Team Abbrev'],
+        'Salary': ['Salary', 'salary', 'SALARY', 'Sal', 'Cost'],
+        'Projected_Points': [
+            'Projected_Points', 'Projection', 'Proj', 'AvgPointsPerGame',
+            'FPPG', 'Projected', 'Points', 'Avg Points', 'projection'
+        ],
+        'Ownership': [
+            'Ownership', 'Own%', 'Own', 'Ownership%', 'ownership',
+            'Projected Ownership', 'Proj Own'
+        ],
+        'Floor': ['Floor', 'floor', 'Floor Projection', 'Min Projection'],
+        'Ceiling': ['Ceiling', 'ceiling', 'Ceiling Projection', 'Max Projection'],
+        'StdDev': ['StdDev', 'Std Dev', 'Standard Deviation', 'Volatility'],
+        'Game': ['Game', 'game', 'Matchup', 'matchup']
+    }
+
+    @classmethod
+    def standardize_columns(
+        cls,
+        df: pd.DataFrame,
+        logger: Optional[OptimizerLogger] = None
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        """
+        Standardize column names
+
+        Args:
+            df: Input DataFrame
+            logger: Optional logger
+
+        Returns:
+            Tuple of (standardized DataFrame, list of warnings)
+        """
+        if logger is None:
+            logger = get_logger()
+
+        warnings = []
+        renamed = {}
+
+        # Create reverse mapping
+        reverse_map = {}
+        for standard, variants in cls.COLUMN_MAPPINGS.items():
+            for variant in variants:
+                reverse_map[variant.lower()] = standard
+
+        # Rename columns
+        for col in df.columns:
+            col_lower = col.lower().strip()
+            if col_lower in reverse_map:
+                standard_name = reverse_map[col_lower]
+                if col != standard_name:
+                    renamed[col] = standard_name
+
+        if renamed:
+            df = df.rename(columns=renamed)
+            logger.log(f"Renamed columns: {renamed}", "DEBUG")
+
+        # Check for required columns
+        required = ['Player', 'Position', 'Team', 'Salary']
+        missing = [col for col in required if col not in df.columns]
+
+        if missing:
+            warnings.append(f"Missing required columns: {missing}")
+            logger.log(f"Missing required columns: {missing}", "WARNING")
+
+        return df, warnings
+
+    @classmethod
+    def get_column_if_exists(
+        cls,
+        df: pd.DataFrame,
+        column_name: str,
+        default: Any = None
+    ) -> Any:
+        """
+        Get column value with fallback
+
+        Args:
+            df: DataFrame
+            column_name: Column to retrieve
+            default: Default value if column missing
+
+        Returns:
+            Column data or default
+        """
+        if column_name in df.columns:
+            return df[column_name]
+
+        # Try variants
+        variants = cls.COLUMN_MAPPINGS.get(column_name, [])
+        for variant in variants:
+            if variant in df.columns:
+                return df[variant]
+
+        return default
+
+
+# ============================================================================
+# DATA VALIDATOR
+# ============================================================================
+
+
+class DataValidator:
+    """
+    Validate data integrity and completeness
+
+    Performs comprehensive validation checks on player data.
+    """
+
+    @staticmethod
+    def validate_dataframe(
+        df: pd.DataFrame,
+        logger: Optional[OptimizerLogger] = None
+    ) -> Tuple[bool, List[str], List[str]]:
+        """
+        Validate DataFrame for required data
+
+        Args:
+            df: DataFrame to validate
+            logger: Optional logger
+
+        Returns:
+            Tuple of (is_valid, errors, warnings)
+        """
+        if logger is None:
+            logger = get_logger()
+
+        errors = []
+        warnings = []
+
+        # Check if empty
+        if df is None or df.empty:
+            errors.append("DataFrame is empty")
+            return False, errors, warnings
+
+        # Check required columns
+        required_columns = ['Player', 'Position', 'Team', 'Salary']
+        missing_cols = [col for col in required_columns if col not in df.columns]
+
+        if missing_cols:
+            errors.append(f"Missing required columns: {missing_cols}")
+
+        # Check for duplicate players
+        if 'Player' in df.columns:
+            duplicates = df[df.duplicated(subset=['Player'], keep=False)]
+            if not duplicates.empty:
+                warnings.append(
+                    f"Found {len(duplicates)} duplicate player entries"
+                )
+
+        # Check salary range
+        if 'Salary' in df.columns:
+            min_sal = df['Salary'].min()
+            max_sal = df['Salary'].max()
+
+            if min_sal < 1000:
+                warnings.append(f"Unusually low minimum salary: ${min_sal}")
+
+            if max_sal > 20000:
+                warnings.append(f"Unusually high maximum salary: ${max_sal}")
+
+        # Check for NaN values in critical columns
+        for col in required_columns:
+            if col in df.columns:
+                nan_count = df[col].isna().sum()
+                if nan_count > 0:
+                    errors.append(
+                        f"Column '{col}' has {nan_count} NaN values"
+                    )
+
+        # Check team count
+        if 'Team' in df.columns:
+            unique_teams = df['Team'].nunique()
+            if unique_teams < 2:
+                errors.append(
+                    f"Only {unique_teams} team(s) found. "
+                    f"Showdown requires 2 teams."
+                )
+            elif unique_teams > 2:
+                warnings.append(
+                    f"Found {unique_teams} teams. "
+                    f"Showdown typically has 2 teams."
+                )
+
+        is_valid = len(errors) == 0
+
+        return is_valid, errors, warnings
+
+    @staticmethod
+    def check_salary_distribution(
+        df: pd.DataFrame
+    ) -> Dict[str, Any]:
+        """
+        Analyze salary distribution
+
+        Args:
+            df: DataFrame with Salary column
+
+        Returns:
+            Distribution statistics
+        """
+        if 'Salary' not in df.columns:
+            return {}
+
+        salaries = df['Salary'].dropna()
+
+        return {
+            'min': int(salaries.min()),
+            'max': int(salaries.max()),
+            'mean': float(salaries.mean()),
+            'median': float(salaries.median()),
+            'std': float(salaries.std()),
+            'count': len(salaries)
+        }
+
+    @staticmethod
+    def check_projection_distribution(
+        df: pd.DataFrame
+    ) -> Dict[str, Any]:
+        """
+        Analyze projection distribution
+
+        Args:
+            df: DataFrame with Projected_Points column
+
+        Returns:
+            Distribution statistics
+        """
+        if 'Projected_Points' not in df.columns:
+            return {}
+
+        projections = df['Projected_Points'].dropna()
+
+        return {
+            'min': float(projections.min()),
+            'max': float(projections.max()),
+            'mean': float(projections.mean()),
+            'median': float(projections.median()),
+            'std': float(projections.std()),
+            'count': len(projections)
+        }
+
+
+# ============================================================================
+# DATA CLEANER
+# ============================================================================
+
+
+class DataCleaner:
+    """
+    Clean and normalize data
+
+    Handles missing values, outliers, and data type conversions.
+    """
+
+    @staticmethod
+    def clean_dataframe(
+        df: pd.DataFrame,
+        logger: Optional[OptimizerLogger] = None
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        """
+        Clean DataFrame
+
+        Args:
+            df: Input DataFrame
+            logger: Optional logger
+
+        Returns:
+            Tuple of (cleaned DataFrame, warnings)
+        """
+        if logger is None:
+            logger = get_logger()
+
+        warnings = []
+        df = df.copy()
+
+        # Strip whitespace from string columns
+        string_cols = df.select_dtypes(include=['object']).columns
+        for col in string_cols:
+            df[col] = df[col].astype(str).str.strip()
+
+        # Clean Player names
+        if 'Player' in df.columns:
+            # Remove any special characters that might cause issues
+            df['Player'] = df['Player'].str.replace('[^a-zA-Z0-9\s\-\.\']', '', regex=True)
+            df['Player'] = df['Player'].str.strip()
+
+        # Clean Team names
+        if 'Team' in df.columns:
+            df['Team'] = df['Team'].str.upper().str.strip()
+
+        # Clean Position
+        if 'Position' in df.columns:
+            df['Position'] = df['Position'].str.upper().str.strip()
+
+        # Convert Salary to int
+        if 'Salary' in df.columns:
+            try:
+                df['Salary'] = pd.to_numeric(df['Salary'], errors='coerce')
+                df['Salary'] = df['Salary'].fillna(0).astype(int)
+
+                # Remove invalid salaries
+                invalid_salary = df['Salary'] <= 0
+                if invalid_salary.any():
+                    count = invalid_salary.sum()
+                    warnings.append(f"Removed {count} players with invalid salary")
+                    df = df[~invalid_salary]
+            except Exception as e:
+                warnings.append(f"Error converting Salary column: {e}")
+
+        # Convert Projected_Points to float
+        if 'Projected_Points' in df.columns:
+            try:
+                df['Projected_Points'] = pd.to_numeric(
+                    df['Projected_Points'],
+                    errors='coerce'
+                )
+                df['Projected_Points'] = df['Projected_Points'].fillna(0.0)
+            except Exception as e:
+                warnings.append(f"Error converting Projected_Points: {e}")
+
+        # Convert Ownership to float
+        if 'Ownership' in df.columns:
+            try:
+                # Handle percentage strings (e.g., "15%" -> 15.0)
+                df['Ownership'] = df['Ownership'].astype(str).str.replace('%', '')
+                df['Ownership'] = pd.to_numeric(df['Ownership'], errors='coerce')
+                df['Ownership'] = df['Ownership'].fillna(10.0)  # Default 10%
+
+                # Ensure 0-100 range
+                df['Ownership'] = df['Ownership'].clip(0, 100)
+            except Exception as e:
+                warnings.append(f"Error converting Ownership: {e}")
+
+        # Remove duplicates
+        if 'Player' in df.columns:
+            before_count = len(df)
+            df = df.drop_duplicates(subset=['Player'], keep='first')
+            after_count = len(df)
+
+            if before_count != after_count:
+                removed = before_count - after_count
+                warnings.append(f"Removed {removed} duplicate players")
+
+        # Reset index
+        df = df.reset_index(drop=True)
+
+        return df, warnings
+
+
+# ============================================================================
+# OPTIMIZED DATA PROCESSOR
+# ============================================================================
+
+
+class OptimizedDataProcessor:
+    """
+    Complete data processing pipeline
+
+    Orchestrates loading, validation, cleaning, and standardization.
+    """
+
+    def __init__(self, logger: Optional[OptimizerLogger] = None):
+        """
+        Initialize data processor
+
+        Args:
+            logger: Optional logger instance
+        """
+        self.logger = logger or get_logger()
+        self.standardizer = ColumnStandardizer()
+        self.validator = DataValidator()
+        self.cleaner = DataCleaner()
+
+    def load_csv(self, file_path: str) -> Optional[pd.DataFrame]:
+        """
+        Load CSV file
+
+        Args:
+            file_path: Path to CSV file
+
+        Returns:
+            DataFrame or None if failed
+        """
+        df, status = safe_load_csv(file_path, self.logger)
+
+        if df is None:
+            raise DataProcessingError(f"Failed to load CSV: {status}")
+
+        return df
+
+    def process_dataframe(
+        self,
+        df: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        """
+        Complete processing pipeline
+
+        Args:
+            df: Raw DataFrame
+
+        Returns:
+            Tuple of (processed DataFrame, all warnings)
+        """
+        all_warnings = []
+
+        # Step 1: Standardize columns
+        self.logger.log("Standardizing column names...", "DEBUG")
+        df, std_warnings = self.standardizer.standardize_columns(df, self.logger)
+        all_warnings.extend(std_warnings)
+
+        # Step 2: Clean data
+        self.logger.log("Cleaning data...", "DEBUG")
+        df, clean_warnings = self.cleaner.clean_dataframe(df, self.logger)
+        all_warnings.extend(clean_warnings)
+
+        # Step 3: Validate
+        self.logger.log("Validating data...", "DEBUG")
+        is_valid, errors, val_warnings = self.validator.validate_dataframe(
+            df,
+            self.logger
+        )
+        all_warnings.extend(val_warnings)
+
+        if not is_valid:
+            error_msg = "Data validation failed: " + "; ".join(errors)
+            raise DataProcessingError(error_msg)
+
+        # Step 4: Add default columns if missing
+        df = self._add_default_columns(df)
+
+        # Step 5: Verify final state
+        self._verify_final_state(df)
+
+        self.logger.log(
+            f"Data processing complete: {len(df)} players, "
+            f"{df['Team'].nunique()} teams",
+            "INFO"
+        )
+
+        return df, all_warnings
+
+    def _add_default_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add default columns if missing
+
+        Args:
+            df: DataFrame
+
+        Returns:
+            DataFrame with default columns
+        """
+        # Add Projected_Points if missing
+        if 'Projected_Points' not in df.columns:
+            self.logger.log(
+                "Projected_Points missing, using salary-based estimates",
+                "WARNING"
+            )
+            # Rough estimate: higher salary = higher projection
+            df['Projected_Points'] = (df['Salary'] / 1000) * 1.5
+
+        # Add Ownership if missing
+        if 'Ownership' not in df.columns:
+            self.logger.log(
+                "Ownership missing, using default 10%",
+                "WARNING"
+            )
+            df['Ownership'] = 10.0
+
+        # Add Floor if missing
+        if 'Floor' not in df.columns:
+            df['Floor'] = df['Projected_Points'] * 0.7
+
+        # Add Ceiling if missing
+        if 'Ceiling' not in df.columns:
+            df['Ceiling'] = df['Projected_Points'] * 1.4
+
+        # Add StdDev if missing
+        if 'StdDev' not in df.columns:
+            df['StdDev'] = df['Projected_Points'] * 0.25
+
+        return df
+
+    def _verify_final_state(self, df: pd.DataFrame) -> None:
+        """
+        Verify DataFrame is ready for optimization
+
+        Args:
+            df: Processed DataFrame
+
+        Raises:
+            DataProcessingError: If verification fails
+        """
+        # Check required columns
+        required = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
+        missing = [col for col in required if col not in df.columns]
+
+        if missing:
+            raise DataProcessingError(
+                f"Missing required columns after processing: {missing}"
+            )
+
+        # Check minimum data requirements
+        if len(df) < DraftKingsRules.ROSTER_SIZE:
+            raise DataProcessingError(
+                f"Insufficient players: {len(df)} "
+                f"(need at least {DraftKingsRules.ROSTER_SIZE})"
+            )
+
+        # Check team count
+        team_count = df['Team'].nunique()
+        if team_count < DraftKingsRules.MIN_TEAMS_REQUIRED:
+            raise DataProcessingError(
+                f"Insufficient teams: {team_count} "
+                f"(need at least {DraftKingsRules.MIN_TEAMS_REQUIRED})"
+            )
+
+    def infer_game_info(
+        self,
+        df: pd.DataFrame,
+        game_total: Optional[float] = None,
+        spread: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Infer game context information from data
 
         Args:
             df: Player DataFrame
-            constraints: Lineup constraints
+            game_total: Optional game total override
+            spread: Optional spread override
 
         Returns:
-            Tuple of (is_feasible, error_message, suggestions)
+            Game information dictionary
+        """
+        game_info = {}
+
+        # Get teams
+        teams = sorted(df['Team'].unique().tolist())
+        game_info['teams'] = teams
+
+        # Infer game total if not provided
+        if game_total is None:
+            # Estimate from total projections
+            total_proj = df['Projected_Points'].sum()
+            game_total = min(max(total_proj * 0.6, 40), 60)
+
+        game_info['game_total'] = float(game_total)
+
+        # Infer spread if not provided
+        if spread is None:
+            if len(teams) == 2:
+                # Compare team total projections
+                team1_proj = df[df['Team'] == teams[0]]['Projected_Points'].sum()
+                team2_proj = df[df['Team'] == teams[1]]['Projected_Points'].sum()
+                spread = abs(team1_proj - team2_proj) * 0.5
+            else:
+                spread = 3.0  # Default spread
+
+        game_info['spread'] = float(spread)
+
+        # Determine favorite
+        if len(teams) == 2 and spread != 0:
+            team1_proj = df[df['Team'] == teams[0]]['Projected_Points'].sum()
+            team2_proj = df[df['Team'] == teams[1]]['Projected_Points'].sum()
+            game_info['favorite_team'] = teams[0] if team1_proj > team2_proj else teams[1]
+        else:
+            game_info['favorite_team'] = teams[0] if teams else None
+
+        # Check for Game column to extract additional info
+        if 'Game' in df.columns:
+            game_str = df['Game'].iloc[0] if not df['Game'].empty else ""
+
+            # Parse weather if present
+            if any(word in str(game_str).lower() for word in ['dome', 'indoor']):
+                game_info['is_dome'] = True
+                game_info['weather'] = 'Dome'
+            elif any(word in str(game_str).lower() for word in ['rain', 'snow', 'wind']):
+                game_info['weather'] = game_str
+                game_info['is_dome'] = False
+            else:
+                game_info['is_dome'] = False
+                game_info['weather'] = 'Unknown'
+        else:
+            game_info['is_dome'] = False
+            game_info['weather'] = 'Unknown'
+
+        # Additional context
+        game_info['is_divisional'] = False  # Can't infer without more data
+        game_info['is_primetime'] = False   # Can't infer without more data
+
+        self.logger.log(
+            f"Game info inferred: {teams[0]} vs {teams[1] if len(teams) > 1 else 'Unknown'}, "
+            f"Total: {game_total:.1f}, Spread: {spread:.1f}",
+            "INFO"
+        )
+
+        return game_info
+
+    def get_processing_summary(self, df: pd.DataFrame) -> str:
+        """
+        Get human-readable processing summary
+
+        Args:
+            df: Processed DataFrame
+
+        Returns:
+            Summary string
+        """
+        salary_stats = self.validator.check_salary_distribution(df)
+        proj_stats = self.validator.check_projection_distribution(df)
+
+        summary = f"""Data Processing Summary:
+  Players: {len(df)}
+  Teams: {df['Team'].nunique()}
+  Positions: {df['Position'].nunique()}
+
+  Salary Range: ${salary_stats.get('min', 0):,} - ${salary_stats.get('max', 0):,}
+  Salary Average: ${salary_stats.get('mean', 0):,.0f}
+
+  Projection Range: {proj_stats.get('min', 0):.1f} - {proj_stats.get('max', 0):.1f} pts
+  Projection Average: {proj_stats.get('mean', 0):.1f} pts
+
+  Columns: {', '.join(df.columns.tolist())}"""
+
+        return summary
+
+"""
+PART 5A OF 13: PLAYER POOL ANALYSIS & CONSTRAINTS
+
+Core player pool analysis, constraint management, and stack detection.
+Foundation for advanced scoring and optimization.
+"""
+
+# ============================================================================
+# PLAYER POOL ANALYZER
+# ============================================================================
+
+
+class PlayerPoolAnalyzer:
+    """
+    Analyzes player pool to determine optimal optimization parameters
+
+    Provides insights into pool quality, salary distribution, and suggests
+    optimal constraint values.
+    """
+
+    def __init__(self, df: pd.DataFrame):
+        """
+        Initialize analyzer
+
+        Args:
+            df: Player DataFrame
+        """
+        self.df = df
+        self.logger = get_logger()
+        self.analysis: Dict[str, Any] = {}
+
+    def analyze(self) -> Dict[str, Any]:
+        """
+        Comprehensive player pool analysis
+
+        Returns:
+            Analysis dictionary with statistics and recommendations
         """
         try:
-            # Basic validation
-            if df is None or df.empty:
-                return False, "DataFrame is empty", ["Load valid player data"]
+            n_players = len(self.df)
+            n_teams = self.df['Team'].nunique()
 
-            if len(df) < DraftKingsRules.ROSTER_SIZE:
-                return False, f"Need at least {DraftKingsRules.ROSTER_SIZE} players", [
-                    f"Current pool has {len(df)} players"
-                ]
+            self.logger.log(
+                f"Analyzing player pool: {n_players} players, {n_teams} teams",
+                "INFO"
+            )
 
-            # Team diversity check
-            teams = df['Team'].unique()
-            if len(teams) < DraftKingsRules.MIN_TEAMS_REQUIRED:
-                return False, f"Need players from {DraftKingsRules.MIN_TEAMS_REQUIRED} teams", [
-                    f"Current pool only has {len(teams)} team(s)"
-                ]
+            # Basic statistics
+            self.analysis['player_count'] = n_players
+            self.analysis['team_count'] = n_teams
+            self.analysis['position_count'] = self.df['Position'].nunique()
 
-            # Salary range feasibility
-            cheapest_6 = df.nsmallest(6, 'Salary')['Salary'].sum()
-            most_expensive_6 = df.nlargest(6, 'Salary')['Salary'].sum()
+            # Salary statistics
+            salary_stats = self._analyze_salaries()
+            self.analysis['salary_stats'] = salary_stats
 
-            # Account for captain multiplier (adds 0.5x of captain's salary)
-            min_possible = cheapest_6 + (df['Salary'].min() * 0.5)
-            max_possible = most_expensive_6 + (df['Salary'].max() * 0.5)
+            # Projection statistics
+            proj_stats = self._analyze_projections()
+            self.analysis['projection_stats'] = proj_stats
 
-            if min_possible > constraints.max_salary:
-                return False, "Even cheapest lineup exceeds salary cap", [
-                    f"Minimum possible: ${min_possible:,.0f}",
-                    "Check salary data for errors"
-                ]
+            # Ownership statistics
+            own_stats = self._analyze_ownership()
+            self.analysis['ownership_stats'] = own_stats
 
-            if max_possible < constraints.min_salary:
-                suggested_pct = int((max_possible * 0.95) / DraftKingsRules.SALARY_CAP * 100)
-                return False, "Cannot reach minimum salary requirement", [
-                    f"Maximum possible: ${max_possible:,.0f}",
-                    f"Current minimum: ${constraints.min_salary:,}",
-                    f"Suggested minimum: {suggested_pct}% of cap (${int(max_possible * 0.95):,})"
-                ]
+            # Value analysis
+            value_stats = self._analyze_value()
+            self.analysis['value_stats'] = value_stats
 
-            # Random sampling to find valid lineups
-            valid_count = 0
-            attempts = 100
-            team_failures = 0
-            salary_low = 0
-            salary_high = 0
+            # Pool quality assessment
+            pool_quality = self._assess_pool_quality()
+            self.analysis['pool_quality'] = pool_quality
 
-            for _ in range(attempts):
-                try:
-                    sample = df.sample(n=6)
+            # Team balance
+            team_balance = self._analyze_team_balance()
+            self.analysis['team_balance'] = team_balance
 
-                    # Team diversity check
-                    team_counts = sample['Team'].value_counts()
-                    if len(team_counts) < 2:
-                        team_failures += 1
-                        continue
+            # Position distribution
+            position_dist = self._analyze_positions()
+            self.analysis['position_distribution'] = position_dist
 
-                    if team_counts.max() > 5:
-                        team_failures += 1
-                        continue
+            # Generate recommendations
+            recommendations = self._generate_recommendations()
+            self.analysis['recommendations'] = recommendations
 
-                    # Salary check (random captain)
-                    captain_idx = np.random.randint(0, len(sample))
-                    captain_sal = sample.iloc[captain_idx]['Salary']
-                    flex_sal = sample['Salary'].sum() - captain_sal
-                    total = captain_sal * 1.5 + flex_sal
+            self.logger.log(
+                f"Pool analysis complete: Quality={pool_quality}",
+                "INFO"
+            )
 
-                    if total < constraints.min_salary:
-                        salary_low += 1
-                        continue
-
-                    if total > constraints.max_salary:
-                        salary_high += 1
-                        continue
-
-                    # Found valid lineup
-                    valid_count += 1
-                    if valid_count >= 3:
-                        return True, "", []
-
-                except Exception:
-                    continue
-
-            # Failed to find valid lineups
-            if valid_count == 0:
-                # Determine main issue
-                main_issue = "unknown"
-                if salary_low > 40:
-                    main_issue = "minimum salary too high"
-                elif team_failures > 40:
-                    main_issue = "team diversity issues"
-                elif salary_high > 40:
-                    main_issue = "salary cap issues"
-
-                # Calculate suggested minimum
-                median_sal = df['Salary'].median()
-                estimated_lineup = median_sal * 6 * 1.25  # Account for captain
-                suggested_min = min(int(estimated_lineup), int(constraints.max_salary * 0.88))
-                suggested_pct = int(suggested_min / DraftKingsRules.SALARY_CAP * 100)
-
-                suggestions = []
-
-                if salary_low > 30:
-                    suggestions.append(
-                        f"Lower minimum salary to {suggested_pct}% of cap (${suggested_min:,})"
-                    )
-
-                if team_failures > 30:
-                    team_dist = df['Team'].value_counts().to_dict()
-                    suggestions.append(
-                        f"Check team balance: {team_dist}"
-                    )
-
-                if constraints.locked_players or constraints.banned_players:
-                    suggestions.append(
-                        "Consider reducing locked/banned player constraints"
-                    )
-
-                if not suggestions:
-                    suggestions.append("Try lowering minimum salary to 80-85% of cap")
-
-                return False, f"No valid lineups found in {attempts} samples ({main_issue})", suggestions
-
-            else:
-                # Found some but not enough
-                return False, f"Only {valid_count} valid lineups in {attempts} samples", [
-                    "Constraints are very tight",
-                    "Lower minimum salary by 5-10%"
-                ]
+            return self.analysis
 
         except Exception as e:
-            return False, f"Feasibility check failed: {str(e)}", [
-                "Check data quality and try again"
+            self.logger.log_exception(e, "PlayerPoolAnalyzer.analyze")
+            return {
+                'error': str(e),
+                'recommendations': self._get_default_recommendations()
+            }
+
+    def _analyze_salaries(self) -> Dict[str, Any]:
+        """
+        Analyze salary distribution
+
+        Returns:
+            Salary statistics dictionary
+        """
+        salaries = self.df['Salary'].values
+
+        # Calculate feasible lineup salaries
+        cheapest_6 = self.df.nsmallest(DraftKingsRules.ROSTER_SIZE, 'Salary')
+        min_possible = cheapest_6['Salary'].sum()
+        min_possible += cheapest_6['Salary'].min() * 0.5  # Captain multiplier
+
+        expensive_6 = self.df.nlargest(DraftKingsRules.ROSTER_SIZE, 'Salary')
+        max_possible = expensive_6['Salary'].sum()
+        max_possible += expensive_6['Salary'].max() * 0.5  # Captain multiplier
+
+        return {
+            'min': int(salaries.min()),
+            'max': int(salaries.max()),
+            'mean': float(salaries.mean()),
+            'median': float(np.median(salaries)),
+            'std': float(salaries.std()),
+            'q25': float(np.percentile(salaries, 25)),
+            'q75': float(np.percentile(salaries, 75)),
+            'min_possible_lineup': int(min_possible),
+            'max_possible_lineup': int(max_possible),
+            'median_lineup': int(np.median(salaries) * DraftKingsRules.ROSTER_SIZE)
+        }
+
+    def _analyze_projections(self) -> Dict[str, Any]:
+        """
+        Analyze projection distribution
+
+        Returns:
+            Projection statistics dictionary
+        """
+        projections = self.df['Projected_Points'].values
+
+        return {
+            'min': float(projections.min()),
+            'max': float(projections.max()),
+            'mean': float(projections.mean()),
+            'median': float(np.median(projections)),
+            'std': float(projections.std()),
+            'q25': float(np.percentile(projections, 25)),
+            'q75': float(np.percentile(projections, 75)),
+            'total': float(projections.sum())
+        }
+
+    def _analyze_ownership(self) -> Dict[str, Any]:
+        """
+        Analyze ownership distribution
+
+        Returns:
+            Ownership statistics dictionary
+        """
+        if 'Ownership' not in self.df.columns:
+            return {
+                'available': False,
+                'note': 'Ownership data not available'
+            }
+
+        ownership = self.df['Ownership'].values
+
+        # Identify chalk and contrarian plays
+        chalk_threshold = 30.0
+        contrarian_threshold = 10.0
+
+        chalk_players = self.df[self.df['Ownership'] >= chalk_threshold]
+        contrarian_players = self.df[self.df['Ownership'] <= contrarian_threshold]
+
+        return {
+            'available': True,
+            'min': float(ownership.min()),
+            'max': float(ownership.max()),
+            'mean': float(ownership.mean()),
+            'median': float(np.median(ownership)),
+            'std': float(ownership.std()),
+            'chalk_count': len(chalk_players),
+            'chalk_threshold': chalk_threshold,
+            'contrarian_count': len(contrarian_players),
+            'contrarian_threshold': contrarian_threshold,
+            'chalk_players': chalk_players['Player'].tolist()[:5],
+            'contrarian_players': contrarian_players['Player'].tolist()[:5]
+        }
+
+    def _analyze_value(self) -> Dict[str, Any]:
+        """
+        Analyze salary value (points per $1k)
+
+        Returns:
+            Value statistics dictionary
+        """
+        self.df['_temp_value'] = (
+            self.df['Projected_Points'] / (self.df['Salary'] / 1000)
+        )
+
+        values = self.df['_temp_value'].values
+
+        # Find best value plays
+        top_values = self.df.nlargest(10, '_temp_value')[
+            ['Player', 'Salary', 'Projected_Points', '_temp_value']
+        ].copy()
+
+        return {
+            'min': float(values.min()),
+            'max': float(values.max()),
+            'mean': float(values.mean()),
+            'median': float(np.median(values)),
+            'std': float(values.std()),
+            'top_value_players': top_values.to_dict('records')
+        }
+
+    def _assess_pool_quality(self) -> str:
+        """
+        Assess overall pool quality
+
+        Returns:
+            Quality assessment ('flat', 'balanced', 'volatile')
+        """
+        try:
+            # Calculate coefficient of variation for values
+            values = self.df['_temp_value'].values
+            cv = np.std(values) / np.mean(values) if np.mean(values) > 0 else 0
+
+            # Calculate projection spread
+            projections = self.df['Projected_Points'].values
+            proj_range = projections.max() - projections.min()
+            proj_mean = projections.mean()
+            proj_spread = proj_range / proj_mean if proj_mean > 0 else 0
+
+            # Assess quality
+            if cv < 0.20 and proj_spread < 1.0:
+                return 'flat'
+            elif cv < 0.35 and proj_spread < 1.5:
+                return 'balanced'
+            else:
+                return 'volatile'
+
+        except Exception:
+            return 'balanced'
+
+    def _analyze_team_balance(self) -> Dict[str, Any]:
+        """
+        Analyze team balance in pool
+
+        Returns:
+            Team balance statistics
+        """
+        team_counts = self.df['Team'].value_counts()
+
+        # Team-level projections
+        team_projections = self.df.groupby('Team')['Projected_Points'].sum()
+
+        return {
+            'teams': team_counts.index.tolist(),
+            'team_sizes': team_counts.to_dict(),
+            'min_team_size': int(team_counts.min()),
+            'max_team_size': int(team_counts.max()),
+            'balanced': team_counts.max() / team_counts.min() < 1.5 if len(team_counts) > 1 else True,
+            'team_projections': team_projections.to_dict()
+        }
+
+    def _analyze_positions(self) -> Dict[str, Any]:
+        """
+        Analyze position distribution
+
+        Returns:
+            Position distribution statistics
+        """
+        position_counts = self.df['Position'].value_counts()
+
+        # Average stats by position
+        position_stats = self.df.groupby('Position').agg({
+            'Salary': ['mean', 'min', 'max'],
+            'Projected_Points': ['mean', 'min', 'max']
+        }).round(2)
+
+        return {
+            'position_counts': position_counts.to_dict(),
+            'position_stats': position_stats.to_dict()
+        }
+
+    def _generate_recommendations(self) -> Dict[str, Any]:
+        """
+        Generate optimization recommendations based on analysis
+
+        Returns:
+            Recommendations dictionary
+        """
+        salary_stats = self.analysis.get('salary_stats', {})
+        pool_quality = self.analysis.get('pool_quality', 'balanced')
+        n_players = self.analysis.get('player_count', 0)
+
+        # Determine optimal minimum salary
+        median_lineup = salary_stats.get('median_lineup', 45000)
+
+        if median_lineup > DraftKingsRules.SALARY_CAP * 0.90:
+            optimal_min_pct = 0.95
+        elif median_lineup > DraftKingsRules.SALARY_CAP * 0.80:
+            optimal_min_pct = 0.88
+        elif median_lineup > DraftKingsRules.SALARY_CAP * 0.70:
+            optimal_min_pct = 0.80
+        else:
+            optimal_min_pct = 0.75
+
+        optimal_min_salary = int(DraftKingsRules.SALARY_CAP * optimal_min_pct)
+
+        # Determine suggested randomness
+        if pool_quality == 'flat':
+            suggested_randomness = 0.10
+        elif pool_quality == 'balanced':
+            suggested_randomness = 0.15
+        else:  # volatile
+            suggested_randomness = 0.20
+
+        # Determine suggested diversity
+        if pool_quality == 'flat':
+            suggested_diversity = 2
+        else:
+            suggested_diversity = 1
+
+        # Algorithm recommendations
+        use_genetic = n_players > 30 and pool_quality == 'volatile'
+        use_ensemble = n_players > 40 or pool_quality == 'volatile'
+
+        # Maximum reasonable lineups
+        max_reasonable_lineups = min(100, n_players // 3)
+
+        # Recommended algorithm
+        if n_players < 20:
+            recommended_algorithm = 'PuLP'
+        elif n_players < 40:
+            recommended_algorithm = 'Genetic' if pool_quality == 'volatile' else 'PuLP'
+        else:
+            if pool_quality == 'volatile':
+                recommended_algorithm = 'Ensemble'
+            elif pool_quality == 'flat':
+                recommended_algorithm = 'SimulatedAnnealing'
+            else:
+                recommended_algorithm = 'Ensemble'
+
+        return {
+            'optimal_min_salary_pct': optimal_min_pct,
+            'optimal_min_salary': optimal_min_salary,
+            'suggested_randomness': suggested_randomness,
+            'suggested_diversity': suggested_diversity,
+            'use_genetic': use_genetic,
+            'use_ensemble': use_ensemble,
+            'max_reasonable_lineups': max_reasonable_lineups,
+            'recommended_algorithm': recommended_algorithm
+        }
+
+    def _get_default_recommendations(self) -> Dict[str, Any]:
+        """
+        Get default recommendations as fallback
+
+        Returns:
+            Default recommendations
+        """
+        return {
+            'optimal_min_salary_pct': 0.85,
+            'optimal_min_salary': int(DraftKingsRules.SALARY_CAP * 0.85),
+            'suggested_randomness': 0.15,
+            'suggested_diversity': 1,
+            'use_genetic': False,
+            'use_ensemble': False,
+            'max_reasonable_lineups': 50,
+            'recommended_algorithm': 'PuLP'
+        }
+
+    def print_analysis_summary(self) -> None:
+        """Print human-readable analysis summary"""
+        if not self.analysis:
+            print("No analysis available. Run analyze() first.")
+            return
+
+        print("\n" + "=" * 70)
+        print("PLAYER POOL ANALYSIS")
+        print("=" * 70)
+
+        # Basic stats
+        print(f"\nPool Size:")
+        print(f"  Players: {self.analysis['player_count']}")
+        print(f"  Teams: {self.analysis['team_count']}")
+        print(f"  Positions: {self.analysis['position_count']}")
+
+        # Salary stats
+        salary_stats = self.analysis.get('salary_stats', {})
+        print(f"\nSalary Distribution:")
+        print(f"  Range: ${salary_stats.get('min', 0):,} - ${salary_stats.get('max', 0):,}")
+        print(f"  Mean: ${salary_stats.get('mean', 0):,.0f}")
+        print(f"  Median: ${salary_stats.get('median', 0):,.0f}")
+        print(f"  Median Lineup: ${salary_stats.get('median_lineup', 0):,}")
+
+        # Projection stats
+        proj_stats = self.analysis.get('projection_stats', {})
+        print(f"\nProjection Distribution:")
+        print(f"  Range: {proj_stats.get('min', 0):.1f} - {proj_stats.get('max', 0):.1f} pts")
+        print(f"  Mean: {proj_stats.get('mean', 0):.1f} pts")
+        print(f"  Median: {proj_stats.get('median', 0):.1f} pts")
+
+        # Pool quality
+        print(f"\nPool Quality: {self.analysis.get('pool_quality', 'Unknown').upper()}")
+
+        # Recommendations
+        recs = self.analysis.get('recommendations', {})
+        print(f"\nRecommendations:")
+        print(f"  Min Salary: ${recs.get('optimal_min_salary', 0):,} "
+              f"({recs.get('optimal_min_salary_pct', 0):.0%} of cap)")
+        print(f"  Randomness: {recs.get('suggested_randomness', 0):.2f}")
+        print(f"  Diversity: {recs.get('suggested_diversity', 1)}")
+        print(f"  Recommended Algorithm: {recs.get('recommended_algorithm', 'PuLP')}")
+        print(f"  Max Reasonable Lineups: {recs.get('max_reasonable_lineups', 50)}")
+
+        print("=" * 70)
+
+
+# ============================================================================
+# STACK DETECTOR
+# ============================================================================
+
+
+class StackDetector:
+    """
+    Detect and analyze player stacking opportunities
+
+    Identifies correlated player combinations (QB-WR, etc.)
+    """
+
+    def __init__(self, df: pd.DataFrame, game_info: Dict[str, Any]):
+        """
+        Initialize stack detector
+
+        Args:
+            df: Player DataFrame
+            game_info: Game context
+        """
+        self.df = df
+        self.game_info = game_info
+        self.logger = get_logger()
+
+        # Stacking opportunities
+        self.stacks: List[Dict[str, Any]] = []
+
+    def detect_stacks(self) -> List[Dict[str, Any]]:
+        """
+        Detect all viable stacking opportunities
+
+        Returns:
+            List of stack dictionaries
+        """
+        self.stacks = []
+
+        # QB-WR/TE stacks (same team)
+        self._detect_qb_receiver_stacks()
+
+        # Multi-receiver stacks
+        self._detect_multi_receiver_stacks()
+
+        # Bring-back stacks (opposing team)
+        self._detect_bring_back_stacks()
+
+        # RB game script stacks
+        self._detect_rb_stacks()
+
+        self.logger.log(
+            f"Detected {len(self.stacks)} stacking opportunities",
+            "DEBUG"
+        )
+
+        return self.stacks
+
+    def _detect_qb_receiver_stacks(self) -> None:
+        """Detect QB-WR/TE stacks on same team"""
+        qbs = self.df[self.df['Position'] == 'QB']
+
+        for _, qb_row in qbs.iterrows():
+            qb_name = qb_row['Player']
+            qb_team = qb_row['Team']
+
+            # Find receivers on same team
+            receivers = self.df[
+                (self.df['Team'] == qb_team) &
+                (self.df['Position'].isin(['WR', 'TE'])) &
+                (self.df['Player'] != qb_name)
             ]
 
+            for _, rec_row in receivers.iterrows():
+                self.stacks.append({
+                    'type': 'qb_receiver',
+                    'player1': qb_name,
+                    'player1_pos': 'QB',
+                    'player2': rec_row['Player'],
+                    'player2_pos': rec_row['Position'],
+                    'team': qb_team,
+                    'correlation': 0.65,
+                    'combined_salary': int(
+                        qb_row['Salary'] + rec_row['Salary']
+                    ),
+                    'combined_projection': float(
+                        qb_row['Projected_Points'] + rec_row['Projected_Points']
+                    )
+                })
+
+    def _detect_multi_receiver_stacks(self) -> None:
+        """Detect QB + multiple receivers stacks"""
+        qbs = self.df[self.df['Position'] == 'QB']
+
+        for _, qb_row in qbs.iterrows():
+            qb_name = qb_row['Player']
+            qb_team = qb_row['Team']
+
+            # Find top 2 receivers on same team
+            receivers = self.df[
+                (self.df['Team'] == qb_team) &
+                (self.df['Position'].isin(['WR', 'TE'])) &
+                (self.df['Player'] != qb_name)
+            ].nlargest(2, 'Projected_Points')
+
+            if len(receivers) >= 2:
+                rec1 = receivers.iloc[0]
+                rec2 = receivers.iloc[1]
+
+                self.stacks.append({
+                    'type': 'qb_multi_receiver',
+                    'player1': qb_name,
+                    'player2': rec1['Player'],
+                    'player3': rec2['Player'],
+                    'team': qb_team,
+                    'correlation': 0.55,
+                    'combined_salary': int(
+                        qb_row['Salary'] + rec1['Salary'] + rec2['Salary']
+                    ),
+                    'combined_projection': float(
+                        qb_row['Projected_Points'] +
+                        rec1['Projected_Points'] +
+                        rec2['Projected_Points']
+                    )
+                })
+
+    def _detect_bring_back_stacks(self) -> None:
+        """Detect bring-back stacks (opposing team correlation)"""
+        teams = self.df['Team'].unique()
+
+        if len(teams) != 2:
+            return
+
+        team1, team2 = teams
+
+        # Get top players from each team
+        team1_players = self.df[self.df['Team'] == team1].nlargest(
+            3, 'Projected_Points'
+        )
+        team2_players = self.df[self.df['Team'] == team2].nlargest(
+            3, 'Projected_Points'
+        )
+
+        # Create bring-back combinations
+        for _, p1 in team1_players.iterrows():
+            for _, p2 in team2_players.iterrows():
+                self.stacks.append({
+                    'type': 'bring_back',
+                    'player1': p1['Player'],
+                    'player1_team': team1,
+                    'player2': p2['Player'],
+                    'player2_team': team2,
+                    'correlation': 0.35,
+                    'combined_salary': int(p1['Salary'] + p2['Salary']),
+                    'combined_projection': float(
+                        p1['Projected_Points'] + p2['Projected_Points']
+                    )
+                })
+
+    def _detect_rb_stacks(self) -> None:
+        """Detect RB-based game script stacks"""
+        rbs = self.df[self.df['Position'] == 'RB']
+
+        # Favored team RBs (if spread available)
+        spread = self.game_info.get('spread', 0)
+        favorite_team = self.game_info.get('favorite_team')
+
+        if favorite_team and abs(spread) > 3:
+            # Favorite RBs with game flow
+            fav_rbs = rbs[rbs['Team'] == favorite_team]
+
+            for _, rb_row in fav_rbs.iterrows():
+                self.stacks.append({
+                    'type': 'rb_game_script',
+                    'player1': rb_row['Player'],
+                    'team': favorite_team,
+                    'rationale': 'Favored team RB (game script)',
+                    'correlation': 0.20,
+                    'salary': int(rb_row['Salary']),
+                    'projection': float(rb_row['Projected_Points'])
+                })
+
+    def get_top_stacks(
+        self,
+        n: int = 10,
+        stack_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get top stacks by combined projection
+
+        Args:
+            n: Number of stacks to return
+            stack_type: Filter by stack type (optional)
+
+        Returns:
+            List of top stacks
+        """
+        filtered_stacks = self.stacks
+
+        if stack_type:
+            filtered_stacks = [
+                s for s in self.stacks
+                if s['type'] == stack_type
+            ]
+
+        # Sort by combined projection
+        sorted_stacks = sorted(
+            filtered_stacks,
+            key=lambda x: x.get('combined_projection', 0),
+            reverse=True
+        )
+
+        return sorted_stacks[:n]
+
+    def print_stack_report(self, top_n: int = 10) -> None:
+        """
+        Print stack analysis report
+
+        Args:
+            top_n: Number of top stacks to show
+        """
+        if not self.stacks:
+            print("No stacks detected. Run detect_stacks() first.")
+            return
+
+        print("\n" + "=" * 70)
+        print("STACKING OPPORTUNITIES")
+        print("=" * 70)
+
+        # Count by type
+        type_counts = defaultdict(int)
+        for stack in self.stacks:
+            type_counts[stack['type']] += 1
+
+        print(f"\nStack Types:")
+        for stack_type, count in type_counts.items():
+            print(f"  {stack_type}: {count}")
+
+        # Top stacks
+        top_stacks = self.get_top_stacks(top_n)
+
+        print(f"\nTop {top_n} Stacks by Projection:")
+        print(f"{'Type':<20} {'Players':<40} {'Salary':>10} {'Proj':>8}")
+        print("-" * 70)
+
+        for stack in top_stacks:
+            stack_type = stack['type']
+
+            if 'player3' in stack:
+                players = f"{stack['player1']}, {stack['player2']}, {stack['player3']}"
+            elif 'player2' in stack:
+                players = f"{stack['player1']}, {stack['player2']}"
+            else:
+                players = stack['player1']
+
+            players = players[:38]
+            salary = stack.get('combined_salary', stack.get('salary', 0))
+            proj = stack.get('combined_projection', stack.get('projection', 0))
+
+            print(f"{stack_type:<20} {players:<40} ${salary:>9,} {proj:>8.2f}")
+
+        print("=" * 70)
+
+
 # ============================================================================
-# LINEUP VALIDATION
+# OWNERSHIP ANALYZER
 # ============================================================================
 
+
+class OwnershipAnalyzer:
+    """
+    Analyze ownership projections and identify leverage opportunities
+
+    Helps identify chalk plays to fade and contrarian opportunities.
+    """
+
+    def __init__(self, df: pd.DataFrame):
+        """
+        Initialize ownership analyzer
+
+        Args:
+            df: Player DataFrame with Ownership column
+        """
+        self.df = df
+        self.logger = get_logger()
+
+        # Check if ownership data available
+        self.ownership_available = 'Ownership' in df.columns
+
+    def analyze_ownership(self) -> Dict[str, Any]:
+        """
+        Comprehensive ownership analysis
+
+        Returns:
+            Analysis dictionary
+        """
+        if not self.ownership_available:
+            return {
+                'available': False,
+                'message': 'Ownership data not available'
+            }
+
+        # Chalk plays (high ownership)
+        chalk_threshold = 30.0
+        chalk = self.df[self.df['Ownership'] >= chalk_threshold].copy()
+        chalk = chalk.sort_values('Ownership', ascending=False)
+
+        # Contrarian plays (low ownership)
+        contrarian_threshold = 10.0
+        contrarian = self.df[self.df['Ownership'] <= contrarian_threshold].copy()
+        contrarian = contrarian.sort_values('Projected_Points', ascending=False)
+
+        # Leverage plays (high projection, low ownership)
+        self.df['leverage_score'] = (
+            self.df['Projected_Points'] / self.df['Ownership'].clip(lower=1.0)
+        )
+        leverage = self.df.nlargest(10, 'leverage_score')
+
+        # Ownership tiers
+        tiers = {
+            'chalk': len(chalk),
+            'popular': len(self.df[
+                (self.df['Ownership'] >= 20) &
+                (self.df['Ownership'] < 30)
+            ]),
+            'medium': len(self.df[
+                (self.df['Ownership'] >= 10) &
+                (self.df['Ownership'] < 20)
+            ]),
+            'contrarian': len(contrarian)
+        }
+
+        return {
+            'available': True,
+            'chalk_threshold': chalk_threshold,
+            'chalk_players': chalk[
+                ['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']
+            ].to_dict('records'),
+            'contrarian_threshold': contrarian_threshold,
+            'contrarian_players': contrarian[
+                ['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership']
+            ].head(10).to_dict('records'),
+            'leverage_players': leverage[
+                ['Player', 'Position', 'Salary', 'Projected_Points', 'Ownership', 'leverage_score']
+            ].to_dict('records'),
+            'ownership_tiers': tiers,
+            'avg_ownership': float(self.df['Ownership'].mean()),
+            'median_ownership': float(self.df['Ownership'].median())
+        }
+
+    def print_ownership_report(self) -> None:
+        """Print ownership analysis report"""
+        analysis = self.analyze_ownership()
+
+        if not analysis['available']:
+            print("Ownership data not available.")
+            return
+
+        print("\n" + "=" * 70)
+        print("OWNERSHIP ANALYSIS")
+        print("=" * 70)
+
+        # Summary
+        print(f"\nAverage Ownership: {analysis['avg_ownership']:.1f}%")
+        print(f"Median Ownership: {analysis['median_ownership']:.1f}%")
+
+        # Tiers
+        tiers = analysis['ownership_tiers']
+        print(f"\nOwnership Tiers:")
+        print(f"  Chalk (≥30%): {tiers['chalk']} players")
+        print(f"  Popular (20-30%): {tiers['popular']} players")
+        print(f"  Medium (10-20%): {tiers['medium']} players")
+        print(f"  Contrarian (≤10%): {tiers['contrarian']} players")
+
+        # Chalk players
+        chalk = analysis['chalk_players']
+        if chalk:
+            print(f"\nChalk Plays (≥{analysis['chalk_threshold']:.0f}%):")
+            print(f"{'Player':<25} {'Pos':<5} {'Salary':>10} {'Proj':>8} {'Own':>7}")
+            print("-" * 70)
+            for player in chalk[:5]:
+                print(f"{player['Player']:<25} {player['Position']:<5} "
+                      f"${player['Salary']:>9,} {player['Projected_Points']:>8.2f} "
+                      f"{player['Ownership']:>6.1f}%")
+
+        # Leverage players
+        leverage = analysis['leverage_players']
+        if leverage:
+            print(f"\nTop Leverage Plays:")
+            print(f"{'Player':<25} {'Pos':<5} {'Salary':>10} {'Proj':>8} {'Own':>7} {'Lev':>8}")
+            print("-" * 70)
+            for player in leverage[:5]:
+                print(f"{player['Player']:<25} {player['Position']:<5} "
+                      f"${player['Salary']:>9,} {player['Projected_Points']:>8.2f} "
+                      f"{player['Ownership']:>6.1f}% {player['leverage_score']:>8.2f}")
+
+        print("=" * 70)
+
+"""
+PART 5B OF 13: ADVANCED SCORING & INTELLIGENCE SYSTEMS
+
+UPDATE 2: AI & INTELLIGENCE LAYER
+✅ MultiDimensionalScorer - 5-factor lineup evaluation
+✅ GameEnvironmentAnalyzer - Weather, dome, divisional, primetime factors
+✅ NarrativeIntegrationEngine - Injury news, sentiment, perception
+✅ PlayerCorrelationMatrix - Advanced correlation modeling
+✅ LeverageCalculator - Ownership leverage quantification
+"""
+
+# ============================================================================
+# MULTI-DIMENSIONAL SCORER
+# ============================================================================
+
+
+class MultiDimensionalScorer:
+    """
+    NEW: 5-factor lineup scoring system
+
+    Factors: Projection × Value × Leverage × Correlation × Ceiling
+    Ultimate State feature for holistic lineup evaluation
+    """
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        mode: str = 'balanced',
+        field_size: str = 'large_field'
+    ):
+        """
+        Initialize multi-dimensional scorer
+
+        Args:
+            df: Player DataFrame
+            game_info: Game context
+            mode: Optimization mode
+            field_size: Contest size
+        """
+        self.df = df
+        self.game_info = game_info
+        self.mode = mode
+        self.field_size = field_size
+        self.logger = get_logger()
+
+        # Pre-compute metrics
+        self.salaries = df.set_index('Player')['Salary'].to_dict()
+        self.projections = df.set_index('Player')['Projected_Points'].to_dict()
+        self.ownership = df.set_index('Player')['Ownership'].to_dict()
+        self.teams = df.set_index('Player')['Team'].to_dict()
+        self.positions = df.set_index('Player')['Position'].to_dict()
+
+        # Calculate values
+        self.values = {
+            p: self.projections.get(p, 0) / (self.salaries.get(p, 1000) / 1000)
+            for p in self.projections.keys()
+        }
+
+        # Mode-specific weights
+        self.weights = self._get_weights()
+
+    def _get_weights(self) -> Dict[str, float]:
+        """Get factor weights based on mode and field size"""
+        base_weights = {
+            'balanced': {
+                'projection': 0.30,
+                'value': 0.20,
+                'leverage': 0.20,
+                'correlation': 0.15,
+                'ceiling': 0.15
+            },
+            'ceiling': {
+                'projection': 0.20,
+                'value': 0.10,
+                'leverage': 0.15,
+                'correlation': 0.20,
+                'ceiling': 0.35
+            },
+            'floor': {
+                'projection': 0.25,
+                'value': 0.25,
+                'leverage': 0.10,
+                'correlation': 0.25,
+                'ceiling': 0.15
+            },
+            'boom_or_bust': {
+                'projection': 0.15,
+                'value': 0.10,
+                'leverage': 0.25,
+                'correlation': 0.15,
+                'ceiling': 0.35
+            }
+        }
+
+        weights = base_weights.get(self.mode, base_weights['balanced'])
+
+        # Adjust for field size
+        if self.field_size in ['large_field', 'milly_maker']:
+            # Increase leverage weight for large fields
+            weights['leverage'] = min(weights['leverage'] * 1.3, 0.35)
+            # Normalize
+            total = sum(weights.values())
+            weights = {k: v / total for k, v in weights.items()}
+
+        return weights
+
+    def score_lineup(
+        self,
+        captain: str,
+        flex: List[str],
+        sim_results: Optional[SimulationResults] = None
+    ) -> Dict[str, float]:
+        """
+        Calculate multi-dimensional score
+
+        Args:
+            captain: Captain player
+            flex: Flex players
+            sim_results: Optional simulation results
+
+        Returns:
+            Dictionary with component scores and total
+        """
+        try:
+            all_players = [captain] + flex
+
+            # Factor 1: Projection Score (0-100)
+            captain_proj = self.projections.get(captain, 0)
+            flex_proj = sum(self.projections.get(p, 0) for p in flex)
+            total_proj = (
+                captain_proj * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_proj
+            )
+            projection_score = min(total_proj / 2.0, 100)
+
+            # Factor 2: Value Score (0-100)
+            captain_val = self.values.get(captain, 0)
+            flex_val = sum(self.values.get(p, 0) for p in flex)
+            avg_value = (captain_val + flex_val) / len(all_players)
+            value_score = min(avg_value * 20, 100)
+
+            # Factor 3: Leverage Score (0-100)
+            captain_own = self.ownership.get(captain, 10)
+            flex_own = sum(self.ownership.get(p, 10) for p in flex)
+            total_own = (
+                captain_own * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_own
+            )
+            avg_own = total_own / DraftKingsRules.ROSTER_SIZE
+
+            # Lower ownership = higher leverage
+            leverage_score = max(0, 100 - avg_own)
+
+            # Bonus for extremely low ownership
+            if avg_own < 30:
+                leverage_score = min(leverage_score * 1.2, 100)
+
+            # Factor 4: Correlation Score (0-100)
+            correlation_score = self._calculate_correlation_score(
+                captain,
+                flex
+            )
+
+            # Factor 5: Ceiling Score (0-100)
+            if sim_results:
+                ceiling_score = min(sim_results.ceiling_90th / 2.5, 100)
+            else:
+                # Estimate ceiling from volatility
+                ceiling_estimate = total_proj * 1.35
+                ceiling_score = min(ceiling_estimate / 2.5, 100)
+
+            # Combine scores
+            total_score = (
+                self.weights['projection'] * projection_score +
+                self.weights['value'] * value_score +
+                self.weights['leverage'] * leverage_score +
+                self.weights['correlation'] * correlation_score +
+                self.weights['ceiling'] * ceiling_score
+            )
+
+            return {
+                'total': float(total_score),
+                'projection': float(projection_score),
+                'value': float(value_score),
+                'leverage': float(leverage_score),
+                'correlation': float(correlation_score),
+                'ceiling': float(ceiling_score)
+            }
+
+        except Exception as e:
+            self.logger.log_exception(e, "MultiDimensionalScorer.score_lineup")
+            return {
+                'total': 0.0,
+                'projection': 0.0,
+                'value': 0.0,
+                'leverage': 0.0,
+                'correlation': 0.0,
+                'ceiling': 0.0
+            }
+
+    def _calculate_correlation_score(
+        self,
+        captain: str,
+        flex: List[str]
+    ) -> float:
+        """
+        Calculate correlation score for lineup
+
+        Higher score = better correlated for game script
+
+        Args:
+            captain: Captain player
+            flex: Flex players
+
+        Returns:
+            Correlation score (0-100)
+        """
+        try:
+            score = 50.0  # Base score
+
+            all_players = [captain] + flex
+
+            captain_pos = self.positions.get(captain, '')
+            captain_team = self.teams.get(captain, '')
+
+            # QB captain bonuses
+            if captain_pos == 'QB':
+                # Count same-team pass catchers
+                same_team_receivers = sum(
+                    1 for p in flex
+                    if self.teams.get(p, '') == captain_team
+                    and self.positions.get(p, '') in ['WR', 'TE']
+                )
+
+                # Strong positive correlation
+                score += same_team_receivers * 10
+
+                # Bring-back player (opposing team)
+                opposing_team = [
+                    t for t in self.game_info.get('teams', [])
+                    if t != captain_team
+                ]
+                if opposing_team:
+                    bring_back_count = sum(
+                        1 for p in flex
+                        if self.teams.get(p, '') == opposing_team[0]
+                    )
+                    score += bring_back_count * 5
+
+            # WR/TE captain with QB stack
+            elif captain_pos in ['WR', 'TE']:
+                # Check for QB on same team in flex
+                same_team_qb = any(
+                    self.positions.get(p, '') == 'QB' and
+                    self.teams.get(p, '') == captain_team
+                    for p in flex
+                )
+                if same_team_qb:
+                    score += 15
+
+            # RB considerations (negative correlation with same-team pass)
+            rb_count = sum(
+                1 for p in all_players
+                if self.positions.get(p, '') == 'RB'
+            )
+
+            if rb_count > 0:
+                same_team_pass = sum(
+                    1 for p in all_players
+                    if self.positions.get(p, '') in ['QB', 'WR', 'TE']
+                    and self.teams.get(p, '') == self.teams.get(captain, '')
+                )
+                # Slight penalty for conflicting game scripts
+                if same_team_pass > 0 and rb_count > 0:
+                    score -= 5
+
+            # Team diversity bonus
+            teams_represented = len(set(
+                self.teams.get(p, '') for p in all_players
+            ))
+            if teams_represented == 2:
+                score += 10
+
+            return min(max(score, 0), 100)
+
+        except Exception:
+            return 50.0
+
+
+# ============================================================================
+# GAME ENVIRONMENT ANALYZER
+# ============================================================================
+
+
+class GameEnvironmentAnalyzer:
+    """
+    NEW: Analyzes game environment factors
+
+    Factors: Weather, Dome/Outdoor, Divisional, Primetime
+    Ultimate State feature for contextual adjustments
+    """
+
+    def __init__(self, game_info: Dict[str, Any]):
+        """
+        Initialize game environment analyzer
+
+        Args:
+            game_info: Game context information
+        """
+        self.game_info = game_info
+        self.logger = get_logger()
+
+        # Environment factors
+        self.weather_impact = 1.0
+        self.dome_factor = 1.0
+        self.divisional_factor = 1.0
+        self.primetime_factor = 1.0
+
+        self._analyze_environment()
+
+    def _analyze_environment(self) -> None:
+        """Analyze all environment factors"""
+        try:
+            # Weather analysis
+            weather = self.game_info.get('weather', '').lower()
+
+            if weather:
+                if any(word in weather for word in ['rain', 'snow', 'wind']):
+                    self.weather_impact = 0.9  # Slight negative
+                    self.logger.log(
+                        f"Weather impact detected: {weather}",
+                        "INFO"
+                    )
+                elif 'dome' in weather or 'indoor' in weather:
+                    self.weather_impact = 1.05  # Slight positive
+                    self.dome_factor = 1.05
+
+            # Dome/Indoor
+            is_dome = self.game_info.get('is_dome', False)
+            if is_dome or 'dome' in str(self.game_info.get('stadium', '')).lower():
+                self.dome_factor = 1.05
+                self.weather_impact = 1.0  # Override weather
+
+            # Divisional game
+            is_divisional = self.game_info.get('is_divisional', False)
+            if is_divisional:
+                # Divisional games tend to be lower scoring
+                self.divisional_factor = 0.95
+
+            # Primetime
+            is_primetime = self.game_info.get('is_primetime', False)
+            if is_primetime:
+                # Slight boost for primetime games
+                self.primetime_factor = 1.02
+
+        except Exception as e:
+            self.logger.log_exception(e, "_analyze_environment")
+
+    def get_player_adjustment(
+        self,
+        player: str,
+        position: str,
+        team: str
+    ) -> float:
+        """
+        Get environment adjustment factor for player
+
+        Args:
+            player: Player name
+            position: Player position
+            team: Player team
+
+        Returns:
+            Adjustment multiplier (1.0 = no adjustment)
+        """
+        try:
+            adjustment = 1.0
+
+            # Weather impacts passing more than rushing
+            if position in ['QB', 'WR', 'TE']:
+                adjustment *= self.weather_impact
+            elif position == 'RB':
+                # RBs benefit from bad weather (more rushing)
+                if self.weather_impact < 1.0:
+                    adjustment *= (2.0 - self.weather_impact)
+
+            # Dome boost for pass catchers
+            if position in ['WR', 'TE']:
+                adjustment *= self.dome_factor
+
+            # Divisional game impact
+            adjustment *= self.divisional_factor
+
+            # Primetime boost
+            adjustment *= self.primetime_factor
+
+            return adjustment
+
+        except Exception:
+            return 1.0
+
+    def get_environment_summary(self) -> Dict[str, Any]:
+        """Get summary of environment factors"""
+        return {
+            'weather_impact': self.weather_impact,
+            'dome_factor': self.dome_factor,
+            'divisional_factor': self.divisional_factor,
+            'primetime_factor': self.primetime_factor,
+            'weather_description': self.game_info.get('weather', 'Unknown'),
+            'is_dome': self.game_info.get('is_dome', False),
+            'is_divisional': self.game_info.get('is_divisional', False),
+            'is_primetime': self.game_info.get('is_primetime', False)
+        }
+
+
+# ============================================================================
+# NARRATIVE INTEGRATION ENGINE
+# ============================================================================
+
+
+class NarrativeIntegrationEngine:
+    """
+    NEW: Integrates narrative factors into player evaluation
+
+    Factors: Injury reports, beat writer sentiment, public perception
+    Ultimate State feature for narrative-based adjustments
+    """
+
+    def __init__(self, df: pd.DataFrame):
+        """
+        Initialize narrative integration engine
+
+        Args:
+            df: Player DataFrame
+        """
+        self.df = df
+        self.logger = get_logger()
+
+        # Narrative scores (player -> score)
+        self.narrative_scores: Dict[str, float] = {}
+
+        # Keywords for sentiment analysis
+        self.positive_keywords = [
+            'healthy', 'ready', 'explosive', 'matchup', 'opportunity',
+            'volume', 'target', 'confident', 'breakout', 'upside'
+        ]
+
+        self.negative_keywords = [
+            'questionable', 'doubtful', 'limited', 'injury', 'concern',
+            'bust', 'avoid', 'risky', 'downgrade', 'struggling'
+        ]
+
+        self._analyze_narratives()
+
+    def _analyze_narratives(self) -> None:
+        """Analyze narratives for all players"""
+        try:
+            # Check if DataFrame has narrative columns
+            narrative_columns = [
+                col for col in self.df.columns
+                if col.lower() in [
+                    'news',
+                    'notes',
+                    'injury_status',
+                    'beat_writer',
+                    'narrative',
+                    'sentiment'
+                ]
+            ]
+
+            if not narrative_columns:
+                # No narrative data available
+                self.logger.log(
+                    "No narrative data columns found",
+                    "DEBUG"
+                )
+                return
+
+            # Analyze each player
+            for _, player_row in self.df.iterrows():
+                player = player_row['Player']
+                narrative_text = ' '.join([
+                    str(player_row.get(col, ''))
+                    for col in narrative_columns
+                ]).lower()
+
+                if narrative_text:
+                    score = self._calculate_narrative_score(narrative_text)
+                    self.narrative_scores[player] = score
+
+        except Exception as e:
+            self.logger.log_exception(e, "_analyze_narratives")
+
+    def _calculate_narrative_score(self, text: str) -> float:
+        """
+        Calculate narrative score from text
+
+        Args:
+            text: Narrative text
+
+        Returns:
+            Score from -10 to +10
+        """
+        try:
+            score = 0.0
+
+            # Count positive keywords
+            positive_count = sum(
+                1 for keyword in self.positive_keywords
+                if keyword in text
+            )
+
+            # Count negative keywords
+            negative_count = sum(
+                1 for keyword in self.negative_keywords
+                if keyword in text
+            )
+
+            # Calculate score
+            score = (positive_count * 2) - (negative_count * 3)
+
+            # Clamp to range
+            return max(-10, min(10, score))
+
+        except Exception:
+            return 0.0
+
+    def get_player_narrative_adjustment(self, player: str) -> float:
+        """
+        Get narrative adjustment for player
+
+        Args:
+            player: Player name
+
+        Returns:
+            Adjustment multiplier (1.0 = neutral)
+        """
+        try:
+            narrative_score = self.narrative_scores.get(player, 0.0)
+
+            # Convert score to multiplier
+            # Range: 0.90 to 1.10
+            adjustment = 1.0 + (narrative_score * 0.01)
+
+            return max(0.90, min(1.10, adjustment))
+
+        except Exception:
+            return 1.0
+
+    def get_narrative_insights(self) -> List[str]:
+        """Get narrative insights for logging"""
+        insights = []
+
+        try:
+            # Top positive narratives
+            positive_players = sorted(
+                [
+                    (p, s) for p, s in self.narrative_scores.items()
+                    if s > 3
+                ],
+                key=lambda x: x[1],
+                reverse=True
+            )[:3]
+
+            if positive_players:
+                insights.append(
+                    f"Positive narratives: "
+                    f"{', '.join(p for p, _ in positive_players)}"
+                )
+
+            # Top negative narratives
+            negative_players = sorted(
+                [
+                    (p, s) for p, s in self.narrative_scores.items()
+                    if s < -3
+                ],
+                key=lambda x: x[1]
+            )[:3]
+
+            if negative_players:
+                insights.append(
+                    f"Negative narratives: "
+                    f"{', '.join(p for p, _ in negative_players)}"
+                )
+
+        except Exception:
+            pass
+
+        return insights
+
+
+# ============================================================================
+# LEVERAGE CALCULATOR
+# ============================================================================
+
+
+class LeverageCalculator:
+    """
+    NEW: Calculates leverage opportunities
+
+    Ultimate State feature for tournament optimization
+    """
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        field_size: str = 'large_field'
+    ):
+        """
+        Initialize leverage calculator
+
+        Args:
+            df: Player DataFrame
+            field_size: Contest size
+        """
+        self.df = df
+        self.field_size = field_size
+        self.logger = get_logger()
+
+        # Leverage thresholds by field size
+        self.thresholds = {
+            'small_field': {'low': 15, 'high': 40},
+            'medium_field': {'low': 12, 'high': 35},
+            'large_field': {'low': 10, 'high': 30},
+            'milly_maker': {'low': 8, 'high': 25}
+        }
+
+    def calculate_player_leverage(
+        self,
+        player: str,
+        projection: float,
+        ownership: float
+    ) -> float:
+        """
+        Calculate leverage score for player
+
+        Args:
+            player: Player name
+            projection: Projected points
+            ownership: Ownership percentage
+
+        Returns:
+            Leverage score
+        """
+        try:
+            # Base leverage = projection / ownership
+            base_leverage = projection / max(ownership, 1.0)
+
+            # Get thresholds
+            thresholds = self.thresholds.get(
+                self.field_size,
+                self.thresholds['large_field']
+            )
+
+            # Bonus for extreme low ownership
+            if ownership < thresholds['low']:
+                ownership_bonus = (thresholds['low'] - ownership) * 0.5
+                base_leverage += ownership_bonus
+
+            # Penalty for high ownership
+            if ownership > thresholds['high']:
+                ownership_penalty = (ownership - thresholds['high']) * 0.3
+                base_leverage -= ownership_penalty
+
+            return max(0, base_leverage)
+
+        except Exception:
+            return 0.0
+
+    def identify_leverage_plays(
+        self,
+        min_projection: float = 10.0,
+        top_n: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Identify top leverage opportunities
+
+        Args:
+            min_projection: Minimum projection threshold
+            top_n: Number of plays to return
+
+        Returns:
+            List of leverage plays
+        """
+        try:
+            leverage_plays = []
+
+            for _, player_row in self.df.iterrows():
+                player = player_row['Player']
+                projection = player_row['Projected_Points']
+                ownership = player_row['Ownership']
+
+                if projection >= min_projection:
+                    leverage = self.calculate_player_leverage(
+                        player,
+                        projection,
+                        ownership
+                    )
+
+                    leverage_plays.append({
+                        'player': player,
+                        'projection': projection,
+                        'ownership': ownership,
+                        'leverage': leverage,
+                        'position': player_row['Position'],
+                        'salary': player_row['Salary']
+                    })
+
+            # Sort by leverage
+            leverage_plays.sort(key=lambda x: x['leverage'], reverse=True)
+
+            return leverage_plays[:top_n]
+
+        except Exception as e:
+            self.logger.log_exception(e, "identify_leverage_plays")
+            return []
+
+"""
+PART 6 OF 13: MONTE CARLO SIMULATION ENGINE
+
+Complete Monte Carlo simulation system for player performance modeling.
+Simulates thousands of game outcomes to evaluate lineup upside, floor, and risk.
+"""
+
+# ============================================================================
+# CORRELATION MODELER
+# ============================================================================
+
+
+class CorrelationModeler:
+    """
+    Model player correlations for simulation
+
+    Captures how player performances are related (QB-WR stacks, etc.)
+    """
+
+    def __init__(self, df: pd.DataFrame, game_info: Dict[str, Any]):
+        """
+        Initialize correlation modeler
+
+        Args:
+            df: Player DataFrame
+            game_info: Game context
+        """
+        self.df = df
+        self.game_info = game_info
+        self.logger = get_logger()
+
+        # Build correlation matrix
+        self.correlation_matrix = self._build_correlation_matrix()
+
+    def _build_correlation_matrix(self) -> Dict[str, Dict[str, float]]:
+        """
+        Build player correlation matrix
+
+        Returns:
+            Nested dict of player correlations
+        """
+        matrix = {}
+        players = self.df['Player'].tolist()
+
+        for player in players:
+            matrix[player] = {}
+
+            player_row = self.df[self.df['Player'] == player].iloc[0]
+            player_pos = player_row['Position']
+            player_team = player_row['Team']
+
+            for other_player in players:
+                if player == other_player:
+                    matrix[player][other_player] = 1.0
+                    continue
+
+                other_row = self.df[self.df['Player'] == other_player].iloc[0]
+                other_pos = other_row['Position']
+                other_team = other_row['Team']
+
+                # Calculate correlation
+                corr = self._calculate_correlation(
+                    player_pos, player_team,
+                    other_pos, other_team
+                )
+
+                matrix[player][other_player] = corr
+
+        return matrix
+
+    def _calculate_correlation(
+        self,
+        pos1: str,
+        team1: str,
+        pos2: str,
+        team2: str
+    ) -> float:
+        """
+        Calculate correlation between two players
+
+        Args:
+            pos1: Player 1 position
+            team1: Player 1 team
+            pos2: Player 2 position
+            team2: Player 2 team
+
+        Returns:
+            Correlation coefficient (-1 to 1)
+        """
+        # Same team correlations
+        if team1 == team2:
+            # QB-WR/TE: High positive correlation
+            if pos1 == 'QB' and pos2 in ['WR', 'TE']:
+                return 0.65
+            if pos2 == 'QB' and pos1 in ['WR', 'TE']:
+                return 0.65
+
+            # WR-WR same team: Moderate negative (compete for targets)
+            if pos1 == 'WR' and pos2 == 'WR':
+                return -0.10
+
+            # QB-RB same team: Slight negative (passing vs rushing)
+            if (pos1 == 'QB' and pos2 == 'RB') or (pos2 == 'QB' and pos1 == 'RB'):
+                return -0.15
+
+            # RB-WR same team: Slight negative
+            if (pos1 == 'RB' and pos2 in ['WR', 'TE']) or \
+               (pos2 == 'RB' and pos1 in ['WR', 'TE']):
+                return -0.10
+
+            # Same position same team: Moderate negative
+            if pos1 == pos2:
+                return -0.20
+
+            # Default same team: Slight positive (game script)
+            return 0.10
+
+        # Different team correlations
+        else:
+            # QB-QB opposing: Moderate positive (shootout)
+            if pos1 == 'QB' and pos2 == 'QB':
+                return 0.40
+
+            # Pass catcher - opposing QB: Moderate positive (shootout)
+            if (pos1 in ['WR', 'TE'] and pos2 == 'QB') or \
+               (pos2 in ['WR', 'TE'] and pos1 == 'QB'):
+                return 0.35
+
+            # RB - opposing DST: Negative
+            if (pos1 == 'RB' and pos2 == 'DST') or (pos2 == 'RB' and pos1 == 'DST'):
+                return -0.45
+
+            # Default opposing: Slight positive (game flow)
+            return 0.15
+
+    def get_correlation(self, player1: str, player2: str) -> float:
+        """
+        Get correlation between two players
+
+        Args:
+            player1: First player name
+            player2: Second player name
+
+        Returns:
+            Correlation coefficient
+        """
+        try:
+            return self.correlation_matrix[player1][player2]
+        except KeyError:
+            return 0.0
+
+    def get_lineup_correlation_matrix(
+        self,
+        players: List[str]
+    ) -> np.ndarray:
+        """
+        Get correlation matrix for lineup
+
+        Args:
+            players: List of player names
+
+        Returns:
+            NumPy correlation matrix
+        """
+        n = len(players)
+        matrix = np.zeros((n, n))
+
+        for i, p1 in enumerate(players):
+            for j, p2 in enumerate(players):
+                matrix[i, j] = self.get_correlation(p1, p2)
+
+        return matrix
+
+
+# ============================================================================
+# MONTE CARLO SIMULATION ENGINE
+# ============================================================================
+
+
+class MonteCarloSimulationEngine:
+    """
+    Monte Carlo simulation engine for lineup evaluation
+
+    Simulates thousands of game outcomes to calculate lineup distributions,
+    ceiling, floor, and win probability.
+    """
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        num_simulations: int = 10000
+    ):
+        """
+        Initialize Monte Carlo engine
+
+        Args:
+            df: Player DataFrame with projections and volatility
+            game_info: Game context information
+            num_simulations: Number of simulations to run
+        """
+        self.df = df
+        self.game_info = game_info
+        self.num_simulations = num_simulations
+        self.logger = get_logger()
+
+        # Build correlation model
+        self.correlation_model = CorrelationModeler(df, game_info)
+
+        # Pre-compute player distributions
+        self.player_distributions = self._build_player_distributions()
+
+        # Cache for lineup simulations
+        self.cache = {}
+
+    def _build_player_distributions(self) -> Dict[str, Dict[str, float]]:
+        """
+        Build distribution parameters for each player
+
+        Returns:
+            Dictionary mapping player to distribution parameters
+        """
+        distributions = {}
+
+        for _, player_row in self.df.iterrows():
+            player = player_row['Player']
+            projection = player_row['Projected_Points']
+
+            # Get standard deviation (or estimate)
+            if 'StdDev' in player_row and pd.notna(player_row['StdDev']):
+                std_dev = player_row['StdDev']
+            else:
+                # Estimate: ~25% of projection
+                std_dev = projection * 0.25
+
+            # Get floor and ceiling if available
+            floor = player_row.get('Floor', projection * 0.7)
+            ceiling = player_row.get('Ceiling', projection * 1.4)
+
+            distributions[player] = {
+                'mean': float(projection),
+                'std': float(std_dev),
+                'floor': float(floor),
+                'ceiling': float(ceiling)
+            }
+
+        return distributions
+
+    def simulate_player_performance(
+        self,
+        player: str,
+        num_sims: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        Simulate player performance distribution
+
+        Args:
+            player: Player name
+            num_sims: Number of simulations (default: self.num_simulations)
+
+        Returns:
+            Array of simulated point values
+        """
+        if num_sims is None:
+            num_sims = self.num_simulations
+
+        if player not in self.player_distributions:
+            # Return zeros for unknown player
+            return np.zeros(num_sims)
+
+        dist = self.player_distributions[player]
+
+        # Generate normal distribution
+        points = np.random.normal(
+            dist['mean'],
+            dist['std'],
+            size=num_sims
+        )
+
+        # Apply floor and ceiling constraints
+        points = np.clip(points, dist['floor'] * 0.5, dist['ceiling'] * 1.2)
+
+        # Ensure non-negative
+        points = np.maximum(points, 0)
+
+        return points
+
+    def simulate_correlated_performances(
+        self,
+        players: List[str],
+        num_sims: Optional[int] = None
+    ) -> Dict[str, np.ndarray]:
+        """
+        Simulate correlated player performances
+
+        Uses Cholesky decomposition to generate correlated normal variates
+
+        Args:
+            players: List of player names
+            num_sims: Number of simulations
+
+        Returns:
+            Dictionary mapping player to simulated points array
+        """
+        if num_sims is None:
+            num_sims = self.num_simulations
+
+        n_players = len(players)
+
+        # Get correlation matrix
+        corr_matrix = self.correlation_model.get_lineup_correlation_matrix(players)
+
+        # Ensure positive semi-definite
+        # Add small value to diagonal for numerical stability
+        corr_matrix = corr_matrix + np.eye(n_players) * 1e-6
+
+        try:
+            # Cholesky decomposition
+            chol = np.linalg.cholesky(corr_matrix)
+        except np.linalg.LinAlgError:
+            # If Cholesky fails, use eigenvalue decomposition
+            self.logger.log(
+                "Cholesky decomposition failed, using eigenvalue method",
+                "DEBUG"
+            )
+            eigenvalues, eigenvectors = np.linalg.eigh(corr_matrix)
+            eigenvalues = np.maximum(eigenvalues, 1e-6)
+            chol = eigenvectors @ np.diag(np.sqrt(eigenvalues))
+
+        # Generate independent standard normals
+        independent_normals = np.random.standard_normal((n_players, num_sims))
+
+        # Apply correlation structure
+        correlated_normals = chol @ independent_normals
+
+        # Transform to player-specific distributions
+        results = {}
+
+        for i, player in enumerate(players):
+            if player not in self.player_distributions:
+                results[player] = np.zeros(num_sims)
+                continue
+
+            dist = self.player_distributions[player]
+
+            # Transform standard normal to player distribution
+            points = dist['mean'] + dist['std'] * correlated_normals[i, :]
+
+            # Apply constraints
+            points = np.clip(points, dist['floor'] * 0.5, dist['ceiling'] * 1.2)
+            points = np.maximum(points, 0)
+
+            results[player] = points
+
+        return results
+
+    def evaluate_lineup(
+        self,
+        captain: str,
+        flex: List[str],
+        num_sims: Optional[int] = None
+    ) -> SimulationResults:
+        """
+        Evaluate lineup via Monte Carlo simulation
+
+        Args:
+            captain: Captain player name
+            flex: List of FLEX player names
+            num_sims: Number of simulations
+
+        Returns:
+            SimulationResults with statistics
+        """
+        if num_sims is None:
+            num_sims = self.num_simulations
+
+        # Check cache
+        cache_key = f"{captain}|{'|'.join(sorted(flex))}|{num_sims}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        all_players = [captain] + flex
+
+        # Simulate correlated performances
+        player_sims = self.simulate_correlated_performances(all_players, num_sims)
+
+        # Calculate lineup totals
+        captain_points = player_sims[captain] * DraftKingsRules.CAPTAIN_MULTIPLIER
+        flex_points = sum(player_sims[p] for p in flex)
+        lineup_totals = captain_points + flex_points
+
+        # Calculate statistics
+        mean_points = float(np.mean(lineup_totals))
+        median_points = float(np.median(lineup_totals))
+        std_points = float(np.std(lineup_totals))
+        min_points = float(np.min(lineup_totals))
+        max_points = float(np.max(lineup_totals))
+
+        # Percentiles
+        percentiles = {
+            10: float(np.percentile(lineup_totals, 10)),
+            25: float(np.percentile(lineup_totals, 25)),
+            50: float(np.percentile(lineup_totals, 50)),
+            75: float(np.percentile(lineup_totals, 75)),
+            90: float(np.percentile(lineup_totals, 90)),
+            95: float(np.percentile(lineup_totals, 95)),
+            99: float(np.percentile(lineup_totals, 99))
+        }
+
+        ceiling_90th = percentiles[90]
+        floor_10th = percentiles[10]
+
+        # Sharpe ratio (risk-adjusted return)
+        if std_points > 0:
+            sharpe_ratio = mean_points / std_points
+        else:
+            sharpe_ratio = 0.0
+
+        # Win probability (estimate)
+        # Assume top 1% wins in large GPP
+        win_threshold = mean_points + 2.5 * std_points
+        win_probability = float(np.sum(lineup_totals >= win_threshold) / num_sims)
+
+        results = SimulationResults(
+            mean_points=mean_points,
+            median_points=median_points,
+            std_points=std_points,
+            min_points=min_points,
+            max_points=max_points,
+            ceiling_90th=ceiling_90th,
+            floor_10th=floor_10th,
+            sharpe_ratio=sharpe_ratio,
+            win_probability=win_probability,
+            percentiles=percentiles
+        )
+
+        # Cache results
+        self.cache[cache_key] = results
+
+        return results
+
+    def evaluate_multiple_lineups(
+        self,
+        lineups: List[Dict[str, Any]],
+        parallel: bool = True,
+        num_sims: Optional[int] = None
+    ) -> Dict[int, SimulationResults]:
+        """
+        Evaluate multiple lineups efficiently
+
+        Args:
+            lineups: List of lineup dictionaries
+            parallel: Use parallel processing
+            num_sims: Number of simulations per lineup
+
+        Returns:
+            Dictionary mapping lineup index to SimulationResults
+        """
+        if num_sims is None:
+            num_sims = self.num_simulations
+
+        def evaluate_single(idx_lineup: Tuple[int, Dict[str, Any]]) -> Tuple[int, SimulationResults]:
+            """Evaluate single lineup"""
+            idx, lineup = idx_lineup
+            captain = lineup.get('Captain', '')
+            flex = lineup.get('FLEX', [])
+
+            # Handle string FLEX
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+            results = self.evaluate_lineup(captain, flex, num_sims)
+            return idx, results
+
+        # Parallel processing
+        if parallel and len(lineups) > 1:
+            num_threads = get_optimal_thread_count(len(lineups), 'heavy')
+
+            try:
+                with ThreadPoolExecutor(max_workers=num_threads) as executor:
+                    results = dict(executor.map(
+                        evaluate_single,
+                        enumerate(lineups)
+                    ))
+                return results
+            except Exception as e:
+                self.logger.log_exception(e, "Parallel simulation failed")
+                # Fallback to sequential
+
+        # Sequential processing
+        results = {}
+        for idx, lineup in enumerate(lineups):
+            _, sim_results = evaluate_single((idx, lineup))
+            results[idx] = sim_results
+
+        return results
+
+    def compare_lineups(
+        self,
+        lineup1: Tuple[str, List[str]],
+        lineup2: Tuple[str, List[str]],
+        num_sims: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Compare two lineups head-to-head
+
+        Args:
+            lineup1: Tuple of (captain, flex)
+            lineup2: Tuple of (captain, flex)
+            num_sims: Number of simulations
+
+        Returns:
+            Comparison statistics
+        """
+        if num_sims is None:
+            num_sims = self.num_simulations
+
+        captain1, flex1 = lineup1
+        captain2, flex2 = lineup2
+
+        # Simulate both lineups
+        results1 = self.evaluate_lineup(captain1, flex1, num_sims)
+        results2 = self.evaluate_lineup(captain2, flex2, num_sims)
+
+        return {
+            'lineup1': {
+                'mean': results1.mean_points,
+                'ceiling': results1.ceiling_90th,
+                'floor': results1.floor_10th,
+                'sharpe': results1.sharpe_ratio
+            },
+            'lineup2': {
+                'mean': results2.mean_points,
+                'ceiling': results2.ceiling_90th,
+                'floor': results2.floor_10th,
+                'sharpe': results2.sharpe_ratio
+            },
+            'differences': {
+                'mean_diff': results1.mean_points - results2.mean_points,
+                'ceiling_diff': results1.ceiling_90th - results2.ceiling_90th,
+                'floor_diff': results1.floor_10th - results2.floor_10th,
+                'sharpe_diff': results1.sharpe_ratio - results2.sharpe_ratio
+            }
+        }
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        """
+        Get cache statistics
+
+        Returns:
+            Cache statistics
+        """
+        return {
+            'cached_lineups': len(self.cache),
+            'total_simulations': self.num_simulations,
+            'total_players': len(self.player_distributions)
+        }
+
+    def clear_cache(self) -> None:
+        """Clear simulation cache"""
+        self.cache.clear()
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+
+def calculate_lineup_metrics(
+    captain: str,
+    flex: List[str],
+    df: pd.DataFrame,
+    mc_engine: Optional[MonteCarloSimulationEngine] = None
+) -> Dict[str, Any]:
+    """
+    Calculate comprehensive lineup metrics
+
+    Args:
+        captain: Captain player name
+        flex: FLEX player names
+        df: Player DataFrame
+        mc_engine: Optional Monte Carlo engine for simulation
+
+    Returns:
+        Dictionary with all lineup metrics
+    """
+    try:
+        all_players = [captain] + flex
+
+        # Basic info
+        lineup_dict = {
+            'Captain': captain,
+            'FLEX': flex
+        }
+
+        # Get player data
+        lineup_df = df[df['Player'].isin(all_players)]
+        captain_row = df[df['Player'] == captain].iloc[0]
+
+        # Salary calculation
+        captain_salary = captain_row['Salary'] * DraftKingsRules.CAPTAIN_MULTIPLIER
+        flex_salaries = lineup_df[lineup_df['Player'].isin(flex)]['Salary'].sum()
+        total_salary = int(captain_salary + flex_salaries)
+
+        lineup_dict['Total_Salary'] = total_salary
+        lineup_dict['Remaining_Salary'] = DraftKingsRules.SALARY_CAP - total_salary
+
+        # Projection calculation
+        captain_proj = captain_row['Projected_Points'] * DraftKingsRules.CAPTAIN_MULTIPLIER
+        flex_proj = lineup_df[lineup_df['Player'].isin(flex)]['Projected_Points'].sum()
+        total_proj = captain_proj + flex_proj
+
+        lineup_dict['Projected'] = float(total_proj)
+
+        # Ownership calculation
+        captain_own = captain_row.get('Ownership', 10) * DraftKingsRules.CAPTAIN_MULTIPLIER
+        flex_own = lineup_df[lineup_df['Player'].isin(flex)]['Ownership'].sum()
+        total_own = captain_own + flex_own
+        avg_own = total_own / DraftKingsRules.ROSTER_SIZE
+
+        lineup_dict['Total_Ownership'] = float(total_own)
+        lineup_dict['Avg_Ownership'] = float(avg_own)
+
+        # Team distribution
+        team_dist = lineup_df['Team'].value_counts().to_dict()
+        lineup_dict['Team_Distribution'] = team_dist
+        lineup_dict['Num_Teams'] = len(team_dist)
+
+        # Position distribution
+        pos_dist = lineup_df['Position'].value_counts().to_dict()
+        lineup_dict['Position_Distribution'] = pos_dist
+
+        # Value metric (points per $1k)
+        lineup_dict['Value'] = total_proj / (total_salary / 1000) if total_salary > 0 else 0
+
+        # Monte Carlo simulation if engine provided
+        if mc_engine:
+            try:
+                sim_results = mc_engine.evaluate_lineup(captain, flex)
+                lineup_dict['Ceiling_90th'] = sim_results.ceiling_90th
+                lineup_dict['Floor_10th'] = sim_results.floor_10th
+                lineup_dict['Median'] = sim_results.median_points
+                lineup_dict['StdDev'] = sim_results.std_points
+                lineup_dict['Sharpe_Ratio'] = sim_results.sharpe_ratio
+                lineup_dict['Win_Probability'] = sim_results.win_probability
+            except Exception:
+                pass
+
+        # Player details (for export)
+        player_details = []
+        for player in all_players:
+            player_row = df[df['Player'] == player].iloc[0]
+            is_captain = player == captain
+
+            player_details.append({
+                'Player': player,
+                'Position': player_row['Position'],
+                'Team': player_row['Team'],
+                'Salary': int(player_row['Salary'] * (1.5 if is_captain else 1.0)),
+                'Projection': float(player_row['Projected_Points'] * (1.5 if is_captain else 1.0)),
+                'Ownership': float(player_row.get('Ownership', 10)),
+                'Is_Captain': is_captain
+            })
+
+        lineup_dict['Player_Details'] = player_details
+
+        # Validation flag
+        lineup_dict['Valid'] = True
+
+        return lineup_dict
+
+    except Exception as e:
+        get_logger().log_exception(e, "calculate_lineup_metrics")
+        return {
+            'Captain': captain,
+            'FLEX': flex,
+            'Valid': False,
+            'Error': str(e)
+        }
+
+
 def validate_lineup_with_context(
-    lineup_dict: Dict[str, Any],
+    lineup: Dict[str, Any],
     df: pd.DataFrame,
     salary_cap: int = DraftKingsRules.SALARY_CAP
 ) -> ValidationResult:
     """
-    Comprehensive lineup validation with detailed feedback
+    Validate lineup with detailed context
 
     Args:
-        lineup_dict: Lineup dictionary to validate
+        lineup: Lineup dictionary
         df: Player DataFrame
-        salary_cap: Maximum salary allowed
+        salary_cap: Salary cap
 
     Returns:
-        ValidationResult with errors and warnings
+        ValidationResult
     """
     result = ValidationResult(is_valid=True)
 
     try:
-        captain = lineup_dict.get('Captain', '')
-        flex = lineup_dict.get('FLEX', [])
+        captain = lineup.get('Captain', '')
+        flex = lineup.get('FLEX', [])
 
         if isinstance(flex, str):
             flex = [p.strip() for p in flex.split(',') if p.strip()]
@@ -1969,2301 +4261,1013 @@ def validate_lineup_with_context(
 
         # Check roster size
         if len(all_players) != DraftKingsRules.ROSTER_SIZE:
-            result.add_error(f"Invalid roster size: {len(all_players)} (need {DraftKingsRules.ROSTER_SIZE})")
+            result.add_error(
+                f"Invalid roster size: {len(all_players)} "
+                f"(need {DraftKingsRules.ROSTER_SIZE})"
+            )
 
         # Check for duplicates
         if len(set(all_players)) != len(all_players):
             result.add_error("Duplicate players in lineup")
 
-        # Validate all players exist
-        valid_players = set(df['Player'].tolist())
-        invalid = [p for p in all_players if p not in valid_players]
-        if invalid:
-            result.add_error(f"Invalid players: {invalid}")
+        # Check if all players exist
+        lineup_df = df[df['Player'].isin(all_players)]
+        if len(lineup_df) != len(all_players):
+            missing = set(all_players) - set(lineup_df['Player'].tolist())
+            result.add_error(f"Players not found in data: {missing}")
             return result
 
-        # Salary validation
-        salaries = df.set_index('Player')['Salary'].to_dict()
-        captain_sal = salaries.get(captain, 0)
-        flex_sal = sum(salaries.get(p, 0) for p in flex)
-        total_sal = captain_sal * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_sal
-
-        if total_sal > salary_cap:
-            result.add_error(f"Salary ${total_sal:,.0f} exceeds cap ${salary_cap:,}")
-
-        if total_sal < salary_cap * 0.7:
-            result.add_warning(f"Salary ${total_sal:,.0f} is very low (< 70% of cap)")
-
-        # Team diversity
-        teams = df.set_index('Player')['Team'].to_dict()
-        lineup_teams = [teams.get(p, 'UNK') for p in all_players]
-        team_counts = Counter(lineup_teams)
-
-        if len(team_counts) < DraftKingsRules.MIN_TEAMS_REQUIRED:
-            result.add_error(f"Need players from at least {DraftKingsRules.MIN_TEAMS_REQUIRED} teams")
-
-        if max(team_counts.values()) > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
-            result.add_error(f"Cannot have more than {DraftKingsRules.MAX_PLAYERS_PER_TEAM} from one team")
-
-    except Exception as e:
-        result.add_error(f"Validation exception: {str(e)}")
-
-    return result
-
-# ============================================================================
-# DATA VALIDATION & NORMALIZATION
-# ============================================================================
-
-def validate_and_normalize_dataframe(
-    df: pd.DataFrame,
-    validation_level: ValidationLevel = ValidationLevel.MODERATE
-) -> Tuple[pd.DataFrame, List[str]]:
-    """
-    Validate and normalize player DataFrame
-
-    Args:
-        df: Raw player DataFrame
-        validation_level: Strictness of validation
-
-    Returns:
-        Tuple of (normalized_df, warnings)
-    """
-    warnings = []
-    df = df.copy()
-
-    try:
-        # Required columns
-        required = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
-        missing = [col for col in required if col not in df.columns]
-
-        if missing:
-            raise ValidationError(f"Missing required columns: {missing}")
-
-        # Normalize player names
-        df['Player'] = df['Player'].astype(str).str.strip()
-
-        # Normalize positions
-        df['Position'] = df['Position'].apply(normalize_position)
-
-        # Normalize teams
-        df['Team'] = df['Team'].apply(normalize_team_name)
-
-        # Validate and coerce numeric columns
-        df['Salary'] = df['Salary'].apply(
-            lambda x: safe_numeric_coercion(x, 0, 'Salary')
-        )
-        df['Projected_Points'] = df['Projected_Points'].apply(
-            lambda x: safe_numeric_coercion(x, 0, 'Projected_Points')
-        )
-
-        # Handle ownership
-        if 'Ownership' not in df.columns:
-            df['Ownership'] = 10.0
-            warnings.append("No ownership data - using default 10%")
-        else:
-            df['Ownership'] = df['Ownership'].apply(
-                lambda x: safe_numeric_coercion(x, 10.0, 'Ownership')
-            )
-
-        # Salary validation
-        for pos in df['Position'].unique():
-            pos_df = df[df['Position'] == pos]
-
-            if pos in POSITION_SALARY_RANGES:
-                min_sal, max_sal = POSITION_SALARY_RANGES[pos]
-                invalid = pos_df[
-                    (pos_df['Salary'] < min_sal) | (pos_df['Salary'] > max_sal)
-                ]
-
-                if len(invalid) > 0:
-                    warnings.append(
-                        f"Found {len(invalid)} {pos} players with unusual salaries "
-                        f"(expected ${min_sal:,}-${max_sal:,})"
-                    )
-
-        # Projection validation
-        if validation_level in [ValidationLevel.MODERATE, ValidationLevel.STRICT]:
-            zero_proj = df[df['Projected_Points'] <= 0]
-            if len(zero_proj) > 0:
-                warnings.append(f"Found {len(zero_proj)} players with zero/negative projections")
-
-        # Remove invalid rows based on validation level
-        if validation_level == ValidationLevel.STRICT:
-            initial_count = len(df)
-            df = df[
-                (df['Salary'] > 0) &
-                (df['Projected_Points'] > 0) &
-                (df['Ownership'] > 0)
-            ]
-            removed = initial_count - len(df)
-            if removed > 0:
-                warnings.append(f"Removed {removed} invalid players (strict mode)")
-
-        return df, warnings
-
-    except Exception as e:
-        logger = get_logger()
-        logger.log_exception(e, "validate_and_normalize_dataframe")
-        raise
-
-# ============================================================================
-# LINEUP METRICS CALCULATION
-# ============================================================================
-
-def calculate_lineup_metrics(
-    captain: str,
-    flex: List[str],
-    df: pd.DataFrame
-) -> Dict[str, Any]:
-    """
-    Calculate comprehensive metrics for a lineup
-
-    Args:
-        captain: Captain player name
-        flex: List of flex player names
-        df: Player DataFrame
-
-    Returns:
-        Dictionary with lineup metrics
-    """
-    try:
-        all_players = [captain] + flex
-
-        # Get player data
-        player_data = df[df['Player'].isin(all_players)]
-
-        if len(player_data) != DraftKingsRules.ROSTER_SIZE:
-            return {
-                'Captain': captain,
-                'FLEX': flex,
-                'Valid': False,
-                'Error': 'Missing player data'
-            }
-
-        # Salary calculation
-        captain_data = df[df['Player'] == captain].iloc[0]
-        captain_sal = captain_data['Salary']
-
-        flex_data = df[df['Player'].isin(flex)]
-        flex_sal = flex_data['Salary'].sum()
-
-        total_sal = captain_sal * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_sal
-
-        # Projection calculation
-        captain_proj = captain_data['Projected_Points']
-        flex_proj = flex_data['Projected_Points'].sum()
-        total_proj = captain_proj * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_proj
-
-        # Ownership calculation
-        captain_own = captain_data['Ownership']
-        flex_own = flex_data['Ownership'].sum()
-        total_own = captain_own * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_own
-        avg_own = total_own / DraftKingsRules.ROSTER_SIZE
-
-        # Team distribution
-        team_dist = player_data['Team'].value_counts().to_dict()
-
-        # Position distribution
-        pos_dist = player_data['Position'].value_counts().to_dict()
-
-        return {
-            'Captain': captain,
-            'FLEX': flex,
-            'Total_Salary': total_sal,
-            'Projected': total_proj,
-            'Total_Ownership': total_own,
-            'Avg_Ownership': avg_own,
-            'Team_Distribution': team_dist,
-            'Position_Distribution': pos_dist,
-            'Valid': True
-        }
-
-    except Exception as e:
-        logger = get_logger()
-        logger.log_exception(e, "calculate_lineup_metrics")
-
-        return {
-            'Captain': captain,
-            'FLEX': flex,
-            'Valid': False,
-            'Error': str(e)
-        }
-
-"""
-PART 4 OF 13: DATA VALIDATION & NORMALIZATION
-
-ENHANCEMENTS:
-- FIX #1: Enhanced ownership validation
-- FIX #3: Smart ownership detection (decimal vs percentage)
-- FIX #4: Position normalization
-- FIX #6: Comprehensive validation pipeline
-- CRITICAL FIX: Enhanced numeric coercion with error reporting
-- NEW: ConstraintFeasibilityChecker for pre-flight validation
-"""
-
-# ============================================================================
-# FIX #4: POSITION NORMALIZATION
-# ============================================================================
-
-def normalize_position(position_str: str) -> str:
-    """
-    FIX #4: Normalize position names to standard format
-
-    Args:
-        position_str: Raw position string from CSV
-
-    Returns:
-        Standardized position (QB, RB, WR, TE, K, DST)
-
-    Raises:
-        ValueError: If position cannot be determined
-    """
-    if pd.isna(position_str):
-        raise ValueError("Position cannot be null")
-
-    # Clean and uppercase
-    clean = str(position_str).strip().upper().replace('/', '').replace('-', '')
-
-    # Direct match
-    for standard, aliases in POSITION_ALIASES.items():
-        if clean in aliases:
-            return standard
-
-    # Partial match for combo positions
-    if 'WR' in clean or 'RECEIVER' in clean:
-        return 'WR'
-    if 'TE' in clean or 'TIGHT' in clean:
-        return 'TE'
-    if 'RB' in clean or 'RUNNING' in clean or 'BACK' in clean:
-        return 'RB'
-    if 'QB' in clean or 'QUARTER' in clean:
-        return 'QB'
-    if 'DST' in clean or 'DEF' in clean or 'D/ST' in clean:
-        return 'DST'
-    if 'K' in clean or 'KICK' in clean:
-        return 'K'
-
-    raise ValueError(f"Unknown position: {position_str}")
-
-
-def normalize_positions_in_dataframe(
-    df: pd.DataFrame,
-    inplace: bool = False
-) -> pd.DataFrame:
-    """
-    FIX #4: Apply position normalization to entire dataframe
-
-    ENHANCED: Added inplace parameter for memory efficiency
-
-    Args:
-        df: Player DataFrame
-        inplace: Whether to modify in place
-
-    Returns:
-        DataFrame with normalized positions
-    """
-    if not inplace:
-        df = df.copy()
-
-    try:
-        df['Position'] = df['Position'].apply(normalize_position)
-    except ValueError as e:
-        raise ValidationError(f"Position normalization failed: {e}")
-
-    return df
-
-
-# ============================================================================
-# FIX #3: SMART OWNERSHIP DETECTION
-# ============================================================================
-
-def normalize_ownership(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    FIX #3: AUTO-DETECT ownership format (decimal 0-1 vs percentage 0-100)
-
-    Args:
-        df: DataFrame with potential Ownership column
-
-    Returns:
-        DataFrame with normalized ownership (always 0-100)
-    """
-    if 'Ownership' not in df.columns:
-        df['Ownership'] = 10.0
-        return df
-
-    # Check if values look like decimals (0-1) vs percentages (0-100)
-    max_val = df['Ownership'].max()
-    mean_val = df['Ownership'].mean()
-
-    if max_val <= 1.0 and mean_val < 1.0:
-        # Likely decimals, convert to percentage
-        df['Ownership'] = df['Ownership'] * 100
-        print("INFO: Auto-detected decimal ownership format, converted to percentage")
-
-    elif max_val > 100:
-        # Invalid data
-        print(f"WARNING: Found ownership values > 100% (max: {max_val:.1f})")
-        df['Ownership'] = df['Ownership'].clip(0, 100)
-
-    # Handle missing/invalid
-    invalid_mask = df['Ownership'].isna() | (df['Ownership'] < 0)
-    if invalid_mask.any():
-        df.loc[invalid_mask, 'Ownership'] = 10.0
-        print(f"INFO: Set default ownership (10%) for {invalid_mask.sum()} players")
-
-    return df
-
-
-# ============================================================================
-# CONFIG VALIDATOR
-# ============================================================================
-
-class ConfigValidator:
-    """Configuration validation logic"""
-
-    @staticmethod
-    def validate_salary(salary: Union[int, float]) -> bool:
-        """Validate salary is within acceptable range"""
-        try:
-            salary = float(salary)
-            return DraftKingsRules.MIN_SALARY <= salary <= DraftKingsRules.MAX_SALARY
-        except (TypeError, ValueError):
-            return False
-
-    @staticmethod
-    def validate_projection(projection: Union[int, float]) -> bool:
-        """Validate projection is reasonable"""
-        try:
-            projection = float(projection)
-            return 0 <= projection <= 100
-        except (TypeError, ValueError):
-            return False
-
-    @staticmethod
-    def validate_ownership(ownership: Union[int, float]) -> bool:
-        """Validate ownership percentage"""
-        try:
-            ownership = float(ownership)
-            return 0 <= ownership <= 100
-        except (TypeError, ValueError):
-            return False
-
-    @staticmethod
-    def validate_ownership_values(df: pd.DataFrame) -> Tuple[bool, List[str]]:
-        """
-        FIX #1: Validate ownership column values with auto-fix
-
-        Args:
-            df: DataFrame with Ownership column
-
-        Returns:
-            Tuple of (is_valid, list_of_issues)
-        """
-        issues = []
-
-        if 'Ownership' not in df.columns:
-            return True, []
-
-        # Check for invalid values
-        invalid_mask = (
-            (df['Ownership'] < 0) |
-            (df['Ownership'] > 100) |
-            df['Ownership'].isna()
-        )
-
-        if invalid_mask.any():
-            count = invalid_mask.sum()
-            issues.append(f"Found {count} players with invalid ownership (must be 0-100)")
-
-            # Get examples
-            examples = df.loc[invalid_mask, ['Player', 'Ownership']].head(3)
-            for _, row in examples.iterrows():
-                issues.append(f"  • {row['Player']}: {row['Ownership']}")
-
-            # AUTO-FIX
-            df.loc[invalid_mask, 'Ownership'] = 10.0
-            issues.append(f"AUTO-FIXED: Set {count} invalid values to 10.0%")
-
-        return len(issues) == 0, issues
-
-    @staticmethod
-    def validate_salary_cap(salary_cap: Union[int, float]) -> Tuple[bool, str]:
-        """Validate custom salary cap setting"""
-        try:
-            salary_cap = int(salary_cap)
-
-            if salary_cap < 30000:
-                return False, "Salary cap must be at least $30,000"
-
-            if salary_cap > 100000:
-                return False, "Salary cap cannot exceed $100,000"
-
-            return True, ""
-
-        except (TypeError, ValueError):
-            return False, "Salary cap must be a valid number"
-
-
-# ============================================================================
-# FIX #6: COMPREHENSIVE VALIDATION PIPELINE
-# ============================================================================
-
-def validate_and_normalize_dataframe(
-    df: pd.DataFrame,
-    validation_level: ValidationLevel = ValidationLevel.MODERATE
-) -> Tuple[pd.DataFrame, List[str]]:
-    """
-    FIX #6: Complete validation and normalization pipeline
-
-    CRITICAL ENHANCEMENT: Better numeric coercion error reporting
-
-    Args:
-        df: Raw player DataFrame
-        validation_level: How strict to be
-
-    Returns:
-        Tuple of (cleaned_df, list_of_warnings)
-    """
-    warnings_list = []
-    df = df.copy()
-
-    # 1. Normalize positions
-    try:
-        df = normalize_positions_in_dataframe(df)
-    except ValidationError as e:
-        if validation_level == ValidationLevel.STRICT:
-            raise
-        warnings_list.append(f"Position normalization issue: {e}")
-
-    # 2. Normalize ownership
-    df = normalize_ownership(df)
-
-    # 3. Validate ownership values
-    is_valid, ownership_issues = ConfigValidator.validate_ownership_values(df)
-    if not is_valid:
-        warnings_list.extend(ownership_issues)
-
-    # 4. Validate salary ranges with position-specific bounds
-    for pos, (min_sal, max_sal) in POSITION_SALARY_RANGES.items():
-        pos_mask = df['Position'] == pos
-        invalid_sal = pos_mask & ((df['Salary'] < min_sal) | (df['Salary'] > max_sal))
-
-        if invalid_sal.any():
-            count = invalid_sal.sum()
-            warnings_list.append(
-                f"Found {count} {pos} players with unusual salaries "
-                f"(expected ${min_sal:,}-${max_sal:,})"
-            )
-
-    # 5. CRITICAL FIX: Enhanced numeric coercion with error reporting
-    for col in ['Salary', 'Projected_Points', 'Ownership']:
-        if col not in df.columns:
-            continue
-
-        before_count = df[col].notna().sum()
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-        after_count = df[col].notna().sum()
-
-        if after_count < before_count:
-            failed_count = before_count - after_count
-            warnings_list.append(
-                f"{col}: {failed_count} values could not be converted to numbers. "
-                f"Check for text in numeric columns."
-            )
-
-            # Show which rows failed (first 5)
-            failed_mask = df[col].isna()
-            failed_indices = df[failed_mask].index.tolist()[:5]
-            if failed_indices:
-                warnings_list.append(f"  First failed rows: {failed_indices}")
-
-    # 6. Check for NaN values created by coercion
-    if df['Salary'].isna().any():
-        count = df['Salary'].isna().sum()
-        warnings_list.append(f"Found {count} non-numeric salary values")
-        if validation_level == ValidationLevel.STRICT:
-            raise ValidationError("Salary column contains non-numeric values")
-
-    if df['Projected_Points'].isna().any():
-        count = df['Projected_Points'].isna().sum()
-        warnings_list.append(f"Found {count} non-numeric projection values")
-        if validation_level == ValidationLevel.STRICT:
-            raise ValidationError("Projected_Points column contains non-numeric values")
-
-    return df, warnings_list
-
-
-# ============================================================================
-# FIX #11: ENHANCED LINEUP VALIDATION
-# ============================================================================
-
-def validate_lineup_with_context(
-    lineup: Dict[str, Any],
-    df: pd.DataFrame,
-    salary_cap: int
-) -> ValidationResult:
-    """
-    FIX #11: Enhanced validation with specific, actionable feedback
-
-    Returns:
-        ValidationResult with detailed feedback
-    """
-    result = ValidationResult()
-
-    captain = lineup.get('Captain', '')
-    flex = lineup.get('FLEX', [])
-
-    if isinstance(flex, str):
-        flex = [p.strip() for p in flex.split(',') if p.strip()]
-
-    # Check roster size
-    if not captain:
-        result.add_error(
-            "Missing captain",
-            "Select a captain player from the available pool"
-        )
-
-    if len(flex) != 5:
-        result.add_error(
-            f"FLEX has {len(flex)} players, need exactly 5",
-            "Ensure your lineup has 1 captain + 5 FLEX players"
-        )
-        return result
-
-    # Check for duplicates
-    all_players = [captain] + flex
-    if len(all_players) != len(set(all_players)):
-        duplicates = [p for p in all_players if all_players.count(p) > 1]
-        result.add_error(
-            f"Duplicate players: {', '.join(set(duplicates))}",
-            "Each player can only be used once per lineup"
-        )
-
-    # Check all players exist in pool
-    available = set(df['Player'].values)
-    missing = [p for p in all_players if p not in available]
-    if missing:
-        result.add_error(
-            f"Players not in pool: {', '.join(missing)}",
-            "Check player names match exactly with your CSV"
-        )
-        return result
-
-    # Check salary
-    player_data = df[df['Player'].isin(all_players)]
-    capt_salary = df[df['Player'] == captain]['Salary'].iloc[0]
-    flex_salary = player_data[player_data['Player'].isin(flex)]['Salary'].sum()
-    total_salary = capt_salary * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_salary
-
-    if total_salary > salary_cap:
-        overage = total_salary - salary_cap
-        result.add_error(
-            f"Salary ${total_salary:,.0f} exceeds cap by ${overage:,.0f}",
-            f"Try replacing {captain} (${capt_salary:,.0f}) with cheaper option"
-        )
-
-    min_recommended = salary_cap * 0.90
-    if total_salary < min_recommended:
-        result.add_warning(
-            f"Salary ${total_salary:,.0f} is below recommended minimum "
-            f"${min_recommended:,.0f} (90% of cap)"
-        )
-
-    # Check team diversity
-    teams = player_data['Team'].value_counts()
-    if len(teams) < DraftKingsRules.MIN_TEAMS_REQUIRED:
-        result.add_error(
-            f"Only {len(teams)} team represented (need {DraftKingsRules.MIN_TEAMS_REQUIRED}+)",
-            "Add players from the opposing team for diversity"
-        )
-
-    for team, count in teams.items():
-        if count > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
+        # Check salary
+        captain_row = df[df['Player'] == captain].iloc[0]
+        captain_salary = captain_row['Salary'] * DraftKingsRules.CAPTAIN_MULTIPLIER
+        flex_salaries = lineup_df[lineup_df['Player'].isin(flex)]['Salary'].sum()
+        total_salary = int(captain_salary + flex_salaries)
+
+        result.total_salary = total_salary
+
+        if total_salary > salary_cap:
             result.add_error(
-                f"Team {team} has {count} players (max {DraftKingsRules.MAX_PLAYERS_PER_TEAM})",
-                f"Replace at least {count - DraftKingsRules.MAX_PLAYERS_PER_TEAM} {team} player(s)"
+                f"Salary exceeds cap: ${total_salary:,} > ${salary_cap:,}"
             )
+
+        # Check team distribution
+        team_dist = lineup_df['Team'].value_counts().to_dict()
+        result.team_distribution = team_dist
+
+        if len(team_dist) < DraftKingsRules.MIN_TEAMS_REQUIRED:
+            result.add_error(
+                f"Insufficient team diversity: {len(team_dist)} teams "
+                f"(need {DraftKingsRules.MIN_TEAMS_REQUIRED})"
+            )
+
+        for team, count in team_dist.items():
+            if count > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
+                result.add_error(
+                    f"Too many players from {team}: {count} "
+                    f"(max {DraftKingsRules.MAX_PLAYERS_PER_TEAM})"
+                )
+
+        # Calculate projection
+        captain_proj = captain_row['Projected_Points'] * DraftKingsRules.CAPTAIN_MULTIPLIER
+        flex_proj = lineup_df[lineup_df['Player'].isin(flex)]['Projected_Points'].sum()
+        result.total_projection = float(captain_proj + flex_proj)
+
+    except Exception as e:
+        result.add_error(f"Validation error: {str(e)}")
 
     return result
 
+"""
+PART 7 OF 13: CONSTRAINTS & VALIDATION SYSTEMS
+
+Complete constraint management and validation infrastructure.
+Handles feasibility checking, batch validation, and diversity tracking.
+"""
 
 # ============================================================================
-# NEW: CONSTRAINT FEASIBILITY CHECKER (IMMEDIATE FIX)
+# CONSTRAINT FEASIBILITY CHECKER
 # ============================================================================
+
 
 class ConstraintFeasibilityChecker:
     """
-    Fast pre-flight check before expensive optimization
-    Prevents 80% of user errors with clear diagnostics
+    Check if constraints are feasible before optimization
 
-    NEW: Immediate implementation - catches issues before optimization starts
+    Prevents wasted optimization time on impossible constraint combinations.
     """
 
     @staticmethod
     def check(
         df: pd.DataFrame,
-        constraints: 'LineupConstraints'
+        constraints: LineupConstraints
     ) -> Tuple[bool, str, List[str]]:
         """
-        Check if constraints are feasible
+        Check constraint feasibility
 
         Args:
             df: Player DataFrame
-            constraints: LineupConstraints to validate
+            constraints: Constraints to check
 
         Returns:
             Tuple of (is_feasible, error_message, suggestions)
         """
-        suggestions = []
+        logger = get_logger()
 
-        # Check 1: Minimum player count (fail fast)
-        if len(df) < DraftKingsRules.ROSTER_SIZE:
-            return (
-                False,
-                f"Only {len(df)} players available, need {DraftKingsRules.ROSTER_SIZE}",
-                ["Add more players to your CSV file"]
-            )
+        # Filter available players (not banned)
+        available = df[~df['Player'].isin(constraints.banned_players)].copy()
 
-        # Check 2: Team diversity requirement
-        teams = df['Team'].nunique()
-        if teams < DraftKingsRules.MIN_TEAMS_REQUIRED:
-            return (
-                False,
-                f"Only {teams} team(s) in player pool, need {DraftKingsRules.MIN_TEAMS_REQUIRED}",
-                ["Ensure CSV includes players from both teams"]
-            )
+        # Check 1: Minimum player count
+        if len(available) < DraftKingsRules.ROSTER_SIZE:
+            return False, \
+                   f"Insufficient players: {len(available)} available, " \
+                   f"need {DraftKingsRules.ROSTER_SIZE}", \
+                   ["Remove some banned players"]
 
-        # Check 3: Locked players validation
+        # Check 2: Locked players feasibility
         if constraints.locked_players:
-            locked_df = df[df['Player'].isin(constraints.locked_players)]
+            locked_count = len(constraints.locked_players)
 
-            if len(locked_df) != len(constraints.locked_players):
-                missing = constraints.locked_players - set(locked_df['Player'])
-                return (
-                    False,
-                    f"Locked players not found in pool: {', '.join(missing)}",
-                    ["Check player names match exactly (case-sensitive)"]
-                )
+            # Too many locked players
+            if locked_count > DraftKingsRules.ROSTER_SIZE:
+                return False, \
+                       f"Too many locked players: {locked_count} " \
+                       f"(max {DraftKingsRules.ROSTER_SIZE})", \
+                       ["Reduce number of locked players"]
 
-            # Check if locked players can fit under salary cap
-            locked_salary = locked_df['Salary'].sum()
-            remaining_spots = DraftKingsRules.ROSTER_SIZE - len(constraints.locked_players)
+            # Check if locked players exist
+            locked_in_data = set(available['Player'].tolist()) & constraints.locked_players
+            if len(locked_in_data) != locked_count:
+                missing = constraints.locked_players - locked_in_data
+                return False, \
+                       f"Locked players not found in data: {missing}", \
+                       ["Remove missing players from locked list"]
+
+            # Check locked player salary
+            locked_df = available[available['Player'].isin(constraints.locked_players)]
+            min_locked_salary = int(locked_df['Salary'].sum())
+            remaining_spots = DraftKingsRules.ROSTER_SIZE - locked_count
 
             if remaining_spots > 0:
-                available = df[~df['Player'].isin(constraints.locked_players)]
-                if len(available) < remaining_spots:
-                    return (
-                        False,
-                        f"Not enough non-locked players ({len(available)}) to fill {remaining_spots} spots",
-                        ["Remove some locked players"]
-                    )
+                # Cheapest available for remaining spots
+                non_locked = available[~available['Player'].isin(constraints.locked_players)]
+                if len(non_locked) < remaining_spots:
+                    return False, \
+                           f"Not enough non-locked players: {len(non_locked)} " \
+                           f"available, need {remaining_spots}", \
+                           ["Remove some locked players"]
 
-                cheapest_fill = available.nsmallest(remaining_spots, 'Salary')['Salary'].sum()
-                min_total = locked_salary + cheapest_fill
+                cheapest_remaining = non_locked.nsmallest(remaining_spots, 'Salary')
+                min_total_salary = min_locked_salary + int(cheapest_remaining['Salary'].sum())
 
-                if min_total > constraints.max_salary:
-                    return (
-                        False,
-                        f"Locked players (${locked_salary:,}) + cheapest fill (${cheapest_fill:,}) "
-                        f"= ${min_total:,} exceeds salary cap (${constraints.max_salary:,})",
-                        [
-                            "Remove some locked players",
-                            f"Or increase salary cap to at least ${min_total:,}"
-                        ]
-                    )
-
-        # Check 4: Salary range feasibility
-        cheapest_6 = df.nsmallest(6, 'Salary')['Salary'].sum()
-        expensive_6 = df.nlargest(6, 'Salary')['Salary'].sum()
-
-        if cheapest_6 > constraints.max_salary:
-            return (
-                False,
-                f"Even cheapest 6 players (${cheapest_6:,}) exceed salary cap (${constraints.max_salary:,})",
-                ["Your salary cap is too low for this player pool"]
-            )
-
-        if expensive_6 < constraints.min_salary:
-            feasible_pct = int((expensive_6 / DraftKingsRules.SALARY_CAP) * 100)
-            return (
-                False,
-                f"Most expensive 6 players (${expensive_6:,}) cannot reach minimum salary (${constraints.min_salary:,})",
-                [f"Lower minimum salary to {max(50, feasible_pct - 5)}% or less"]
-            )
-
-        # Check 5: Banned vs available players
-        if constraints.banned_players:
-            available_after_ban = df[~df['Player'].isin(constraints.banned_players)]
-            if len(available_after_ban) < DraftKingsRules.ROSTER_SIZE:
-                return (
-                    False,
-                    f"Only {len(available_after_ban)} players after removing banned players",
-                    ["Reduce number of banned players"]
+                # Account for captain multiplier (worst case: most expensive is captain)
+                max_salary_player = max(
+                    locked_df['Salary'].max() if not locked_df.empty else 0,
+                    cheapest_remaining['Salary'].max() if not cheapest_remaining.empty else 0
                 )
-
-        # Check 6: Quick random sampling (100 attempts)
-        # This catches subtle interaction issues between constraints
-        valid_found = False
-        attempts = 100
-
-        available_players = df.copy()
-        if constraints.banned_players:
-            available_players = available_players[
-                ~available_players['Player'].isin(constraints.banned_players)
-            ]
-
-        for _ in range(attempts):
-            try:
-                # Start with locked players if any
-                if constraints.locked_players:
-                    locked_sample = df[df['Player'].isin(constraints.locked_players)]
-                    remaining = DraftKingsRules.ROSTER_SIZE - len(locked_sample)
-
-                    if remaining > 0:
-                        available_for_sample = available_players[
-                            ~available_players['Player'].isin(constraints.locked_players)
-                        ]
-                        if len(available_for_sample) >= remaining:
-                            random_fill = available_for_sample.sample(n=remaining)
-                            sample = pd.concat([locked_sample, random_fill])
-                        else:
-                            continue
-                    else:
-                        sample = locked_sample
-                else:
-                    sample = available_players.sample(n=DraftKingsRules.ROSTER_SIZE)
-
-                # Validate sample
-                total_salary = sample['Salary'].sum()
-                team_count = sample['Team'].nunique()
-                max_per_team = sample['Team'].value_counts().max()
-
-                if (constraints.min_salary <= total_salary <= constraints.max_salary
-                    and team_count >= DraftKingsRules.MIN_TEAMS_REQUIRED
-                    and max_per_team <= DraftKingsRules.MAX_PLAYERS_PER_TEAM):
-                    valid_found = True
-                    break
-
-            except Exception:
-                continue
-
-        if not valid_found:
-            return (
-                False,
-                f"No valid lineup found in {attempts} random samples",
-                [
-                    f"Try lowering minimum salary from ${constraints.min_salary:,} to ${int(expensive_6 * 0.95):,}",
-                    "Check that teams are reasonably balanced in player pool",
-                    "Consider reducing locked/banned player constraints"
-                ]
-            )
-
-        # All checks passed
-        return True, "", []
-
-# ============================================================================
-# LINEUP EXPORT FORMATTING
-# ============================================================================
-
-def format_lineup_for_export(
-    lineups: List[Dict[str, Any]],
-    export_format: ExportFormat
-) -> pd.DataFrame:
-    """
-    Format lineups for export in various formats
-
-    Args:
-        lineups: List of lineup dictionaries
-        export_format: Export format enum
-
-    Returns:
-        DataFrame ready for export
-    """
-    try:
-        if not lineups:
-            return pd.DataFrame()
-
-        if export_format == ExportFormat.DRAFTKINGS:
-            # DraftKings CSV format
-            rows = []
-            for lineup in lineups:
-                captain = lineup.get('Captain', '')
-                flex = lineup.get('FLEX', [])
-
-                if isinstance(flex, str):
-                    flex = [p.strip() for p in flex.split(',') if p.strip()]
-
-                # DraftKings format: CPT,FLEX,FLEX,FLEX,FLEX,FLEX
-                row = {
-                    'CPT': captain,
-                    'FLEX1': flex[0] if len(flex) > 0 else '',
-                    'FLEX2': flex[1] if len(flex) > 1 else '',
-                    'FLEX3': flex[2] if len(flex) > 2 else '',
-                    'FLEX4': flex[3] if len(flex) > 3 else '',
-                    'FLEX5': flex[4] if len(flex) > 4 else ''
-                }
-                rows.append(row)
-
-            return pd.DataFrame(rows)
-
-        elif export_format == ExportFormat.DETAILED:
-            # Detailed format with all metrics
-            rows = []
-            for lineup in lineups:
-                captain = lineup.get('Captain', '')
-                flex = lineup.get('FLEX', [])
-
-                if isinstance(flex, str):
-                    flex = [p.strip() for p in flex.split(',') if p.strip()]
-
-                row = {
-                    'Lineup': lineup.get('Lineup', 0),
-                    'Captain': captain,
-                    'FLEX': ', '.join(flex),
-                    'Total_Salary': lineup.get('Total_Salary', 0),
-                    'Projected': lineup.get('Projected', 0),
-                    'Total_Ownership': lineup.get('Total_Ownership', 0),
-                    'Avg_Ownership': lineup.get('Avg_Ownership', 0)
-                }
-
-                # Add simulation results if available
-                if 'Ceiling_90th' in lineup:
-                    row['Ceiling_90th'] = lineup.get('Ceiling_90th', 0)
-                    row['Floor_10th'] = lineup.get('Floor_10th', 0)
-                    row['Sharpe_Ratio'] = lineup.get('Sharpe_Ratio', 0)
-                    row['Win_Probability'] = lineup.get('Win_Probability', 0)
-
-                rows.append(row)
-
-            return pd.DataFrame(rows)
-
-        else:  # STANDARD or CSV
-            # Standard format
-            rows = []
-            for lineup in lineups:
-                captain = lineup.get('Captain', '')
-                flex = lineup.get('FLEX', [])
-
-                if isinstance(flex, str):
-                    flex = [p.strip() for p in flex.split(',') if p.strip()]
-
-                row = {
-                    'Lineup': lineup.get('Lineup', 0),
-                    'Captain': captain,
-                    'FLEX': ', '.join(flex),
-                    'Salary': lineup.get('Total_Salary', 0),
-                    'Projection': lineup.get('Projected', 0),
-                    'Ownership': lineup.get('Avg_Ownership', 0)
-                }
-                rows.append(row)
-
-            return pd.DataFrame(rows)
-
-    except Exception as e:
-        logger = get_logger()
-        logger.log_exception(e, "format_lineup_for_export")
-        return pd.DataFrame()
-
-
-def validate_export_format(
-    lineups: List[Dict[str, Any]],
-    export_format: ExportFormat
-) -> Tuple[bool, str]:
-    """
-    Validate that lineups can be exported in the specified format
-
-    Args:
-        lineups: List of lineup dictionaries
-        export_format: Export format to validate
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    try:
-        if not lineups:
-            return False, "No lineups to export"
-
-        # Check that all lineups have required fields
-        for i, lineup in enumerate(lineups):
-            if 'Captain' not in lineup:
-                return False, f"Lineup {i+1} missing Captain"
-
-            if 'FLEX' not in lineup:
-                return False, f"Lineup {i+1} missing FLEX players"
-
-            flex = lineup.get('FLEX', [])
-            if isinstance(flex, str):
-                flex = [p.strip() for p in flex.split(',') if p.strip()]
-
-            if len(flex) != 5:
-                return False, f"Lineup {i+1} has {len(flex)} FLEX players (need 5)"
-
-        # Format-specific validation
-        if export_format == ExportFormat.DETAILED:
-            # Check for simulation results
-            has_simulation = any('Ceiling_90th' in l for l in lineups)
-            if not has_simulation:
-                return True, "Note: Detailed export without simulation results"
-
-        return True, ""
-
-    except Exception as e:
-        return False, f"Validation error: {str(e)}"
-
-
-# ============================================================================
-# LINEUP SIMILARITY & DIVERSITY
-# ============================================================================
-
-def calculate_lineup_similarity(
-    lineup1: Dict[str, Any],
-    lineup2: Dict[str, Any]
-) -> float:
-    """
-    Calculate Jaccard similarity between two lineups
-
-    Args:
-        lineup1: First lineup dictionary
-        lineup2: Second lineup dictionary
-
-    Returns:
-        Similarity score (0-1)
-    """
-    try:
-        # Get all players from each lineup
-        players1 = set([lineup1.get('Captain', '')])
-        flex1 = lineup1.get('FLEX', [])
-        if isinstance(flex1, str):
-            flex1 = [p.strip() for p in flex1.split(',') if p.strip()]
-        players1.update(flex1)
-
-        players2 = set([lineup2.get('Captain', '')])
-        flex2 = lineup2.get('FLEX', [])
-        if isinstance(flex2, str):
-            flex2 = [p.strip() for p in flex2.split(',') if p.strip()]
-        players2.update(flex2)
-
-        # Remove empty strings
-        players1.discard('')
-        players2.discard('')
-
-        # Calculate Jaccard similarity
-        if not players1 or not players2:
-            return 0.0
-
-        intersection = len(players1 & players2)
-        union = len(players1 | players2)
-
-        return intersection / union if union > 0 else 0.0
-
-    except Exception:
-        return 0.0
-
-
-def ensure_lineup_diversity(
-    lineups: List[Dict[str, Any]],
-    min_unique_players: int = 3
-) -> List[Dict[str, Any]]:
-    """
-    Filter lineups to ensure diversity
-
-    Args:
-        lineups: List of lineup dictionaries
-        min_unique_players: Minimum unique players between lineups
-
-    Returns:
-        Filtered list of diverse lineups
-    """
-    try:
-        if not lineups:
-            return []
-
-        diverse_lineups = [lineups[0]]  # Always keep first
-
-        for lineup in lineups[1:]:
-            is_diverse = True
-
-            for existing in diverse_lineups:
-                similarity = calculate_lineup_similarity(lineup, existing)
-
-                # If too similar, skip
-                max_allowed_similarity = 1.0 - (min_unique_players / 6.0)
-                if similarity > max_allowed_similarity:
-                    is_diverse = False
-                    break
-
-            if is_diverse:
-                diverse_lineups.append(lineup)
-
-        return diverse_lineups
-
-    except Exception as e:
-        logger = get_logger()
-        logger.log_exception(e, "ensure_lineup_diversity")
-        return lineups
-
-"""
-PART 5 OF 13: DATA CLASSES & CONFIGURATION
-
-ENHANCEMENTS:
-- CRITICAL FIX: Enhanced Sharpe ratio validation in SimulationResults
-- Improved data class validation
-"""
-
-# ============================================================================
-# SIMULATION RESULTS
-# ============================================================================
-
-@dataclass
-class SimulationResults:
-    """
-    Results from Monte Carlo simulation with validation
-
-    CRITICAL FIX: Enhanced Sharpe ratio edge case handling
-    """
-    mean: float
-    median: float
-    std: float
-    floor_10th: float
-    ceiling_90th: float
-    ceiling_99th: float
-    top_10pct_mean: float
-    sharpe_ratio: float
-    win_probability: float
-    score_distribution: np.ndarray = field(default_factory=lambda: np.array([]))
-
-    def __post_init__(self):
-        """Validate results after initialization"""
-        numeric_fields = [
-            self.mean, self.median, self.std, self.floor_10th,
-            self.ceiling_90th, self.ceiling_99th, self.top_10pct_mean,
-            self.sharpe_ratio, self.win_probability
-        ]
-
-        for value in numeric_fields:
-            if not np.isfinite(value):
-                raise ValueError(f"SimulationResults contains invalid value: {value}")
-
-        if self.ceiling_90th < self.mean:
-            warnings.warn(
-                f"Ceiling ({self.ceiling_90th:.2f}) < Mean ({self.mean:.2f})",
-                RuntimeWarning
-            )
-
-        if self.floor_10th > self.mean:
-            warnings.warn(
-                f"Floor ({self.floor_10th:.2f}) > Mean ({self.mean:.2f})",
-                RuntimeWarning
-            )
-
-        if not 0 <= self.win_probability <= 1:
-            raise ValueError(
-                f"Win probability must be 0-1, got {self.win_probability}"
-            )
-
-    def is_valid(self) -> bool:
-        """Check if results are statistically valid"""
-        return (
-            self.std > 0 and
-            self.ceiling_90th > self.floor_10th and
-            0 <= self.win_probability <= 1 and
-            all(np.isfinite([self.mean, self.median, self.std]))
+                min_total_salary += int(max_salary_player * 0.5)  # 1.5x - 1x = 0.5x extra
+
+                if min_total_salary > constraints.max_salary:
+                    return False, \
+                           f"Locked players force salary over cap: " \
+                           f"${min_total_salary:,} > ${constraints.max_salary:,}", \
+                           [
+                               "Remove some expensive locked players",
+                               f"Increase max salary to ${min_total_salary:,}"
+                           ]
+
+        # Check 3: Team diversity feasibility
+        team_counts = available['Team'].value_counts()
+
+        if len(team_counts) < DraftKingsRules.MIN_TEAMS_REQUIRED:
+            return False, \
+                   f"Insufficient teams: {len(team_counts)} teams available, " \
+                   f"need {DraftKingsRules.MIN_TEAMS_REQUIRED}", \
+                   ["Ensure player pool has at least 2 teams"]
+
+        # Check if it's possible to build a roster with team limits
+        max_from_largest_team = min(
+            team_counts.iloc[0],
+            DraftKingsRules.MAX_PLAYERS_PER_TEAM
         )
 
-
-# ============================================================================
-# AI RECOMMENDATION
-# ============================================================================
-
-@dataclass
-class AIRecommendation:
-    """AI recommendation with validation"""
-    captain_targets: List[str] = field(default_factory=list)
-    must_play: List[str] = field(default_factory=list)
-    never_play: List[str] = field(default_factory=list)
-    stacks: List[Dict] = field(default_factory=list)
-    key_insights: List[str] = field(default_factory=list)
-    confidence: float = 0.5
-    enforcement_rules: List[Dict] = field(default_factory=list)
-    narrative: str = ""
-    source_ai: Optional[AIStrategistType] = None
-    timestamp: datetime = field(default_factory=datetime.now)
-    ownership_leverage: Dict = field(default_factory=dict)
-    correlation_matrix: Dict = field(default_factory=dict)
-    contrarian_angles: List[str] = field(default_factory=list)
-    ceiling_plays: List[str] = field(default_factory=list)
-    floor_plays: List[str] = field(default_factory=list)
-    boom_bust_candidates: List[str] = field(default_factory=list)
-
-    def __post_init__(self):
-        """Validate and clean data after initialization"""
-        # Create new lists to avoid modifying shared defaults
-        self.captain_targets = list(self.captain_targets) if self.captain_targets else []
-        self.must_play = list(self.must_play) if self.must_play else []
-        self.never_play = list(self.never_play) if self.never_play else []
-        self.stacks = list(self.stacks) if self.stacks else []
-        self.key_insights = list(self.key_insights) if self.key_insights else []
-        self.enforcement_rules = list(self.enforcement_rules) if self.enforcement_rules else []
-        self.contrarian_angles = list(self.contrarian_angles) if self.contrarian_angles else []
-        self.ceiling_plays = list(self.ceiling_plays) if self.ceiling_plays else []
-        self.floor_plays = list(self.floor_plays) if self.floor_plays else []
-        self.boom_bust_candidates = list(self.boom_bust_candidates) if self.boom_bust_candidates else []
-
-        # Create new dicts
-        self.ownership_leverage = dict(self.ownership_leverage) if self.ownership_leverage else {}
-        self.correlation_matrix = dict(self.correlation_matrix) if self.correlation_matrix else {}
-
-        # Clamp confidence
-        self.confidence = max(0.0, min(1.0, self.confidence))
-
-        # Remove duplicates
-        self.captain_targets = list(dict.fromkeys(self.captain_targets))
-        self.must_play = list(dict.fromkeys(self.must_play))
-        self.never_play = list(dict.fromkeys(self.never_play))
-
-        # Validate
-        is_valid, errors = self.validate()
-        if not is_valid:
-            warnings.warn(
-                f"AIRecommendation validation issues: {errors}",
-                RuntimeWarning
+        if len(team_counts) == 2:
+            max_from_second_team = min(
+                team_counts.iloc[1],
+                DraftKingsRules.MAX_PLAYERS_PER_TEAM
             )
 
-    def validate(self) -> Tuple[bool, List[str]]:
-        """Enhanced validation with detailed error messages"""
-        errors = []
+            if max_from_largest_team + max_from_second_team < DraftKingsRules.ROSTER_SIZE:
+                return False, \
+                       f"Cannot build roster with team limits: " \
+                       f"max {max_from_largest_team} from largest team + " \
+                       f"max {max_from_second_team} from second team = " \
+                       f"{max_from_largest_team + max_from_second_team} " \
+                       f"< {DraftKingsRules.ROSTER_SIZE} needed", \
+                       ["Add more players to player pool"]
 
-        if not self.captain_targets and not self.must_play:
-            errors.append("No captain targets or must-play players specified")
+        # Check 4: Salary range feasibility
+        cheapest_6 = available.nsmallest(DraftKingsRules.ROSTER_SIZE, 'Salary')
+        min_possible_salary = int(cheapest_6['Salary'].sum())
 
-        if not 0 <= self.confidence <= 1:
-            errors.append(f"Invalid confidence score: {self.confidence}")
-            self.confidence = max(0, min(1, self.confidence))
+        # Add captain multiplier (cheapest as captain)
+        min_possible_salary += int(cheapest_6['Salary'].min() * 0.5)
 
-        conflicts = set(self.must_play) & set(self.never_play)
-        if conflicts:
-            errors.append(f"Conflicting players in must/never play: {conflicts}")
-            self.never_play = [p for p in self.never_play if p not in conflicts]
+        if min_possible_salary > constraints.max_salary:
+            return False, \
+                   f"Minimum possible salary ${min_possible_salary:,} " \
+                   f"exceeds max ${constraints.max_salary:,}", \
+                   [
+                       f"Increase max salary to at least ${min_possible_salary:,}",
+                       "Add cheaper players to pool"
+                   ]
 
-        return len(errors) == 0, errors
+        most_expensive_6 = available.nlargest(DraftKingsRules.ROSTER_SIZE, 'Salary')
+        max_possible_salary = int(most_expensive_6['Salary'].sum())
 
+        # Add captain multiplier (most expensive as captain)
+        max_possible_salary += int(most_expensive_6['Salary'].max() * 0.5)
 
-# ============================================================================
-# LINEUP CONSTRAINTS
-# ============================================================================
+        if max_possible_salary < constraints.min_salary:
+            suggestions = [
+                f"Lower min salary to at most ${max_possible_salary:,}",
+                "Add more expensive players to pool"
+            ]
 
-@dataclass
-class LineupConstraints:
-    """Enhanced constraints for lineup generation"""
-    min_salary: int = 48000
-    max_salary: int = 50000
-    min_projection: float = 0
-    max_ownership: float = 200
-    min_ownership: float = 0
-    required_positions: Dict[str, int] = field(default_factory=dict)
-    banned_players: Set[str] = field(default_factory=set)
-    locked_players: Set[str] = field(default_factory=set)
-    required_stacks: List[Dict] = field(default_factory=list)
-    max_exposure: Dict[str, float] = field(default_factory=dict)
-    team_limits: Dict[str, int] = field(default_factory=dict)
-    correlation_requirements: List[Dict] = field(default_factory=list)
-    ownership_buckets: Dict[str, List[str]] = field(default_factory=dict)
+            # Calculate realistic minimum
+            median_salary = available['Salary'].median()
+            realistic_min = int(median_salary * DraftKingsRules.ROSTER_SIZE * 0.95)
 
-    def __post_init__(self):
-        """Validate constraints after initialization"""
-        if self.min_salary > self.max_salary:
-            raise ValueError(
-                f"min_salary ({self.min_salary}) > max_salary ({self.max_salary})"
-            )
+            if realistic_min < constraints.min_salary:
+                suggestions.append(
+                    f"Suggested min salary: ${realistic_min:,} "
+                    f"(95% of median roster)"
+                )
 
-        if self.max_salary > DraftKingsRules.SALARY_CAP:
-            warnings.warn(
-                f"max_salary ({self.max_salary}) > SALARY_CAP "
-                f"({DraftKingsRules.SALARY_CAP})",
-                RuntimeWarning
-            )
+            return False, \
+                   f"Maximum possible salary ${max_possible_salary:,} " \
+                   f"below min ${constraints.min_salary:,}", \
+                   suggestions
 
-        if self.min_ownership > self.max_ownership:
-            raise ValueError(
-                f"min_ownership ({self.min_ownership}) > "
-                f"max_ownership ({self.max_ownership})"
-            )
+        # Check 5: Required stacks feasibility
+        if constraints.required_stacks:
+            for stack in constraints.required_stacks:
+                player1 = stack.get('player1', '')
+                player2 = stack.get('player2', '')
 
-        self.banned_players = set(self.banned_players) if self.banned_players else set()
-        self.locked_players = set(self.locked_players) if self.locked_players else set()
+                if player1 and player1 not in available['Player'].values:
+                    return False, \
+                           f"Required stack player not available: {player1}", \
+                           [f"Remove stack requirement or unban {player1}"]
 
-        conflicts = self.banned_players & self.locked_players
-        if conflicts:
-            raise ValueError(
-                f"Players cannot be both banned and locked: {conflicts}"
-            )
+                if player2 and player2 not in available['Player'].values:
+                    return False, \
+                           f"Required stack player not available: {player2}", \
+                           [f"Remove stack requirement or unban {player2}"]
 
+        # All checks passed
+        logger.log("Constraint feasibility check: PASSED", "DEBUG")
+        return True, "", []
 
-# ============================================================================
-# GENETIC CONFIG
-# ============================================================================
+    @staticmethod
+    def suggest_constraint_adjustments(
+        df: pd.DataFrame,
+        constraints: LineupConstraints
+    ) -> Dict[str, Any]:
+        """
+        Suggest constraint adjustments based on player pool
 
-@dataclass
-class GeneticConfig:
-    """Configuration for genetic algorithm"""
-    population_size: int = GeneticAlgorithmDefaults.POPULATION_SIZE
-    generations: int = GeneticAlgorithmDefaults.GENERATIONS
-    mutation_rate: float = GeneticAlgorithmDefaults.MUTATION_RATE
-    elite_size: int = GeneticAlgorithmDefaults.ELITE_SIZE
-    tournament_size: int = GeneticAlgorithmDefaults.TOURNAMENT_SIZE
-    crossover_rate: float = GeneticAlgorithmDefaults.CROSSOVER_RATE
+        Args:
+            df: Player DataFrame
+            constraints: Current constraints
 
-    def __post_init__(self):
-        """Validate configuration"""
-        if self.population_size < 10:
-            raise ValueError("population_size must be >= 10")
+        Returns:
+            Dictionary with suggested adjustments
+        """
+        available = df[~df['Player'].isin(constraints.banned_players)]
 
-        if self.elite_size >= self.population_size:
-            raise ValueError("elite_size must be < population_size")
+        # Calculate optimal salary range
+        salaries = available['Salary'].values
+        median_salary = np.median(salaries)
 
-        if not 0 <= self.mutation_rate <= 1:
-            raise ValueError("mutation_rate must be 0-1")
+        # Suggest 95% of cap as max (standard)
+        suggested_max = int(DraftKingsRules.SALARY_CAP * 0.95)
 
-        if not 0 <= self.crossover_rate <= 1:
-            raise ValueError("crossover_rate must be 0-1")
+        # Suggest 85% of cap as min (reasonable floor)
+        suggested_min = int(DraftKingsRules.SALARY_CAP * 0.85)
 
-        if self.tournament_size < 2:
-            raise ValueError("tournament_size must be >= 2")
+        # Adjust based on actual data
+        median_lineup_salary = median_salary * DraftKingsRules.ROSTER_SIZE
+        if median_lineup_salary < suggested_min:
+            suggested_min = int(median_lineup_salary * 0.90)
 
-
-# ============================================================================
-# GENETIC LINEUP
-# ============================================================================
-
-class GeneticLineup:
-    """Represents a lineup in the genetic algorithm"""
-
-    __slots__ = ('captain', 'flex', 'fitness', 'sim_results', 'validated')
-
-    def __init__(self, captain: str, flex: List[str], fitness: float = 0):
-        if not captain:
-            raise ValueError("Captain cannot be empty")
-
-        if not isinstance(flex, list):
-            raise TypeError("flex must be a list")
-
-        if len(flex) != 5:
-            raise ValueError(f"flex must have exactly 5 players, got {len(flex)}")
-
-        self.captain = captain
-        self.flex = flex
-        self.fitness = fitness
-        self.sim_results: Optional[SimulationResults] = None
-        self.validated = False
-
-    def get_all_players(self) -> List[str]:
-        """Get all players in lineup"""
-        return [self.captain] + self.flex
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
         return {
-            'captain': self.captain,
-            'flex': self.flex.copy(),
-            'fitness': self.fitness,
-            'validated': self.validated
+            'suggested_min_salary': suggested_min,
+            'suggested_max_salary': suggested_max,
+            'current_min_salary': constraints.min_salary,
+            'current_max_salary': constraints.max_salary,
+            'needs_adjustment': (
+                constraints.min_salary > suggested_min * 1.1 or
+                constraints.max_salary < suggested_max * 0.9
+            ),
+            'pool_median_salary': int(median_salary),
+            'pool_size': len(available)
         }
 
 
 # ============================================================================
-# OPTIMIZER CONFIG
+# BATCH LINEUP VALIDATOR
 # ============================================================================
 
-class OptimizerConfig:
-    """Central configuration class"""
 
-    # Reference constants
-    SALARY_CAP = DraftKingsRules.SALARY_CAP
-    MIN_SALARY = DraftKingsRules.MIN_SALARY
-    MAX_SALARY = DraftKingsRules.MAX_SALARY
-    CAPTAIN_MULTIPLIER = DraftKingsRules.CAPTAIN_MULTIPLIER
-    ROSTER_SIZE = DraftKingsRules.ROSTER_SIZE
-    FLEX_SPOTS = DraftKingsRules.FLEX_SPOTS
-    MIN_TEAMS_REQUIRED = DraftKingsRules.MIN_TEAMS_REQUIRED
-    MAX_PLAYERS_PER_TEAM = DraftKingsRules.MAX_PLAYERS_PER_TEAM
-
-    # Performance
-    MAX_ITERATIONS = PerformanceLimits.MAX_ITERATIONS
-    OPTIMIZATION_TIMEOUT = PerformanceLimits.OPTIMIZATION_TIMEOUT
-    CACHE_SIZE = PerformanceLimits.CACHE_SIZE
-
-    # Validation methods
-    validate_salary = staticmethod(ConfigValidator.validate_salary)
-    validate_projection = staticmethod(ConfigValidator.validate_projection)
-    validate_ownership = staticmethod(ConfigValidator.validate_ownership)
-    validate_ownership_values = staticmethod(ConfigValidator.validate_ownership_values)
-    validate_salary_cap = staticmethod(ConfigValidator.validate_salary_cap)
-
-    @classmethod
-    def get_field_config(cls, field_size: str) -> Dict[str, Any]:
-        """Get configuration for specific field size"""
-        if field_size not in FIELD_SIZE_CONFIGS:
-            warnings.warn(
-                f"Unknown field size '{field_size}', using 'large_field'",
-                RuntimeWarning
-            )
-            return FIELD_SIZE_CONFIGS['large_field'].copy()
-
-        return FIELD_SIZE_CONFIGS[field_size].copy()
-
-"""
-PART 6 OF 13: LOGGING & MONITORING SYSTEMS
-
-ENHANCEMENTS:
-- FIX #12: Enhanced API key sanitization
-- Structured logging with JSON compatibility
-- Performance monitoring with detailed statistics
-- Thread-safe operations
-- NEW: Unified LRU Cache (ENHANCEMENT #3)
-"""
-
-# ============================================================================
-# NEW: UNIFIED LRU CACHE (ENHANCEMENT #3)
-# ============================================================================
-
-class UnifiedLRUCache:
+class BatchLineupValidator:
     """
-    Thread-safe LRU cache for all optimizer components
+    Efficiently validate multiple lineups in batch
 
-    ENHANCEMENT #3: Unified caching with memory management
-    Reduces memory usage and provides better cache statistics
+    Optimized for validating large numbers of lineups with caching.
     """
-
-    def __init__(self, max_size: int = 1000):
-        self.max_size = max_size
-        self.caches: Dict[str, 'OrderedDict'] = {}
-        self._lock = threading.RLock()
-        self.stats = {
-            'hits': 0,
-            'misses': 0,
-            'evictions': 0,
-            'total_gets': 0,
-            'total_puts': 0
-        }
-
-    def get(self, cache_name: str, key: Any) -> Optional[Any]:
-        """Get from cache with LRU update"""
-        with self._lock:
-            self.stats['total_gets'] += 1
-
-            if cache_name not in self.caches:
-                self.caches[cache_name] = OrderedDict()
-
-            cache = self.caches[cache_name]
-
-            if key in cache:
-                # Move to end (most recently used)
-                cache.move_to_end(key)
-                self.stats['hits'] += 1
-                return cache[key]
-
-            self.stats['misses'] += 1
-            return None
-
-    def put(self, cache_name: str, key: Any, value: Any) -> None:
-        """Put in cache with LRU eviction"""
-        with self._lock:
-            self.stats['total_puts'] += 1
-
-            if cache_name not in self.caches:
-                self.caches[cache_name] = OrderedDict()
-
-            cache = self.caches[cache_name]
-
-            # Add/update
-            cache[key] = value
-            cache.move_to_end(key)
-
-            # Evict if over size
-            while len(cache) > self.max_size:
-                cache.popitem(last=False)
-                self.stats['evictions'] += 1
-
-    def clear(self, cache_name: Optional[str] = None) -> None:
-        """Clear specific cache or all caches"""
-        with self._lock:
-            if cache_name:
-                if cache_name in self.caches:
-                    self.caches[cache_name].clear()
-            else:
-                self.caches.clear()
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get comprehensive cache statistics"""
-        with self._lock:
-            total_entries = sum(len(c) for c in self.caches.values())
-            hit_rate = (
-                self.stats['hits'] / self.stats['total_gets']
-                if self.stats['total_gets'] > 0
-                else 0.0
-            )
-
-            cache_sizes = {
-                name: len(cache)
-                for name, cache in self.caches.items()
-            }
-
-            return {
-                'total_entries': total_entries,
-                'hit_rate': hit_rate,
-                'cache_sizes': cache_sizes,
-                **self.stats
-            }
-
-    def get_memory_usage_estimate(self) -> int:
-        """Estimate memory usage in bytes"""
-        import sys
-        with self._lock:
-            total_size = 0
-            for cache in self.caches.values():
-                total_size += sys.getsizeof(cache)
-                for key, value in cache.items():
-                    total_size += sys.getsizeof(key) + sys.getsizeof(value)
-            return total_size
-
-
-# Global unified cache instance
-_unified_cache = UnifiedLRUCache(max_size=1000)
-
-def get_unified_cache() -> UnifiedLRUCache:
-    """Get global unified cache instance"""
-    return _unified_cache
-
-
-# ============================================================================
-# PERFORMANCE MONITOR
-# ============================================================================
-
-class PerformanceMonitor:
-    """Enhanced performance monitoring with thread safety"""
-
-    def __init__(self):
-        self.timers: Dict[str, float] = {}
-        self.metrics: DefaultDict[str, List] = defaultdict(list)
-        self._lock = threading.RLock()
-        self.start_times: Dict[str, float] = {}
-
-        self.operation_counts: DefaultDict[str, int] = defaultdict(int)
-        self.operation_times: DefaultDict[str, List[float]] = defaultdict(list)
-
-        self.phase_times: Dict[str, List[float]] = {
-            'data_load': [],
-            'ai_analysis': [],
-            'lineup_generation': [],
-            'validation': [],
-            'export': [],
-            'monte_carlo': [],
-            'genetic_algorithm': []
-        }
-
-    def start_timer(self, operation: str) -> None:
-        """Start timing an operation"""
-        with self._lock:
-            self.start_times[operation] = time.time()
-            self.operation_counts[operation] += 1
-
-    def stop_timer(self, operation: str) -> float:
-        """Stop timing and return elapsed time"""
-        with self._lock:
-            if operation not in self.start_times:
-                return 0.0
-
-            elapsed = time.time() - self.start_times[operation]
-            del self.start_times[operation]
-
-            self.operation_times[operation].append(elapsed)
-
-            if len(self.operation_times[operation]) > 100:
-                self.operation_times[operation] = self.operation_times[operation][-50:]
-
-            return elapsed
-
-    def record_phase_time(self, phase: str, duration: float) -> None:
-        """Record time for optimization phase"""
-        with self._lock:
-            if phase in self.phase_times:
-                self.phase_times[phase].append(duration)
-                if len(self.phase_times[phase]) > 20:
-                    self.phase_times[phase] = self.phase_times[phase][-10:]
-
-    def get_operation_stats(self, operation: str) -> Dict[str, Any]:
-        """Get statistics for an operation"""
-        with self._lock:
-            times = self.operation_times.get(operation, [])
-            if not times:
-                return {}
-
-            try:
-                valid_times = [t for t in times if np.isfinite(t)]
-
-                if not valid_times:
-                    return {'count': len(times)}
-
-                return {
-                    'count': self.operation_counts[operation],
-                    'avg_time': float(np.mean(valid_times)),
-                    'median_time': float(np.median(valid_times)),
-                    'min_time': float(min(valid_times)),
-                    'max_time': float(max(valid_times)),
-                    'total_time': float(sum(valid_times)),
-                    'std_dev': float(np.std(valid_times)) if len(valid_times) > 1 else 0.0
-                }
-            except Exception:
-                return {'count': len(times)}
-
-
-# ============================================================================
-# SINGLETON GETTERS
-# ============================================================================
-
-def get_logger() -> 'StructuredLogger':
-    """Get or create global logger singleton"""
-    try:
-        import streamlit as st
-        if 'logger' not in st.session_state:
-            st.session_state.logger = StructuredLogger()
-        return st.session_state.logger
-    except (ImportError, RuntimeError):
-        if not hasattr(get_logger, '_instance'):
-            get_logger._instance = StructuredLogger()
-        return get_logger._instance
-
-
-def get_performance_monitor() -> PerformanceMonitor:
-    """Get or create performance monitor singleton"""
-    try:
-        import streamlit as st
-        if 'perf_monitor' not in st.session_state:
-            st.session_state.perf_monitor = PerformanceMonitor()
-        return st.session_state.perf_monitor
-    except (ImportError, RuntimeError):
-        if not hasattr(get_performance_monitor, '_instance'):
-            get_performance_monitor._instance = PerformanceMonitor()
-        return get_performance_monitor._instance
-
-"""
-PART 7 OF 13: MONTE CARLO SIMULATION ENGINE
-
-CRITICAL FIXES:
-- FIX #2: Fixed division by zero in Sharpe ratio (improved edge case handling)
-- FIX #7: Efficient cache cleanup (memory optimization)
-- FIX #13: Memory-efficient streaming
-- FIX #14: Adaptive threading
-- FIX #15: Enhanced correlation matrix decomposition
-- NEW: Numba JIT compilation for 3-5x speedup (ENHANCEMENT #1)
-- NEW: Unified LRU cache integration (ENHANCEMENT #3)
-- DEFENSIVE: Robust handling of categorical dtypes from memory optimization
-"""
-
-# ============================================================================
-# DEFENSIVE ARRAY CONVERSION UTILITIES
-# ============================================================================
-
-def safe_array_conversion(array_like: Any, dtype: type = object) -> np.ndarray:
-    """
-    Defensively convert any array-like to numpy array
-
-    Handles categorical, pandas arrays, lists, etc.
-
-    Args:
-        array_like: Any array-like object
-        dtype: Target numpy dtype
-
-    Returns:
-        Pure numpy array
-    """
-    try:
-        # Handle pandas categorical specifically
-        if hasattr(array_like, 'dtype') and pd.api.types.is_categorical_dtype(array_like):
-            # Convert categorical to its string representation
-            return np.array([str(x) for x in array_like], dtype=dtype)
-
-        # Handle pandas Series/Index
-        if hasattr(array_like, 'to_numpy'):
-            numpy_array = array_like.to_numpy()
-            # If still categorical after to_numpy, force conversion
-            if hasattr(numpy_array, 'categories'):
-                return np.array([str(x) for x in numpy_array], dtype=dtype)
-            return np.array(numpy_array, dtype=dtype)
-
-        # Handle regular iterables
-        return np.array(array_like, dtype=dtype)
-
-    except Exception:
-        # Last resort: force string conversion
-        return np.array([str(x) for x in array_like], dtype=dtype)
-
-
-def ensure_numeric_array(array_like: Any) -> np.ndarray:
-    """
-    Ensure array is numeric (float64)
-
-    Args:
-        array_like: Any array-like object
-
-    Returns:
-        Float64 numpy array
-    """
-    try:
-        if hasattr(array_like, 'to_numpy'):
-            array_like = array_like.to_numpy()
-
-        result = np.array(array_like, dtype=np.float64)
-
-        # Replace any non-finite values
-        result = np.nan_to_num(result, nan=0.0, posinf=100.0, neginf=0.0)
-
-        return result
-
-    except Exception:
-        # Fallback: try to convert element by element
-        return np.array([float(x) if np.isfinite(float(x)) else 0.0 for x in array_like], dtype=np.float64)
-
-
-# ============================================================================
-# MONTE CARLO SIMULATION ENGINE
-# ============================================================================
-
-class MonteCarloSimulationEngine:
-    """
-    Monte Carlo simulation with improved stability and performance
-
-    CRITICAL ENHANCEMENTS:
-    - Better Sharpe ratio calculation
-    - Optimized cache management
-    - Vectorized operations
-    - ENHANCEMENT #1: Numba JIT for 3-5x speedup
-    - ENHANCEMENT #3: Unified caching
-    - DEFENSIVE: Robust categorical dtype handling
-    """
-
-    __slots__ = ('df', 'game_info', 'n_simulations', 'correlation_matrix',
-                 'player_variance', 'logger', '_player_indices', '_projections',
-                 '_positions', '_teams', '_cholesky_matrix')
 
     def __init__(
         self,
         df: pd.DataFrame,
-        game_info: Dict[str, Any],
-        n_simulations: int = SimulationDefaults.STANDARD_SIM_COUNT
+        constraints: LineupConstraints
     ):
-        if df is None or df.empty:
-            raise ValueError("DataFrame cannot be None or empty")
+        """
+        Initialize batch validator
 
-        if n_simulations < SimulationDefaults.MIN_SIM_COUNT:
-            raise ValueError(f"n_simulations must be >= {SimulationDefaults.MIN_SIM_COUNT}")
-
-        self.df = df.copy()
-        self.game_info = game_info
-        self.n_simulations = n_simulations
+        Args:
+            df: Player DataFrame
+            constraints: Validation constraints
+        """
+        self.df = df
+        self.constraints = constraints
         self.logger = get_logger()
 
-        # DEFENSIVE: Pre-process DataFrame to handle categorical columns
-        try:
-            self._prepare_dataframe()
-        except Exception as e:
-            self.logger.log_exception(e, "DataFrame preparation")
-            raise
+        # Pre-compute lookup structures
+        self.player_set = set(df['Player'].tolist())
+        self.salaries = df.set_index('Player')['Salary'].to_dict()
+        self.teams = df.set_index('Player')['Team'].to_dict()
+        self.positions = df.set_index('Player')['Position'].to_dict()
 
-        # Pre-extract arrays for faster access with defensive conversion
-        try:
-            self._extract_arrays()
-        except Exception as e:
-            self.logger.log_exception(e, "Array extraction")
-            raise
+        # Validation cache
+        self.validation_cache: Dict[str, bool] = {}
 
-        # Pre-compute matrices
-        try:
-            self.correlation_matrix = self._build_correlation_matrix_vectorized()
-            self.player_variance = self._calculate_variance_vectorized()
-            self._cholesky_matrix = None  # Computed lazily
-        except Exception as e:
-            self.logger.log_exception(e, "Matrix computation")
-            raise
-
-    def _prepare_dataframe(self) -> None:
-        """
-        DEFENSIVE: Prepare DataFrame by converting categorical columns
-
-        This ensures vectorized operations work correctly
-        """
-        # Convert any categorical columns to strings
-        for col in self.df.columns:
-            if pd.api.types.is_categorical_dtype(self.df[col]):
-                self.df[col] = self.df[col].astype(str)
-                self.logger.log(
-                    f"Converted categorical column '{col}' to string for vectorization",
-                    "DEBUG"
-                )
-
-        # Ensure critical columns are proper types
-        if 'Player' in self.df.columns:
-            self.df['Player'] = self.df['Player'].astype(str)
-
-        if 'Team' in self.df.columns:
-            self.df['Team'] = self.df['Team'].astype(str)
-
-        if 'Position' in self.df.columns:
-            self.df['Position'] = self.df['Position'].astype(str)
-
-        # Ensure numeric columns are float64
-        for col in ['Projected_Points', 'Salary', 'Ownership']:
-            if col in self.df.columns:
-                self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0).astype(np.float64)
-
-    def _extract_arrays(self) -> None:
-        """
-        DEFENSIVE: Extract arrays with robust conversion
-
-        Uses safe_array_conversion to handle any dtype
-        """
-        # Player indices
-        players = safe_array_conversion(self.df['Player'].values, dtype=object)
-        self._player_indices = {str(p): i for i, p in enumerate(players)}
-
-        # Projections (numeric)
-        self._projections = ensure_numeric_array(self.df['Projected_Points'].values)
-
-        # Positions (string/object array for comparison operations)
-        self._positions = safe_array_conversion(self.df['Position'].values, dtype=object)
-
-        # Teams (string/object array for comparison operations)
-        self._teams = safe_array_conversion(self.df['Team'].values, dtype=object)
-
-        # Validation
-        n_players = len(self.df)
-        if len(self._projections) != n_players:
-            raise ValueError(f"Projections length mismatch: {len(self._projections)} vs {n_players}")
-
-        if len(self._positions) != n_players:
-            raise ValueError(f"Positions length mismatch: {len(self._positions)} vs {n_players}")
-
-        if len(self._teams) != n_players:
-            raise ValueError(f"Teams length mismatch: {len(self._teams)} vs {n_players}")
-
-        self.logger.log(
-            f"Extracted arrays: {n_players} players, "
-            f"positions dtype={self._positions.dtype}, "
-            f"teams dtype={self._teams.dtype}",
-            "DEBUG"
-        )
-
-    # ENHANCEMENT #1: Numba JIT compiled simulation
-    @staticmethod
-    @jit(nopython=True, cache=True, parallel=True) if NUMBA_AVAILABLE else lambda f: f
-    def _fast_lognormal_simulation(
-        projections: np.ndarray,
-        std_devs: np.ndarray,
-        correlated_z: np.ndarray,
-        n_sims: int,
-        n_players: int
-    ) -> np.ndarray:
-        """
-        JIT-compiled lognormal simulation - 3-5x faster than Python version
-
-        ENHANCEMENT #1: Numba acceleration
-        """
-        scores = np.zeros((n_sims, n_players))
-
-        for i in range(n_players):
-            if projections[i] > 0:
-                proj = projections[i]
-                std = std_devs[i]
-
-                mu = np.log(proj**2 / np.sqrt(std**2 + proj**2))
-                sigma = np.sqrt(np.log(1 + (std**2 / proj**2)))
-
-                if np.isfinite(mu) and np.isfinite(sigma) and sigma > 0:
-                    scores[:, i] = np.exp(mu + sigma * correlated_z[:, i])
-                else:
-                    scores[:, i] = proj
-
-        return scores
-
-    def _python_simulation(
+    def validate_batch(
         self,
-        projections: np.ndarray,
-        std_devs: np.ndarray,
-        correlated_z: np.ndarray
-    ) -> np.ndarray:
-        """Fallback Python version when Numba unavailable"""
-        n_sims, n_players = correlated_z.shape
-        scores = np.zeros((n_sims, n_players))
-
-        for i in range(n_players):
-            if projections[i] > 0:
-                proj = projections[i]
-                std = std_devs[i]
-
-                mu = np.log(proj**2 / np.sqrt(std**2 + proj**2))
-                sigma = np.sqrt(np.log(1 + (std**2 / proj**2)))
-
-                if np.isfinite(mu) and np.isfinite(sigma) and sigma > 0:
-                    scores[:, i] = np.exp(mu + sigma * correlated_z[:, i])
-                else:
-                    scores[:, i] = proj
-
-        return scores
-
-    def _build_correlation_matrix_vectorized(self) -> np.ndarray:
+        lineups: List[Dict[str, Any]]
+    ) -> Tuple[List[bool], List[str]]:
         """
-        DEFENSIVE: Vectorized correlation matrix building
+        Validate batch of lineups
 
-        Uses string comparison on regular numpy arrays
+        Args:
+            lineups: List of lineup dictionaries
+
+        Returns:
+            Tuple of (validity array, error messages array)
         """
-        n_players = len(self.df)
-        corr_matrix = np.eye(n_players, dtype=np.float64)
+        is_valid = []
+        error_messages = []
 
+        for lineup in lineups:
+            valid, error = self._validate_single(lineup)
+            is_valid.append(valid)
+            error_messages.append(error)
+
+        return is_valid, error_messages
+
+    def _validate_single(
+        self,
+        lineup: Dict[str, Any]
+    ) -> Tuple[bool, str]:
+        """
+        Validate single lineup
+
+        Args:
+            lineup: Lineup dictionary
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
         try:
-            # Create team comparison matrix using object array comparison
-            # This works with regular numpy arrays but not categorical
-            team_matrix = np.equal.outer(self._teams, self._teams)
+            captain = lineup.get('Captain', '')
+            flex = lineup.get('FLEX', [])
 
-            # Vectorized correlation assignment
-            for i in range(n_players):
-                pos_i = str(self._positions[i])
+            # Handle string FLEX
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',') if p.strip()]
 
-                for j in range(i + 1, n_players):
-                    pos_j = str(self._positions[j])
-                    same_team = team_matrix[i, j]
+            # Create cache key
+            cache_key = f"{captain}|{'|'.join(sorted(flex))}"
+            if cache_key in self.validation_cache:
+                return self.validation_cache[cache_key], ""
 
-                    corr = self._get_correlation_coefficient(pos_i, pos_j, same_team)
+            all_players = [captain] + flex
 
-                    if abs(corr) > 0.1:
-                        corr_matrix[i, j] = corr
-                        corr_matrix[j, i] = corr
+            # Check roster size
+            if len(all_players) != DraftKingsRules.ROSTER_SIZE:
+                error = f"Invalid roster size: {len(all_players)}"
+                self.validation_cache[cache_key] = False
+                return False, error
 
-            return corr_matrix
+            # Check duplicates
+            if len(set(all_players)) != len(all_players):
+                error = "Duplicate players"
+                self.validation_cache[cache_key] = False
+                return False, error
+
+            # Check all players exist
+            if not all(p in self.player_set for p in all_players):
+                missing = [p for p in all_players if p not in self.player_set]
+                error = f"Players not found: {missing}"
+                self.validation_cache[cache_key] = False
+                return False, error
+
+            # Check banned players
+            if any(p in self.constraints.banned_players for p in all_players):
+                banned = [p for p in all_players if p in self.constraints.banned_players]
+                error = f"Banned players in lineup: {banned}"
+                self.validation_cache[cache_key] = False
+                return False, error
+
+            # Check locked players
+            if self.constraints.locked_players:
+                if not self.constraints.locked_players.issubset(set(all_players)):
+                    missing = self.constraints.locked_players - set(all_players)
+                    error = f"Missing locked players: {missing}"
+                    self.validation_cache[cache_key] = False
+                    return False, error
+
+            # Check salary
+            captain_salary = self.salaries.get(captain, 0) * DraftKingsRules.CAPTAIN_MULTIPLIER
+            flex_salary = sum(self.salaries.get(p, 0) for p in flex)
+            total_salary = captain_salary + flex_salary
+
+            if total_salary < self.constraints.min_salary:
+                error = f"Salary too low: ${total_salary:,.0f}"
+                self.validation_cache[cache_key] = False
+                return False, error
+
+            if total_salary > self.constraints.max_salary:
+                error = f"Salary too high: ${total_salary:,.0f}"
+                self.validation_cache[cache_key] = False
+                return False, error
+
+            # Check team diversity
+            teams = [self.teams.get(p, 'UNKNOWN') for p in all_players]
+            team_counts = Counter(teams)
+
+            if len(team_counts) < DraftKingsRules.MIN_TEAMS_REQUIRED:
+                error = f"Insufficient teams: {len(team_counts)}"
+                self.validation_cache[cache_key] = False
+                return False, error
+
+            if max(team_counts.values()) > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
+                error = f"Too many from one team: {max(team_counts.values())}"
+                self.validation_cache[cache_key] = False
+                return False, error
+
+            # Valid
+            self.validation_cache[cache_key] = True
+            return True, ""
 
         except Exception as e:
-            self.logger.log_exception(e, "_build_correlation_matrix_vectorized")
+            self.logger.log_exception(e, "_validate_single")
+            return False, f"Validation error: {str(e)}"
 
-            # Fallback: element-by-element comparison
-            self.logger.log("Using fallback correlation matrix construction", "WARNING")
+    def get_validation_stats(self) -> Dict[str, int]:
+        """
+        Get validation statistics
 
-            for i in range(n_players):
-                team_i = str(self._teams[i])
-                pos_i = str(self._positions[i])
+        Returns:
+            Statistics dictionary
+        """
+        return {
+            'cache_size': len(self.validation_cache),
+            'valid_count': sum(1 for v in self.validation_cache.values() if v),
+            'invalid_count': sum(1 for v in self.validation_cache.values() if not v)
+        }
 
-                for j in range(i + 1, n_players):
-                    team_j = str(self._teams[j])
-                    pos_j = str(self._positions[j])
-                    same_team = (team_i == team_j)
+    def clear_cache(self) -> None:
+        """Clear validation cache"""
+        self.validation_cache.clear()
 
-                    corr = self._get_correlation_coefficient(pos_i, pos_j, same_team)
 
-                    if abs(corr) > 0.1:
-                        corr_matrix[i, j] = corr
-                        corr_matrix[j, i] = corr
+# ============================================================================
+# DIVERSITY TRACKER
+# ============================================================================
 
-            return corr_matrix
 
-    def _calculate_variance_vectorized(self) -> np.ndarray:
-        """Vectorized variance calculation"""
-        try:
-            # Vectorize position CV lookup
-            position_cv = np.vectorize(
-                lambda pos: VARIANCE_BY_POSITION.get(str(pos), 0.40)
-            )(self._positions)
+class DiversityTracker:
+    """
+    Track lineup diversity to prevent duplicates
 
-            # Salary-based adjustment
-            if 'Salary' in self.df.columns:
-                salaries = ensure_numeric_array(self.df['Salary'].values)
-                salary_max = np.max(salaries)
-                salary_range = max(salary_max - 3000, 1)
-                salary_factor = np.maximum(0.7, 1.0 - (salaries - 3000) / salary_range * 0.3)
-            else:
-                salary_factor = np.ones_like(position_cv)
+    Ensures generated lineups are sufficiently different from each other.
+    """
 
-            cv = position_cv * salary_factor
+    def __init__(self, similarity_threshold: float = 0.5):
+        """
+        Initialize diversity tracker
 
-            safe_projections = np.maximum(self._projections, 0.1)
-            variance = (safe_projections * cv) ** 2
+        Args:
+            similarity_threshold: Maximum allowed similarity (0-1)
+                0.5 means lineups must differ by at least 50% of players
+        """
+        self.similarity_threshold = similarity_threshold
+        self.seen_lineups: List[Set[str]] = []
+        self.logger = get_logger()
 
-            variance = np.nan_to_num(variance, nan=1.0, posinf=100.0, neginf=0.0)
+        # Statistics
+        self.total_checked = 0
+        self.duplicates_rejected = 0
 
-            return variance
-
-        except Exception as e:
-            self.logger.log_exception(e, "_calculate_variance_vectorized")
-
-            # Fallback: use default variance
-            return np.ones(len(self.df)) * 16.0  # Default: std=4
-
-    def _get_correlation_coefficient(self, pos1: str, pos2: str, same_team: bool) -> float:
-        """Fast correlation lookup"""
-        coeffs = CORRELATION_COEFFICIENTS
-
-        # Ensure string comparison
-        pos1 = str(pos1)
-        pos2 = str(pos2)
-
-        if same_team:
-            if pos1 == 'QB' and pos2 in ['WR', 'TE']:
-                return coeffs['qb_wr_same_team']
-            elif pos1 in ['WR', 'TE'] and pos2 == 'QB':
-                return coeffs['qb_wr_same_team']
-            elif pos1 == 'QB' and pos2 == 'RB':
-                return coeffs['qb_rb_same_team']
-            elif pos1 == 'RB' and pos2 == 'QB':
-                return coeffs['qb_rb_same_team']
-            elif pos1 in ['WR', 'TE'] and pos2 in ['WR', 'TE']:
-                return coeffs['wr_wr_same_team']
-            elif pos1 == 'RB' and pos2 == 'RB':
-                return -0.25
-        else:
-            if pos1 == 'QB' and pos2 == 'QB':
-                return coeffs['qb_qb_opposing']
-            elif pos1 == 'RB' and pos2 == 'DST':
-                return coeffs['rb_dst_opposing']
-            elif pos1 == 'DST' and pos2 == 'RB':
-                return coeffs['rb_dst_opposing']
-            elif pos1 in ['WR', 'TE'] and pos2 == 'DST':
-                return coeffs['wr_dst_opposing']
-            elif pos1 == 'DST' and pos2 in ['WR', 'TE']:
-                return coeffs['wr_dst_opposing']
-
-        return 0.0
-
-    def evaluate_lineup(
+    def is_diverse(
         self,
         captain: str,
         flex: List[str],
-        use_cache: bool = True
-    ) -> SimulationResults:
+        min_differences: Optional[int] = None
+    ) -> bool:
         """
-        Evaluate lineup with unified caching
+        Check if lineup is sufficiently diverse from existing lineups
 
-        ENHANCEMENT #3: Uses UnifiedLRUCache
+        Args:
+            captain: Captain player
+            flex: FLEX players
+            min_differences: Minimum required different players (overrides threshold)
+
+        Returns:
+            True if lineup is diverse enough
         """
-        if not captain or len(flex) != 5:
-            raise ValueError("Invalid lineup: need captain and 5 FLEX")
+        self.total_checked += 1
 
-        cache_key = (captain, frozenset(flex))
+        current_lineup = set([captain] + flex)
 
-        # ENHANCEMENT #3: Use unified cache
-        if use_cache:
-            cached = get_unified_cache().get('mc_simulation', cache_key)
-            if cached:
-                return cached
+        # If no min_differences specified, calculate from threshold
+        if min_differences is None:
+            min_differences = int(DraftKingsRules.ROSTER_SIZE * self.similarity_threshold)
 
-        try:
-            all_players = [captain] + flex
-            player_indices = []
+        # Check against all seen lineups
+        for seen_lineup in self.seen_lineups:
+            # Count different players
+            differences = len(current_lineup ^ seen_lineup)  # Symmetric difference
 
-            for p in all_players:
-                if p in self._player_indices:
-                    player_indices.append(self._player_indices[p])
-                else:
-                    raise ValueError(f"Player not found: {p}")
+            if differences < min_differences:
+                self.duplicates_rejected += 1
+                return False
 
-            projections = self._projections[player_indices]
-            variances = self.player_variance[player_indices]
+        return True
 
-            scores = self._generate_correlated_samples(projections, variances, player_indices)
+    def add_lineup(self, captain: str, flex: List[str]) -> None:
+        """
+        Add lineup to tracking
 
-            scores[:, 0] *= DraftKingsRules.CAPTAIN_MULTIPLIER
+        Args:
+            captain: Captain player
+            flex: FLEX players
+        """
+        lineup_set = set([captain] + flex)
+        self.seen_lineups.append(lineup_set)
 
-            lineup_scores = scores.sum(axis=1)
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get diversity statistics
 
-            valid_scores = lineup_scores[np.isfinite(lineup_scores)]
-
-            if len(valid_scores) == 0:
-                valid_scores = np.array([projections.sum()])
-
-            mean = float(np.mean(valid_scores))
-            median = float(np.median(valid_scores))
-            std = float(np.std(valid_scores))
-            floor_10th = float(np.percentile(valid_scores, SimulationDefaults.PERCENTILE_FLOOR))
-            ceiling_90th = float(np.percentile(valid_scores, SimulationDefaults.PERCENTILE_CEILING))
-            ceiling_99th = float(np.percentile(valid_scores, SimulationDefaults.PERCENTILE_EXTREME))
-
-            top_10pct_threshold = np.percentile(valid_scores, 90)
-            top_10pct_scores = valid_scores[valid_scores >= top_10pct_threshold]
-            top_10pct_mean = float(np.mean(top_10pct_scores)) if len(top_10pct_scores) > 0 else mean
-
-            # CRITICAL FIX: Enhanced Sharpe ratio calculation
-            if std > 0 and mean != 0:
-                sharpe_ratio = float(mean / std)
-            elif mean > 0 and std == 0:
-                sharpe_ratio = float('inf')  # Perfect consistency
-            else:
-                sharpe_ratio = 0.0
-
-            win_probability = float(np.mean(valid_scores >= 180))
-
-            results = SimulationResults(
-                mean=mean,
-                median=median,
-                std=std,
-                floor_10th=floor_10th,
-                ceiling_90th=ceiling_90th,
-                ceiling_99th=ceiling_99th,
-                top_10pct_mean=top_10pct_mean,
-                sharpe_ratio=sharpe_ratio,
-                win_probability=win_probability,
-                score_distribution=valid_scores
+        Returns:
+            Statistics dictionary
+        """
+        return {
+            'total_checked': self.total_checked,
+            'duplicates_rejected': self.duplicates_rejected,
+            'unique_lineups': len(self.seen_lineups),
+            'rejection_rate': (
+                self.duplicates_rejected / self.total_checked * 100
+                if self.total_checked > 0 else 0
             )
+        }
 
-            # ENHANCEMENT #3: Use unified cache
-            if use_cache:
-                get_unified_cache().put('mc_simulation', cache_key, results)
+    def reset(self) -> None:
+        """Reset diversity tracker"""
+        self.seen_lineups.clear()
+        self.total_checked = 0
+        self.duplicates_rejected = 0
 
-            return results
-
-        except Exception as e:
-            self.logger.log_exception(e, "evaluate_lineup")
-            return SimulationResults(
-                mean=0, median=0, std=0, floor_10th=0,
-                ceiling_90th=0, ceiling_99th=0, top_10pct_mean=0,
-                sharpe_ratio=0, win_probability=0
-            )
-
-    def _generate_correlated_samples(
+    def calculate_similarity(
         self,
-        projections: np.ndarray,
-        variances: np.ndarray,
-        indices: List[int]
-    ) -> np.ndarray:
-        """
-        FIX #15: Enhanced matrix decomposition with quadruple fallback
-        ENHANCEMENT #1: Uses Numba JIT when available
-        """
-        n_players = len(indices)
-
-        corr_matrix = self.correlation_matrix[np.ix_(indices, indices)].copy()
-        corr_matrix = (corr_matrix + corr_matrix.T) / 2
-        corr_matrix += np.eye(n_players) * 1e-5
-
-        # FIX #15: Robust decomposition with fallback
-        L = self._decompose_correlation_matrix(corr_matrix)
-
-        Z = np.random.standard_normal((self.n_simulations, n_players))
-        correlated_Z = Z @ L.T
-
-        std_devs = np.sqrt(np.maximum(variances, 0.01))
-
-        # ENHANCEMENT #1: Use JIT-compiled version if available
-        if NUMBA_AVAILABLE:
-            scores = self._fast_lognormal_simulation(
-                projections,
-                std_devs,
-                correlated_Z,
-                self.n_simulations,
-                n_players
-            )
-        else:
-            scores = self._python_simulation(projections, std_devs, correlated_Z)
-
-        # Improved clipping
-        for i in range(n_players):
-            max_reasonable = max(projections[i] * 3, projections[i] + 30)
-            scores[:, i] = np.clip(scores[:, i], 0, max_reasonable)
-
-        return scores
-
-    def _decompose_correlation_matrix(self, corr_matrix: np.ndarray) -> np.ndarray:
-        """
-        FIX #15: Robust matrix decomposition with quadruple fallback
-        """
-        n = corr_matrix.shape[0]
-
-        # Attempt 1: Cholesky (fastest)
-        try:
-            L = np.linalg.cholesky(corr_matrix)
-            return L
-        except np.linalg.LinAlgError:
-            pass
-
-        # Attempt 2: Eigenvalue decomposition
-        try:
-            eigenvalues, eigenvectors = np.linalg.eigh(corr_matrix)
-            eigenvalues = np.maximum(eigenvalues, 1e-6)
-            L = eigenvectors @ np.diag(np.sqrt(eigenvalues))
-            return L
-        except Exception:
-            pass
-
-        # Attempt 3: SVD
-        try:
-            U, s, Vt = np.linalg.svd(corr_matrix)
-            s = np.maximum(s, 1e-6)
-            L = U @ np.diag(np.sqrt(s))
-            self.logger.log("Using SVD decomposition for correlation matrix", "INFO")
-            return L
-        except Exception:
-            pass
-
-        # Attempt 4: Diagonal approximation
-        self.logger.log(
-            "All decomposition methods failed, using diagonal approximation",
-            "WARNING"
-        )
-        return np.eye(n)
-
-    def evaluate_multiple_lineups(
-        self,
-        lineups: List[Dict[str, Any]],
-        parallel: bool = True
-    ) -> Dict[int, SimulationResults]:
-        """
-        FIX #14: Adaptive thread pool sizing for parallel evaluation
-        """
-        results = {}
-
-        # FIX #14: Adaptive thread count
-        if parallel:
-            num_threads = get_optimal_thread_count(
-                len(lineups),
-                workload_type='heavy'
-            )
-        else:
-            num_threads = 1
-
-        if num_threads > 1:
-            with ThreadPoolExecutor(max_workers=num_threads) as executor:
-                futures = {}
-
-                for idx, lineup in enumerate(lineups):
-                    captain = lineup.get('captain', lineup.get('Captain', ''))
-                    flex = lineup.get('flex', lineup.get('FLEX', []))
-
-                    if captain and flex:
-                        future = executor.submit(self.evaluate_lineup, captain, flex)
-                        futures[future] = idx
-
-                for future in as_completed(futures):
-                    idx = futures[future]
-                    try:
-                        results[idx] = future.result()
-                    except Exception as e:
-                        self.logger.log(f"Simulation error for lineup {idx}: {e}", "ERROR")
-        else:
-            for idx, lineup in enumerate(lineups):
-                try:
-                    captain = lineup.get('captain', lineup.get('Captain', ''))
-                    flex = lineup.get('flex', lineup.get('FLEX', []))
-
-                    if captain and flex:
-                        results[idx] = self.evaluate_lineup(captain, flex)
-                except Exception as e:
-                    self.logger.log(f"Simulation error for lineup {idx}: {e}", "ERROR")
-
-        return results
-
-    def evaluate_multiple_lineups_streaming(
-        self,
-        lineups: List[Dict[str, Any]],
-        batch_size: int = PerformanceLimits.MEMORY_BATCH_SIZE
-    ) -> Dict[int, SimulationResults]:
-        """
-        FIX #13: Memory-efficient evaluation using batching
-        """
-        results = {}
-
-        for batch_start in range(0, len(lineups), batch_size):
-            batch_end = min(batch_start + batch_size, len(lineups))
-            batch = lineups[batch_start:batch_end]
-
-            batch_results = self.evaluate_multiple_lineups(batch, parallel=True)
-
-            for i, result in batch_results.items():
-                results[batch_start + i] = result
-
-            if batch_end < len(lineups):
-                gc.collect()
-
-        return results
-
-    def calculate_gpp_leverage(
-        self,
-        players: List[str],
-        df: pd.DataFrame
+        lineup1: Tuple[str, List[str]],
+        lineup2: Tuple[str, List[str]]
     ) -> float:
         """
-        FIX #2: Fixed division by zero in leverage calculation
+        Calculate similarity between two lineups
+
+        Args:
+            lineup1: Tuple of (captain, flex)
+            lineup2: Tuple of (captain, flex)
+
+        Returns:
+            Similarity score (0-1, where 1 is identical)
         """
-        if not players or df.empty:
+        captain1, flex1 = lineup1
+        captain2, flex2 = lineup2
+
+        set1 = set([captain1] + flex1)
+        set2 = set([captain2] + flex2)
+
+        # Jaccard similarity
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+
+        return intersection / union if union > 0 else 0.0
+
+    def find_most_similar(
+        self,
+        captain: str,
+        flex: List[str]
+    ) -> Tuple[Optional[Set[str]], float]:
+        """
+        Find most similar lineup in tracking
+
+        Args:
+            captain: Captain player
+            flex: FLEX players
+
+        Returns:
+            Tuple of (most similar lineup set, similarity score)
+        """
+        if not self.seen_lineups:
+            return None, 0.0
+
+        current_lineup = set([captain] + flex)
+
+        max_similarity = 0.0
+        most_similar = None
+
+        for seen_lineup in self.seen_lineups:
+            intersection = len(current_lineup & seen_lineup)
+            union = len(current_lineup | seen_lineup)
+            similarity = intersection / union if union > 0 else 0.0
+
+            if similarity > max_similarity:
+                max_similarity = similarity
+                most_similar = seen_lineup
+
+        return most_similar, max_similarity
+
+
+# ============================================================================
+# EXPOSURE TRACKER
+# ============================================================================
+
+
+class ExposureTracker:
+    """
+    Track player exposure across generated lineups
+
+    Ensures players don't exceed maximum exposure limits.
+    """
+
+    def __init__(self, max_exposure: Optional[Dict[str, float]] = None):
+        """
+        Initialize exposure tracker
+
+        Args:
+            max_exposure: Dictionary mapping player to max exposure % (0-100)
+        """
+        self.max_exposure = max_exposure or {}
+        self.player_counts: DefaultDict[str, int] = defaultdict(int)
+        self.total_lineups = 0
+        self.logger = get_logger()
+
+    def add_lineup(self, captain: str, flex: List[str]) -> None:
+        """
+        Add lineup to exposure tracking
+
+        Args:
+            captain: Captain player
+            flex: FLEX players
+        """
+        all_players = [captain] + flex
+
+        for player in all_players:
+            self.player_counts[player] += 1
+
+        self.total_lineups += 1
+
+    def get_exposure(self, player: str) -> float:
+        """
+        Get current exposure for player
+
+        Args:
+            player: Player name
+
+        Returns:
+            Exposure percentage (0-100)
+        """
+        if self.total_lineups == 0:
             return 0.0
 
+        count = self.player_counts.get(player, 0)
+        return (count / self.total_lineups) * 100
+
+    def is_under_limit(self, player: str) -> bool:
+        """
+        Check if player is under exposure limit
+
+        Args:
+            player: Player name
+
+        Returns:
+            True if under limit or no limit set
+        """
+        if player not in self.max_exposure:
+            return True
+
+        current_exposure = self.get_exposure(player)
+        max_allowed = self.max_exposure[player]
+
+        return current_exposure < max_allowed
+
+    def can_add_player(self, player: str) -> bool:
+        """
+        Check if player can be added to a new lineup
+
+        Args:
+            player: Player name
+
+        Returns:
+            True if adding player won't exceed limit
+        """
+        if player not in self.max_exposure:
+            return True
+
+        # Calculate exposure if we add this player
+        new_count = self.player_counts.get(player, 0) + 1
+        new_total = self.total_lineups + 1
+        projected_exposure = (new_count / new_total) * 100
+
+        return projected_exposure <= self.max_exposure[player]
+
+    def get_all_exposures(self) -> Dict[str, float]:
+        """
+        Get exposure for all players
+
+        Returns:
+            Dictionary mapping player to exposure %
+        """
+        if self.total_lineups == 0:
+            return {}
+
+        return {
+            player: (count / self.total_lineups) * 100
+            for player, count in self.player_counts.items()
+        }
+
+    def get_exposure_summary(self) -> Dict[str, Any]:
+        """
+        Get exposure summary statistics
+
+        Returns:
+            Summary dictionary
+        """
+        exposures = self.get_all_exposures()
+
+        if not exposures:
+            return {
+                'total_lineups': 0,
+                'unique_players': 0,
+                'avg_exposure': 0.0,
+                'max_exposure': 0.0,
+                'min_exposure': 0.0
+            }
+
+        exposure_values = list(exposures.values())
+
+        return {
+            'total_lineups': self.total_lineups,
+            'unique_players': len(exposures),
+            'avg_exposure': float(np.mean(exposure_values)),
+            'max_exposure': float(max(exposure_values)),
+            'min_exposure': float(min(exposure_values)),
+            'players_over_limit': sum(
+                1 for player, exp in exposures.items()
+                if player in self.max_exposure and exp > self.max_exposure[player]
+            )
+        }
+
+    def print_exposure_report(self, top_n: int = 20) -> None:
+        """
+        Print formatted exposure report
+
+        Args:
+            top_n: Number of top players to show
+        """
+        exposures = self.get_all_exposures()
+
+        if not exposures:
+            print("No lineups tracked yet.")
+            return
+
+        print("\n" + "=" * 70)
+        print(f"EXPOSURE REPORT ({self.total_lineups} lineups)")
+        print("=" * 70)
+
+        # Sort by exposure descending
+        sorted_exposures = sorted(
+            exposures.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        print(f"\nTop {top_n} Players by Exposure:")
+        print(f"{'Player':<25} {'Exposure':>10} {'Count':>8} {'Limit':>10}")
+        print("-" * 70)
+
+        for player, exposure in sorted_exposures[:top_n]:
+            count = self.player_counts[player]
+            limit = self.max_exposure.get(player, None)
+            limit_str = f"{limit:.1f}%" if limit is not None else "None"
+
+            # Highlight if over limit
+            marker = "⚠️ " if limit and exposure > limit else "   "
+
+            print(f"{marker}{player:<25} {exposure:>9.1f}% {count:>8} {limit_str:>10}")
+
+        # Summary stats
+        summary = self.get_exposure_summary()
+        print("\n" + "-" * 70)
+        print(f"Average Exposure: {summary['avg_exposure']:.1f}%")
+        print(f"Max Exposure: {summary['max_exposure']:.1f}%")
+        print(f"Min Exposure: {summary['min_exposure']:.1f}%")
+
+        if summary['players_over_limit'] > 0:
+            print(f"\n⚠️  {summary['players_over_limit']} players over exposure limit")
+
+        print("=" * 70)
+
+    def reset(self) -> None:
+        """Reset exposure tracking"""
+        self.player_counts.clear()
+        self.total_lineups = 0
+
+"""
+PART 8 OF 13: GENETIC ALGORITHM + ADVANCED OPTIMIZERS
+
+UPDATE 1 ENHANCEMENTS:
+✅ GeneticAlgorithmOptimizer (existing - enhanced)
+✅ SimulatedAnnealingOptimizer (NEW)
+✅ SmartGreedyOptimizer (NEW - guaranteed lineups)
+✅ MultiObjectiveScorer (NEW)
+✅ EnsembleOptimizer (NEW - runs all algorithms in parallel)
+✅ AlgorithmSelector (NEW - intelligent algorithm selection)
+"""
+
+# ============================================================================
+# MULTI-OBJECTIVE SCORER
+# ============================================================================
+
+
+class MultiObjectiveScorer:
+    """
+    Multi-objective scoring combining ceiling, floor, Sharpe, and uniqueness
+
+    NEW: Ultimate State feature for holistic lineup evaluation
+    """
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        mode: str = 'balanced',
+        field_size: str = 'large_field'
+    ):
+        """
+        Initialize multi-objective scorer
+
+        Args:
+            df: Player DataFrame
+            mode: Optimization mode ('balanced', 'ceiling', 'floor', 'boom_or_bust')
+            field_size: Contest size for weighting adjustments
+        """
+        self.df = df
+        self.mode = mode
+        self.field_size = field_size
+        self.logger = get_logger()
+
+        # Pre-compute player metrics
+        self.salaries = df.set_index('Player')['Salary'].to_dict()
+        self.projections = df.set_index('Player')['Projected_Points'].to_dict()
+        self.ownership = df.set_index('Player')['Ownership'].to_dict()
+
+        # Mode-specific weights
+        self.weights = self._get_mode_weights()
+
+    def _get_mode_weights(self) -> Dict[str, float]:
+        """Get scoring weights based on mode"""
+        weights = {
+            'balanced': {
+                'projection': 0.35,
+                'ceiling': 0.25,
+                'floor': 0.15,
+                'sharpe': 0.15,
+                'leverage': 0.10
+            },
+            'ceiling': {
+                'projection': 0.20,
+                'ceiling': 0.50,
+                'floor': 0.05,
+                'sharpe': 0.10,
+                'leverage': 0.15
+            },
+            'floor': {
+                'projection': 0.25,
+                'ceiling': 0.10,
+                'floor': 0.40,
+                'sharpe': 0.20,
+                'leverage': 0.05
+            },
+            'boom_or_bust': {
+                'projection': 0.15,
+                'ceiling': 0.60,
+                'floor': 0.00,
+                'sharpe': 0.05,
+                'leverage': 0.20
+            }
+        }
+
+        return weights.get(self.mode, weights['balanced'])
+
+    def score_lineup(
+        self,
+        captain: str,
+        flex: List[str],
+        sim_results: Optional[SimulationResults] = None
+    ) -> float:
+        """
+        Calculate multi-objective score for lineup
+
+        Args:
+            captain: Captain player name
+            flex: List of flex player names
+            sim_results: Optional simulation results
+
+        Returns:
+            Combined score (higher is better)
+        """
         try:
-            player_data = df[df['Player'].isin(players)]
+            all_players = [captain] + flex
 
-            if player_data.empty:
-                return 0.0
-
-            projections = ensure_numeric_array(player_data['Projected_Points'].values)
-            ownership = ensure_numeric_array(player_data['Ownership'].values)
-
-            # FIX #2: Increased minimum ownership from 0.5 to 1.0
-            ownership = np.clip(ownership, 1.0, 100)
-            projections = np.clip(projections, 0, 100)
-
-            total_projection = (
-                projections[0] * DraftKingsRules.CAPTAIN_MULTIPLIER +
-                projections[1:].sum()
-            )
-            total_ownership = (
-                ownership[0] * DraftKingsRules.CAPTAIN_MULTIPLIER +
-                ownership[1:].sum()
+            # Component 1: Base projection
+            captain_proj = self.projections.get(captain, 0)
+            flex_proj = sum(self.projections.get(p, 0) for p in flex)
+            total_proj = (
+                captain_proj * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_proj
             )
 
-            avg_projection = total_projection / len(players)
-            avg_ownership = max(total_ownership / len(players), 1.0)
+            # Normalize to 0-100 scale
+            projection_score = min(total_proj / 2.0, 100)
 
-            base_leverage = avg_projection / avg_ownership
+            # Component 2: Ceiling score
+            if sim_results:
+                ceiling_score = min(sim_results.ceiling_90th / 2.5, 100)
+            else:
+                # Estimate ceiling from projections + volatility
+                ceiling_estimate = total_proj * 1.3
+                ceiling_score = min(ceiling_estimate / 2.5, 100)
 
-            leverage_bonus = np.sum(
-                np.where(ownership < 10, 15,
-                    np.where(ownership < 15, 8,
-                        np.where(ownership < 20, 3, 0)))
+            # Component 3: Floor score
+            if sim_results:
+                floor_score = min(sim_results.floor_10th / 1.5, 100)
+            else:
+                # Estimate floor
+                floor_estimate = total_proj * 0.7
+                floor_score = min(floor_estimate / 1.5, 100)
+
+            # Component 4: Sharpe ratio score
+            if sim_results and sim_results.sharpe_ratio > 0:
+                sharpe_score = min(sim_results.sharpe_ratio * 20, 100)
+            else:
+                # Estimate consistency
+                sharpe_score = 50  # Neutral
+
+            # Component 5: Leverage score (ownership-adjusted value)
+            captain_own = self.ownership.get(captain, 10)
+            flex_own = sum(self.ownership.get(p, 10) for p in flex)
+            total_own = (
+                captain_own * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_own
+            )
+            avg_own = total_own / DraftKingsRules.ROSTER_SIZE
+
+            # Lower ownership = higher leverage
+            leverage_score = max(0, 100 - avg_own)
+
+            # Combine with weights
+            final_score = (
+                self.weights['projection'] * projection_score +
+                self.weights['ceiling'] * ceiling_score +
+                self.weights['floor'] * floor_score +
+                self.weights['sharpe'] * sharpe_score +
+                self.weights['leverage'] * leverage_score
             )
 
-            result = base_leverage + leverage_bonus
-
-            if not np.isfinite(result):
-                return 0.0
-
-            return float(np.clip(result, 0, 1000))
+            return float(final_score)
 
         except Exception as e:
-            self.logger.log_exception(e, "calculate_gpp_leverage")
+            self.logger.log_exception(e, "MultiObjectiveScorer.score_lineup")
             return 0.0
 
-"""
-PART 8 OF 13: GENETIC ALGORITHM OPTIMIZER
-
-FIXES APPLIED:
-- FIX #9: Guaranteed convergence with final fallback
-- FIX #19: Auto-tuned parameters
-- NEW: Early stopping when population converges (HIGH VALUE)
-- NEW: Parallelized fitness calculation for 2-3x speedup (HIGH VALUE)
-- NEW: Batch fitness evaluation (POLISH)
-- ENHANCEMENT #2: Vectorized batch validation
-- ENHANCEMENT #6: DiversityTracker integration
-- ENHANCEMENT #7: Progress callbacks for UI updates
-"""
 
 # ============================================================================
-# GENETIC ALGORITHM OPTIMIZER
+# GENETIC ALGORITHM OPTIMIZER (ENHANCED)
 # ============================================================================
+
 
 class GeneticAlgorithmOptimizer:
     """
     Enhanced genetic algorithm with guaranteed convergence and early stopping
 
-    FIX #9: Multiple fallback layers prevent infinite loops
-    FIX #19: Auto-tuned parameters for optimal performance
-    NEW: Early stopping detection for efficiency
-    NEW: Parallelized fitness evaluation for speed
-    ENHANCEMENT #2: Batch validation for performance
-    ENHANCEMENT #6: Advanced diversity tracking
-    ENHANCEMENT #7: Real-time progress updates
+    ENHANCEMENTS:
+    - Early stopping when population converges
+    - Parallelized fitness calculation for 2-3x speedup
+    - Batch fitness evaluation
+    - Multi-objective scoring integration
     """
 
     def __init__(
@@ -4272,7 +5276,9 @@ class GeneticAlgorithmOptimizer:
         game_info: Dict[str, Any],
         mc_engine: Optional[MonteCarloSimulationEngine] = None,
         constraints: Optional[LineupConstraints] = None,
-        config: Optional[GeneticConfig] = None
+        config: Optional[GeneticConfig] = None,
+        multi_objective: bool = False,
+        optimization_mode: str = 'balanced'
     ):
         if df is None or df.empty:
             raise ValueError("DataFrame cannot be None or empty")
@@ -4285,12 +5291,21 @@ class GeneticAlgorithmOptimizer:
 
         # Auto-tune config if not provided
         if config is None:
-            config = calculate_optimal_ga_params(
+            config = OptimizerConfig.get_genetic_config(
                 num_players=len(df),
                 num_lineups=50,
                 time_budget_seconds=60.0
             )
         self.config = config
+
+        # NEW: Multi-objective scoring
+        self.multi_objective = multi_objective
+        self.optimization_mode = optimization_mode
+        if multi_objective:
+            self.multi_obj_scorer = MultiObjectiveScorer(
+                df,
+                mode=optimization_mode
+            )
 
         # Pre-compute lookup structures
         self.players = df['Player'].tolist()
@@ -4300,7 +5315,7 @@ class GeneticAlgorithmOptimizer:
         self.teams = df.set_index('Player')['Team'].to_dict()
         self.positions = df.set_index('Player')['Position'].to_dict()
 
-        # Cached valid players (excluding banned)
+        # Cached valid players
         self.valid_players = [
             p for p in self.players
             if p not in self.constraints.banned_players
@@ -4318,15 +5333,10 @@ class GeneticAlgorithmOptimizer:
 
         # Performance tracking
         self.generation_times: List[float] = []
-        self.diversity_scores: List[float] = []
-
-        # NEW: Convergence tracking
         self.best_fitness_history: List[float] = []
 
-        # ENHANCEMENT #2: Batch validator
+        # Batch validator and diversity tracker
         self.batch_validator = BatchLineupValidator(df, self.constraints)
-
-        # ENHANCEMENT #6: Diversity tracker
         self.diversity_tracker = DiversityTracker(similarity_threshold=0.5)
 
     def create_random_lineup(self) -> GeneticLineup:
@@ -4343,7 +5353,6 @@ class GeneticAlgorithmOptimizer:
                     ]
                     locked = list(self.constraints.locked_players)
 
-                    # Ensure we can still fill 6 spots
                     if len(locked) >= DraftKingsRules.ROSTER_SIZE:
                         selected = locked[:DraftKingsRules.ROSTER_SIZE]
                     else:
@@ -4376,30 +5385,28 @@ class GeneticAlgorithmOptimizer:
             except Exception:
                 continue
 
-        # Fallback: create minimum salary lineup
+        # Fallback
         return self._create_min_salary_lineup()
 
     def _create_min_salary_lineup(self) -> GeneticLineup:
-        """
-        FIX #9: Guaranteed valid lineup creation (final fallback)
-        """
+        """Guaranteed valid lineup creation (final fallback)"""
         try:
-            # Sort by salary ascending
             sorted_players = sorted(
                 self.valid_players,
                 key=lambda p: self.salaries.get(p, 50000)
             )
 
-            # Take cheapest 6 players
             selected = sorted_players[:DraftKingsRules.ROSTER_SIZE]
 
-            # Check team diversity
+            # Ensure team diversity
             teams = [self.teams.get(p, 'UNKNOWN') for p in selected]
             team_counts = Counter(teams)
 
-            # If all same team, try to get opponent
             if len(team_counts) == 1:
-                opponent_team = [t for t in self.game_info.get('teams', []) if t != teams[0]]
+                opponent_team = [
+                    t for t in self.game_info.get('teams', [])
+                    if t != teams[0]
+                ]
                 if opponent_team:
                     opponent_players = [
                         p for p in sorted_players
@@ -4415,7 +5422,6 @@ class GeneticAlgorithmOptimizer:
 
         except Exception as e:
             self.logger.log_exception(e, "_create_min_salary_lineup")
-            # Absolute last resort
             first_six = self.valid_players[:6]
             return GeneticLineup(first_six[0], first_six[1:], fitness=0)
 
@@ -4423,9 +5429,8 @@ class GeneticAlgorithmOptimizer:
         """Initialize population with diversity"""
         self.population = []
 
-        # Use locked players if any
+        # Create some lineups with locked players as captain
         if self.constraints.locked_players:
-            # Create some lineups with locked players as captain
             for locked_player in list(self.constraints.locked_players)[:5]:
                 try:
                     lineup = self._create_lineup_with_captain(locked_player)
@@ -4443,11 +5448,14 @@ class GeneticAlgorithmOptimizer:
                 self.logger.log(f"Population init error: {e}", "WARNING")
                 continue
 
-        # Ensure we have full population
+        # Ensure full population
         while len(self.population) < self.config.population_size:
             self.population.append(self._create_min_salary_lineup())
 
-    def _create_lineup_with_captain(self, captain: str) -> Optional[GeneticLineup]:
+    def _create_lineup_with_captain(
+        self,
+        captain: str
+    ) -> Optional[GeneticLineup]:
         """Create lineup with specific captain"""
         try:
             available = [
@@ -4479,19 +5487,51 @@ class GeneticAlgorithmOptimizer:
         lineup: GeneticLineup,
         mode: FitnessMode = FitnessMode.MEAN
     ) -> float:
-        """Calculate fitness score with multiple modes"""
+        """
+        Calculate fitness score
+
+        NEW: Supports multi-objective scoring
+        """
         try:
+            # Use multi-objective scorer if enabled
+            if self.multi_objective and hasattr(self, 'multi_obj_scorer'):
+                # Get simulation results if available
+                sim_results = None
+                if self.mc_engine and mode != FitnessMode.MEAN:
+                    if not lineup.sim_results:
+                        try:
+                            lineup.sim_results = self.mc_engine.evaluate_lineup(
+                                lineup.captain,
+                                lineup.flex
+                            )
+                        except Exception:
+                            pass
+                    sim_results = lineup.sim_results
+
+                return self.multi_obj_scorer.score_lineup(
+                    lineup.captain,
+                    lineup.flex,
+                    sim_results
+                )
+
+            # Original single-objective scoring
             all_players = lineup.get_all_players()
 
             # Base projection
             captain_proj = self.projections.get(lineup.captain, 0)
             flex_proj = sum(self.projections.get(p, 0) for p in lineup.flex)
-            total_proj = captain_proj * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_proj
+            total_proj = (
+                captain_proj * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_proj
+            )
 
             # Ownership consideration
             captain_own = self.ownership.get(lineup.captain, 10)
             flex_own = sum(self.ownership.get(p, 10) for p in lineup.flex)
-            total_own = captain_own * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_own
+            total_own = (
+                captain_own * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_own
+            )
             avg_own = total_own / DraftKingsRules.ROSTER_SIZE
 
             # Ownership leverage bonus
@@ -4531,15 +5571,10 @@ class GeneticAlgorithmOptimizer:
         lineups: List[GeneticLineup],
         mode: FitnessMode = FitnessMode.MEAN
     ) -> List[float]:
-        """
-        NEW: Batch fitness calculation with parallelization (HIGH VALUE)
-
-        Provides 2-3x speedup for large populations
-        """
+        """Batch fitness calculation with parallelization"""
         def eval_single(lineup: GeneticLineup) -> float:
             return self.calculate_fitness(lineup, mode)
 
-        # Use optimal thread count
         num_threads = get_optimal_thread_count(len(lineups), 'heavy')
 
         if num_threads > 1:
@@ -4548,11 +5583,12 @@ class GeneticAlgorithmOptimizer:
                     fitnesses = list(executor.map(eval_single, lineups))
                 return fitnesses
             except Exception as e:
-                self.logger.log_exception(e, "calculate_fitness_batch parallel")
-                # Fall back to sequential
+                self.logger.log_exception(
+                    e,
+                    "calculate_fitness_batch parallel"
+                )
                 return [eval_single(l) for l in lineups]
         else:
-            # Sequential evaluation
             return [eval_single(l) for l in lineups]
 
     def _is_valid_lineup(self, lineup: GeneticLineup) -> bool:
@@ -4560,7 +5596,7 @@ class GeneticAlgorithmOptimizer:
         try:
             all_players = lineup.get_all_players()
 
-            # Uniqueness - check for duplicates early (fail fast)
+            # Uniqueness
             if len(set(all_players)) != DraftKingsRules.ROSTER_SIZE:
                 return False
 
@@ -4573,7 +5609,8 @@ class GeneticAlgorithmOptimizer:
             flex_sal = sum(self.salaries[p] for p in lineup.flex)
             total_sal = capt_sal * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_sal
 
-            if total_sal < self.constraints.min_salary or total_sal > self.constraints.max_salary:
+            if (total_sal < self.constraints.min_salary or
+                    total_sal > self.constraints.max_salary):
                 return False
 
             # Team diversity
@@ -4592,7 +5629,9 @@ class GeneticAlgorithmOptimizer:
 
             # Locked players
             if self.constraints.locked_players:
-                if not self.constraints.locked_players.issubset(set(all_players)):
+                if not self.constraints.locked_players.issubset(
+                    set(all_players)
+                ):
                     return False
 
             return True
@@ -4601,9 +5640,7 @@ class GeneticAlgorithmOptimizer:
             return False
 
     def _repair_lineup(self, lineup: GeneticLineup) -> GeneticLineup:
-        """
-        FIX #9: Enhanced repair with guaranteed convergence
-        """
+        """Enhanced repair with guaranteed convergence"""
         for attempt in range(GeneticAlgorithmDefaults.MAX_REPAIR_ATTEMPTS):
             try:
                 if self._is_valid_lineup(lineup):
@@ -4616,19 +5653,22 @@ class GeneticAlgorithmOptimizer:
                 teams = [self.teams.get(p, 'UNKNOWN') for p in all_players]
                 team_counts = Counter(teams)
 
-                # If too many from one team, replace
                 for team, count in team_counts.items():
                     if count > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
                         excess = count - DraftKingsRules.MAX_PLAYERS_PER_TEAM
-                        team_players = [p for p in all_players if self.teams.get(p) == team]
+                        team_players = [
+                            p for p in all_players
+                            if self.teams.get(p) == team
+                        ]
 
-                        # Replace excess players
                         for _ in range(excess):
                             if team_players:
                                 to_replace = team_players.pop()
 
-                                # Find replacement from different team
-                                other_teams = [t for t in self.game_info.get('teams', []) if t != team]
+                                other_teams = [
+                                    t for t in self.game_info.get('teams', [])
+                                    if t != team
+                                ]
                                 if other_teams:
                                     replacement_pool = [
                                         p for p in self.valid_players
@@ -4638,7 +5678,9 @@ class GeneticAlgorithmOptimizer:
                                     ]
 
                                     if replacement_pool:
-                                        replacement = np.random.choice(replacement_pool)
+                                        replacement = np.random.choice(
+                                            replacement_pool
+                                        )
 
                                         if to_replace == lineup.captain:
                                             lineup.captain = replacement
@@ -4649,17 +5691,23 @@ class GeneticAlgorithmOptimizer:
                 # Fix salary if needed
                 capt_sal = self.salaries.get(lineup.captain, 0)
                 flex_sal = sum(self.salaries.get(p, 0) for p in lineup.flex)
-                total_sal = capt_sal * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_sal
+                total_sal = (
+                    capt_sal * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                    flex_sal
+                )
 
                 if total_sal > self.constraints.max_salary:
-                    # Replace most expensive with cheaper
-                    all_with_sal = [(p, self.salaries.get(p, 0)) for p in all_players]
+                    all_with_sal = [
+                        (p, self.salaries.get(p, 0))
+                        for p in all_players
+                    ]
                     all_with_sal.sort(key=lambda x: x[1], reverse=True)
 
                     for expensive_player, _ in all_with_sal:
                         cheaper_options = [
                             p for p in self.valid_players
-                            if self.salaries.get(p, 50000) < self.salaries.get(expensive_player, 0)
+                            if self.salaries.get(p, 50000)
+                            self.salaries.get(expensive_player, 0)
                             and p not in all_players
                             and p not in self.constraints.banned_players
                         ]
@@ -4677,9 +5725,10 @@ class GeneticAlgorithmOptimizer:
             except Exception:
                 continue
 
-        # FIX #9: After max attempts, try creating new random lineup
+        # After max attempts, create new
         self.logger.log(
-            f"Failed to repair lineup after {GeneticAlgorithmDefaults.MAX_REPAIR_ATTEMPTS} attempts, creating new",
+            f"Failed to repair after "
+            f"{GeneticAlgorithmDefaults.MAX_REPAIR_ATTEMPTS} attempts",
             "WARNING"
         )
 
@@ -4691,7 +5740,6 @@ class GeneticAlgorithmOptimizer:
             except Exception:
                 continue
 
-        # FIX #9: Final fallback
         return self._create_min_salary_lineup()
 
     def tournament_selection(self) -> GeneticLineup:
@@ -4713,17 +5761,14 @@ class GeneticAlgorithmOptimizer:
             if np.random.random() > self.config.crossover_rate:
                 return GeneticLineup(parent1.captain, parent1.flex.copy())
 
-            # Combine players from both parents
             all_p1 = parent1.get_all_players()
             all_p2 = parent2.get_all_players()
 
-            # Take 3 from each
             selected = (
                 list(np.random.choice(all_p1, size=3, replace=False)) +
                 list(np.random.choice(all_p2, size=3, replace=False))
             )
 
-            # Remove duplicates, fill if needed
             selected = list(dict.fromkeys(selected))
 
             while len(selected) < DraftKingsRules.ROSTER_SIZE:
@@ -4734,7 +5779,6 @@ class GeneticAlgorithmOptimizer:
 
             selected = selected[:DraftKingsRules.ROSTER_SIZE]
 
-            # Random captain
             captain_idx = np.random.randint(0, len(selected))
             captain = selected[captain_idx]
             flex = [p for i, p in enumerate(selected) if i != captain_idx]
@@ -4754,14 +5798,16 @@ class GeneticAlgorithmOptimizer:
             mutation_type = np.random.choice(['swap_captain', 'replace_player'])
 
             if mutation_type == 'swap_captain':
-                # Swap captain with random flex
                 new_captain = np.random.choice(lineup.flex)
-                new_flex = [lineup.captain] + [p for p in lineup.flex if p != new_captain]
+                new_flex = [lineup.captain] + [
+                    p for p in lineup.flex if p != new_captain
+                ]
                 lineup = GeneticLineup(new_captain, new_flex[:5])
-
-            else:  # replace_player
-                # Replace random player
-                to_replace_idx = np.random.randint(0, DraftKingsRules.ROSTER_SIZE)
+            else:
+                to_replace_idx = np.random.randint(
+                    0,
+                    DraftKingsRules.ROSTER_SIZE
+                )
                 all_players = lineup.get_all_players()
 
                 replacement_options = [
@@ -4783,13 +5829,12 @@ class GeneticAlgorithmOptimizer:
         except Exception:
             return lineup
 
-    def evolve_generation(self, fitness_mode: FitnessMode = FitnessMode.MEAN) -> None:
-        """
-        NEW: Evolve one generation with parallel batch fitness calculation (HIGH VALUE)
-
-        2-3x speedup compared to sequential evaluation
-        """
-        # NEW: Parallel batch fitness calculation
+    def evolve_generation(
+        self,
+        fitness_mode: FitnessMode = FitnessMode.MEAN
+    ) -> None:
+        """Evolve one generation with parallel batch fitness calculation"""
+        # Parallel batch fitness calculation
         fitnesses = self.calculate_fitness_batch(self.population, fitness_mode)
 
         # Assign fitnesses
@@ -4800,7 +5845,8 @@ class GeneticAlgorithmOptimizer:
         self.population.sort(key=lambda x: x.fitness, reverse=True)
 
         # Update best
-        if not self.best_lineup or self.population[0].fitness > self.best_lineup.fitness:
+        if (not self.best_lineup or
+                self.population[0].fitness > self.best_lineup.fitness):
             self.best_lineup = GeneticLineup(
                 self.population[0].captain,
                 self.population[0].flex.copy(),
@@ -4833,27 +5879,21 @@ class GeneticAlgorithmOptimizer:
         Generate diverse lineups using genetic algorithm
 
         NEW: Early stopping when population converges
-        NEW: Parallel fitness evaluation for speed
-        ENHANCEMENT #6: Advanced diversity tracking
-        ENHANCEMENT #7: Progress callbacks for UI
-
-        Args:
-            num_lineups: Number of lineups to generate
-            fitness_mode: Fitness evaluation mode
-            diversity_threshold: Similarity threshold
-            progress_callback: Optional callback(generation, total, best_fitness)
         """
         try:
-            self.logger.log(f"Starting GA optimization for {num_lineups} lineups", "INFO")
+            self.logger.log(
+                f"Starting GA optimization for {num_lineups} lineups",
+                "INFO"
+            )
 
             self.initialize_population()
 
-            # NEW: Early stopping parameters
-            convergence_window = 10  # Check last 10 generations
-            convergence_threshold = 0.01  # 1% improvement required
+            # Early stopping parameters
+            convergence_window = 10
+            convergence_threshold = 0.01
             self.best_fitness_history = []
 
-            # ENHANCEMENT #6: Reset diversity tracker
+            # Reset diversity tracker
             self.diversity_tracker.reset()
 
             for generation in range(self.config.generations):
@@ -4864,27 +5904,35 @@ class GeneticAlgorithmOptimizer:
                 gen_time = time.time() - gen_start
                 self.generation_times.append(gen_time)
 
-                # NEW: Track best fitness
+                # Track best fitness
                 best_fitness = self.population[0].fitness
                 self.best_fitness_history.append(best_fitness)
 
-                # ENHANCEMENT #7: Progress callback
+                # Progress callback
                 if progress_callback:
                     try:
-                        progress_callback(generation + 1, self.config.generations, best_fitness)
+                        progress_callback(
+                            generation + 1,
+                            self.config.generations,
+                            best_fitness
+                        )
                     except Exception:
-                        pass  # Don't let callback errors break optimization
+                        pass
 
-                # NEW: Early stopping check
+                # Early stopping check
                 if generation >= convergence_window:
                     recent_improvement = (
                         self.best_fitness_history[-1] -
                         self.best_fitness_history[-convergence_window]
-                    ) / max(abs(self.best_fitness_history[-convergence_window]), 0.1)
+                    ) / max(
+                        abs(self.best_fitness_history[-convergence_window]),
+                        0.1
+                    )
 
                     if abs(recent_improvement) < convergence_threshold:
                         self.logger.log(
-                            f"Converged at generation {generation}/{self.config.generations} "
+                            f"Converged at generation {generation}/"
+                            f"{self.config.generations} "
                             f"(improvement: {recent_improvement:.3%})",
                             "INFO"
                         )
@@ -4892,24 +5940,29 @@ class GeneticAlgorithmOptimizer:
 
                 if generation % 10 == 0:
                     self.logger.log(
-                        f"Generation {generation}: Best fitness = {best_fitness:.2f}",
+                        f"Generation {generation}: "
+                        f"Best fitness = {best_fitness:.2f}",
                         "DEBUG"
                     )
 
-            # Extract unique lineups with ENHANCEMENT #6: Diversity tracker
+            # Extract unique lineups with diversity tracker
             unique_lineups = []
 
-            # Sort by fitness
             self.population.sort(key=lambda x: x.fitness, reverse=True)
 
             for lineup in self.population:
                 if len(unique_lineups) >= num_lineups:
                     break
 
-                # ENHANCEMENT #6: Use DiversityTracker
-                if self.diversity_tracker.is_diverse(lineup.captain, lineup.flex):
+                if self.diversity_tracker.is_diverse(
+                    lineup.captain,
+                    lineup.flex
+                ):
                     unique_lineups.append(lineup)
-                    self.diversity_tracker.add_lineup(lineup.captain, lineup.flex)
+                    self.diversity_tracker.add_lineup(
+                        lineup.captain,
+                        lineup.flex
+                    )
 
             # Convert to dict format
             results = []
@@ -4934,47 +5987,927 @@ class GeneticAlgorithmOptimizer:
             self.logger.log_exception(e, "GA generate_lineups")
             return []
 
-    def _lineup_similarity(
+
+# ============================================================================
+# SIMULATED ANNEALING OPTIMIZER (NEW)
+# ============================================================================
+
+
+class SimulatedAnnealingOptimizer:
+    """
+    NEW: Simulated Annealing optimizer with temperature-based exploration
+
+    Ultimate State feature for escaping local optima
+    """
+
+    def __init__(
         self,
-        lineup1: GeneticLineup,
-        lineup2: GeneticLineup
-    ) -> float:
-        """Calculate similarity between lineups"""
-        players1 = set(lineup1.get_all_players())
-        players2 = set(lineup2.get_all_players())
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        mc_engine: Optional[MonteCarloSimulationEngine] = None,
+        constraints: Optional[LineupConstraints] = None,
+        initial_temp: float = 100.0,
+        cooling_rate: float = 0.95,
+        min_temp: float = 0.1
+    ):
+        """
+        Initialize Simulated Annealing optimizer
 
-        intersection = len(players1 & players2)
-        union = len(players1 | players2)
+        Args:
+            df: Player DataFrame
+            game_info: Game context
+            mc_engine: Optional Monte Carlo engine
+            constraints: Lineup constraints
+            initial_temp: Starting temperature
+            cooling_rate: Temperature reduction rate (0-1)
+            min_temp: Minimum temperature before stopping
+        """
+        self.df = df
+        self.game_info = game_info
+        self.mc_engine = mc_engine
+        self.constraints = constraints or LineupConstraints()
+        self.logger = get_logger()
 
-        return intersection / union if union > 0 else 0.0
+        # SA parameters
+        self.initial_temp = initial_temp
+        self.cooling_rate = cooling_rate
+        self.min_temp = min_temp
+
+        # Pre-compute lookups
+        self.players = df['Player'].tolist()
+        self.salaries = df.set_index('Player')['Salary'].to_dict()
+        self.projections = df.set_index('Player')['Projected_Points'].to_dict()
+        self.ownership = df.set_index('Player')['Ownership'].to_dict()
+        self.teams = df.set_index('Player')['Team'].to_dict()
+
+        self.valid_players = [
+            p for p in self.players
+            if p not in self.constraints.banned_players
+        ]
+
+        # Track best solution
+        self.best_lineup: Optional[Dict[str, Any]] = None
+        self.best_score: float = 0.0
+
+    def _evaluate_lineup(self, captain: str, flex: List[str]) -> float:
+        """Evaluate lineup score"""
+        try:
+            captain_proj = self.projections.get(captain, 0)
+            flex_proj = sum(self.projections.get(p, 0) for p in flex)
+            total_proj = (
+                captain_proj * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_proj
+            )
+
+            # Ownership bonus
+            captain_own = self.ownership.get(captain, 10)
+            flex_own = sum(self.ownership.get(p, 10) for p in flex)
+            total_own = (
+                captain_own * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                flex_own
+            )
+            avg_own = total_own / DraftKingsRules.ROSTER_SIZE
+
+            if avg_own < 50:
+                ownership_factor = 1.0 + (50 - avg_own) / 100
+            else:
+                ownership_factor = 1.0
+
+            return total_proj * ownership_factor
+
+        except Exception:
+            return 0.0
+
+    def _is_valid(self, captain: str, flex: List[str]) -> bool:
+        """Check if lineup is valid"""
+        try:
+            all_players = [captain] + flex
+
+            if len(set(all_players)) != DraftKingsRules.ROSTER_SIZE:
+                return False
+
+            # Salary
+            capt_sal = self.salaries.get(captain, 0)
+            flex_sal = sum(self.salaries.get(p, 0) for p in flex)
+            total_sal = capt_sal * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_sal
+
+            if (total_sal < self.constraints.min_salary or
+                    total_sal > self.constraints.max_salary):
+                return False
+
+            # Team diversity
+            teams = [self.teams.get(p, 'UNK') for p in all_players]
+            team_counts = Counter(teams)
+
+            if len(team_counts) < DraftKingsRules.MIN_TEAMS_REQUIRED:
+                return False
+
+            if max(team_counts.values()) > DraftKingsRules.MAX_PLAYERS_PER_TEAM:
+                return False
+
+            return True
+
+        except Exception:
+            return False
+
+    def _generate_neighbor(
+        self,
+        current_captain: str,
+        current_flex: List[str]
+    ) -> Tuple[str, List[str]]:
+        """Generate neighboring solution"""
+        try:
+            current_players = set([current_captain] + current_flex)
+
+            # Choose modification type
+            mod_type = np.random.choice([
+                'swap_captain',
+                'replace_one',
+                'replace_two'
+            ])
+
+            if mod_type == 'swap_captain':
+                # Swap captain with random flex
+                new_captain = np.random.choice(current_flex)
+                new_flex = [current_captain] + [
+                    p for p in current_flex if p != new_captain
+                ]
+                return new_captain, new_flex
+
+            elif mod_type == 'replace_one':
+                # Replace one player
+                to_replace = np.random.choice(list(current_players))
+                replacement_options = [
+                    p for p in self.valid_players
+                    if p not in current_players
+                ]
+
+                if not replacement_options:
+                    return current_captain, current_flex
+
+                replacement = np.random.choice(replacement_options)
+
+                if to_replace == current_captain:
+                    return replacement, current_flex
+                else:
+                    new_flex = [
+                        replacement if p == to_replace else p
+                        for p in current_flex
+                    ]
+                    return current_captain, new_flex
+
+            else:  # replace_two
+                # Replace two players
+                if len(current_flex) < 2:
+                    return current_captain, current_flex
+
+                to_replace = np.random.choice(current_flex, size=2, replace=False)
+                replacement_options = [
+                    p for p in self.valid_players
+                    if p not in current_players
+                ]
+
+                if len(replacement_options) < 2:
+                    return current_captain, current_flex
+
+                replacements = np.random.choice(
+                    replacement_options,
+                    size=2,
+                    replace=False
+                )
+
+                new_flex = [
+                    replacements[0] if p == to_replace[0]
+                    else replacements[1] if p == to_replace[1]
+                    else p
+                    for p in current_flex
+                ]
+                return current_captain, new_flex
+
+        except Exception:
+            return current_captain, current_flex
+
+    def _create_initial_solution(self) -> Tuple[str, List[str]]:
+        """Create initial valid solution"""
+        for _ in range(100):
+            try:
+                selected = list(np.random.choice(
+                    self.valid_players,
+                    size=DraftKingsRules.ROSTER_SIZE,
+                    replace=False
+                ))
+
+                captain_idx = np.random.randint(0, len(selected))
+                captain = selected[captain_idx]
+                flex = [p for i, p in enumerate(selected) if i != captain_idx]
+
+                if self._is_valid(captain, flex):
+                    return captain, flex
+            except Exception:
+                continue
+
+        # Fallback: cheapest valid lineup
+        sorted_players = sorted(
+            self.valid_players,
+            key=lambda p: self.salaries.get(p, 50000)
+        )
+        captain = sorted_players[0]
+        flex = sorted_players[1:6]
+
+        return captain, flex
+
+    def optimize(
+        self,
+        max_iterations: int = 1000,
+        progress_callback: Optional[Callable[[int, int, float], None]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run simulated annealing optimization
+
+        Args:
+            max_iterations: Maximum iterations
+            progress_callback: Optional progress callback
+
+        Returns:
+            Best lineup found
+        """
+        try:
+            # Initialize
+            current_captain, current_flex = self._create_initial_solution()
+            current_score = self._evaluate_lineup(current_captain, current_flex)
+
+            self.best_lineup = {
+                'Captain': current_captain,
+                'FLEX': current_flex.copy()
+            }
+            self.best_score = current_score
+
+            temperature = self.initial_temp
+            iteration = 0
+
+            while temperature > self.min_temp and iteration < max_iterations:
+                # Generate neighbor
+                new_captain, new_flex = self._generate_neighbor(
+                    current_captain,
+                    current_flex
+                )
+
+                # Validate neighbor
+                if not self._is_valid(new_captain, new_flex):
+                    iteration += 1
+                    continue
+
+                # Evaluate neighbor
+                new_score = self._evaluate_lineup(new_captain, new_flex)
+
+                # Accept or reject
+                delta = new_score - current_score
+
+                if delta > 0:
+                    # Better solution - always accept
+                    accept = True
+                else:
+                    # Worse solution - accept with probability
+                    acceptance_prob = np.exp(delta / temperature)
+                    accept = np.random.random() < acceptance_prob
+
+                if accept:
+                    current_captain = new_captain
+                    current_flex = new_flex
+                    current_score = new_score
+
+                    # Update best if improved
+                    if current_score > self.best_score:
+                        self.best_lineup = {
+                            'Captain': current_captain,
+                            'FLEX': current_flex.copy()
+                        }
+                        self.best_score = current_score
+
+                # Cool down
+                temperature *= self.cooling_rate
+                iteration += 1
+
+                # Progress callback
+                if progress_callback and iteration % 50 == 0:
+                    try:
+                        progress_callback(
+                            iteration,
+                            max_iterations,
+                            self.best_score
+                        )
+                    except Exception:
+                        pass
+
+            # Convert to full lineup dict
+            if self.best_lineup:
+                lineup_dict = calculate_lineup_metrics(
+                    self.best_lineup['Captain'],
+                    self.best_lineup['FLEX'],
+                    self.df
+                )
+                lineup_dict['SA_Score'] = self.best_score
+                return lineup_dict
+
+            return None
+
+        except Exception as e:
+            self.logger.log_exception(e, "SimulatedAnnealing.optimize")
+            return None
+
+    def generate_lineups(
+        self,
+        num_lineups: int,
+        max_iterations_per_lineup: int = 500
+    ) -> List[Dict[str, Any]]:
+        """Generate multiple lineups using SA"""
+        lineups = []
+        diversity_tracker = DiversityTracker(similarity_threshold=0.5)
+
+        attempts = 0
+        max_attempts = num_lineups * 5
+
+        while len(lineups) < num_lineups and attempts < max_attempts:
+            lineup = self.optimize(max_iterations=max_iterations_per_lineup)
+
+            if lineup:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if diversity_tracker.is_diverse(captain, flex):
+                    lineups.append(lineup)
+                    diversity_tracker.add_lineup(captain, flex)
+
+            attempts += 1
+
+        return lineups
+
+
+# ============================================================================
+# SMART GREEDY OPTIMIZER (NEW - GUARANTEED LINEUPS)
+# ============================================================================
+
+
+class SmartGreedyOptimizer:
+    """
+    NEW: Smart greedy lineup construction - GUARANTEED to generate lineups
+
+    Ultimate State feature for fast, reliable lineup generation
+    Uses value-based greedy selection with intelligent constraints
+    """
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        constraints: Optional[LineupConstraints] = None
+    ):
+        """
+        Initialize Smart Greedy optimizer
+
+        Args:
+            df: Player DataFrame
+            game_info: Game context
+            constraints: Optional constraints
+        """
+        self.df = df
+        self.game_info = game_info
+        self.constraints = constraints or LineupConstraints()
+        self.logger = get_logger()
+
+        # Pre-compute metrics
+        self.df['_value'] = (
+            self.df['Projected_Points'] / (self.df['Salary'] / 1000)
+        )
+        self.df['_leverage_value'] = (
+            self.df['Projected_Points'] /
+            np.maximum(self.df['Ownership'], 1.0)
+        )
+
+        # Pre-compute lookups
+        self.players = df['Player'].tolist()
+        self.salaries = df.set_index('Player')['Salary'].to_dict()
+        self.projections = df.set_index('Player')['Projected_Points'].to_dict()
+        self.values = df.set_index('Player')['_value'].to_dict()
+        self.teams = df.set_index('Player')['Team'].to_dict()
+
+        self.valid_players = [
+            p for p in self.players
+            if p not in self.constraints.banned_players
+        ]
+
+    def _greedy_construct(
+        self,
+        strategy: str = 'value',
+        randomness: float = 0.0
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Construct lineup using greedy approach
+
+        Args:
+            strategy: 'value', 'projection', or 'leverage'
+            randomness: Random noise factor (0-1)
+
+        Returns:
+            Lineup dictionary or None
+        """
+        try:
+            # Sort players by strategy
+            if strategy == 'value':
+                sorted_df = self.df.sort_values('_value', ascending=False)
+            elif strategy == 'projection':
+                sorted_df = self.df.sort_values(
+                    'Projected_Points',
+                    ascending=False
+                )
+            else:  # leverage
+                sorted_df = self.df.sort_values(
+                    '_leverage_value',
+                    ascending=False
+                )
+
+            # Filter valid players
+            sorted_df = sorted_df[
+                sorted_df['Player'].isin(self.valid_players)
+            ]
+
+            # Add randomness if requested
+            if randomness > 0:
+                noise = np.random.uniform(
+                    1 - randomness,
+                    1 + randomness,
+                    len(sorted_df)
+                )
+                sorted_df['_score'] = sorted_df['_value'] * noise
+                sorted_df = sorted_df.sort_values('_score', ascending=False)
+
+            # Greedy selection with constraints
+            selected = []
+            team_counts = {}
+            remaining_salary = self.constraints.max_salary
+
+            for _, player_row in sorted_df.iterrows():
+                player = player_row['Player']
+                salary = player_row['Salary']
+                team = player_row['Team']
+
+                # Check if we can add this player
+                if len(selected) >= DraftKingsRules.ROSTER_SIZE:
+                    break
+
+                # Team limit check
+                if team_counts.get(team, 0) >= DraftKingsRules.MAX_PLAYERS_PER_TEAM:
+                    continue
+
+                # Estimate salary with captain multiplier
+                # (worst case: this player becomes captain)
+                needed_salary = salary * DraftKingsRules.CAPTAIN_MULTIPLIER
+
+                if needed_salary > remaining_salary:
+                    continue
+
+                # Add player
+                selected.append(player)
+                team_counts[team] = team_counts.get(team, 0) + 1
+                remaining_salary -= salary
+
+            if len(selected) < DraftKingsRules.ROSTER_SIZE:
+                return None
+
+            # Ensure team diversity
+            if len(team_counts) < DraftKingsRules.MIN_TEAMS_REQUIRED:
+                return None
+
+            # Choose captain (highest projection among selected)
+            captain_scores = [
+                (p, self.projections.get(p, 0))
+                for p in selected
+            ]
+            captain_scores.sort(key=lambda x: x[1], reverse=True)
+            captain = captain_scores[0][0]
+            flex = [p for p in selected if p != captain]
+
+            # Validate salary
+            capt_sal = self.salaries.get(captain, 0)
+            flex_sal = sum(self.salaries.get(p, 0) for p in flex)
+            total_sal = capt_sal * DraftKingsRules.CAPTAIN_MULTIPLIER + flex_sal
+
+            if (total_sal < self.constraints.min_salary or
+                    total_sal > self.constraints.max_salary):
+                # Try different captain
+                for alt_captain, _ in captain_scores[1:]:
+                    capt_sal = self.salaries.get(alt_captain, 0)
+                    flex = [p for p in selected if p != alt_captain]
+                    flex_sal = sum(self.salaries.get(p, 0) for p in flex)
+                    total_sal = (
+                        capt_sal * DraftKingsRules.CAPTAIN_MULTIPLIER +
+                        flex_sal
+                    )
+
+                    if (self.constraints.min_salary <= total_sal <=
+                            self.constraints.max_salary):
+                        captain = alt_captain
+                        break
+                else:
+                    return None
+
+            # Build lineup dict
+            lineup = calculate_lineup_metrics(captain, flex, self.df)
+            lineup['Strategy'] = strategy
+
+            return lineup
+
+        except Exception as e:
+            self.logger.log_exception(e, "_greedy_construct")
+            return None
+
+    def generate_lineups(
+        self,
+        num_lineups: int,
+        strategies: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate lineups using multiple greedy strategies
+
+        GUARANTEED to return at least one lineup
+
+        Args:
+            num_lineups: Number of lineups to generate
+            strategies: List of strategies to try
+
+        Returns:
+            List of lineups (always at least 1)
+        """
+        if strategies is None:
+            strategies = ['value', 'projection', 'leverage']
+
+        lineups = []
+        diversity_tracker = DiversityTracker(similarity_threshold=0.4)
+
+        # Try each strategy with varying randomness
+        for strategy in strategies:
+            for randomness in [0.0, 0.1, 0.2, 0.3]:
+                if len(lineups) >= num_lineups:
+                    break
+
+                for attempt in range(num_lineups // len(strategies) + 1):
+                    lineup = self._greedy_construct(strategy, randomness)
+
+                    if lineup:
+                        captain = lineup.get('Captain', '')
+                        flex = lineup.get('FLEX', [])
+
+                        if diversity_tracker.is_diverse(captain, flex):
+                            lineups.append(lineup)
+                            diversity_tracker.add_lineup(captain, flex)
+
+                            if len(lineups) >= num_lineups:
+                                break
+
+        # GUARANTEE: If still no lineups, force create one
+        if not lineups:
+            self.logger.log(
+                "Smart Greedy failed with all strategies - "
+                "forcing basic lineup",
+                "WARNING"
+            )
+
+            # Most basic: highest projections
+            sorted_df = self.df.sort_values(
+                'Projected_Points',
+                ascending=False
+            )
+            selected = sorted_df.head(6)['Player'].tolist()
+
+            captain = selected[0]
+            flex = selected[1:]
+
+            lineup = calculate_lineup_metrics(captain, flex, self.df)
+            lineup['Strategy'] = 'forced_basic'
+            lineups.append(lineup)
+
+        self.logger.log(
+            f"Smart Greedy generated {len(lineups)} lineups",
+            "INFO"
+        )
+
+        return lineups
+
+
+# ============================================================================
+# ENSEMBLE OPTIMIZER (NEW)
+# ============================================================================
+
+
+class EnsembleOptimizer:
+    """
+    NEW: Ensemble optimizer - runs all algorithms in parallel and aggregates
+
+    Ultimate State feature for maximum lineup quality
+    """
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        salary_cap: int = DraftKingsRules.SALARY_CAP,
+        mc_engine: Optional[MonteCarloSimulationEngine] = None,
+        constraints: Optional[LineupConstraints] = None
+    ):
+        """
+        Initialize ensemble optimizer
+
+        Args:
+            df: Player DataFrame
+            game_info: Game context
+            salary_cap: Salary cap
+            mc_engine: Optional Monte Carlo engine
+            constraints: Optional constraints
+        """
+        self.df = df
+        self.game_info = game_info
+        self.salary_cap = salary_cap
+        self.mc_engine = mc_engine
+        self.constraints = constraints or LineupConstraints()
+        self.logger = get_logger()
+
+        # Initialize all optimizers
+        self.pulp_optimizer = StandardLineupOptimizer(
+            df=df,
+            salary_cap=salary_cap,
+            constraints=constraints,
+            mc_engine=mc_engine
+        )
+
+        self.genetic_optimizer = GeneticAlgorithmOptimizer(
+            df=df,
+            game_info=game_info,
+            mc_engine=mc_engine,
+            constraints=constraints,
+            multi_objective=True,
+            optimization_mode='balanced'
+        )
+
+        self.sa_optimizer = SimulatedAnnealingOptimizer(
+            df=df,
+            game_info=game_info,
+            mc_engine=mc_engine,
+            constraints=constraints
+        )
+
+        self.greedy_optimizer = SmartGreedyOptimizer(
+            df=df,
+            game_info=game_info,
+            constraints=constraints
+        )
+
+        self.multi_obj_scorer = MultiObjectiveScorer(df, mode='balanced')
+
+    def _run_algorithm(
+        self,
+        algorithm_name: str,
+        num_lineups: int,
+        **kwargs
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        """Run single algorithm"""
+        try:
+            self.logger.log(f"Starting {algorithm_name}...", "INFO")
+            start = time.time()
+
+            if algorithm_name == 'PuLP':
+                lineups = self.pulp_optimizer.generate_lineups(
+                    num_lineups=num_lineups,
+                    randomness=kwargs.get('randomness', 0.15),
+                    diversity_threshold=kwargs.get('diversity', 2)
+                )
+            elif algorithm_name == 'Genetic':
+                lineups = self.genetic_optimizer.generate_lineups(
+                    num_lineups=num_lineups,
+                    fitness_mode=kwargs.get('fitness_mode', FitnessMode.MEAN)
+                )
+            elif algorithm_name == 'SimulatedAnnealing':
+                lineups = self.sa_optimizer.generate_lineups(
+                    num_lineups=num_lineups
+                )
+            elif algorithm_name == 'SmartGreedy':
+                lineups = self.greedy_optimizer.generate_lineups(
+                    num_lineups=num_lineups
+                )
+            else:
+                lineups = []
+
+            elapsed = time.time() - start
+
+            self.logger.log(
+                f"{algorithm_name}: {len(lineups)} lineups in {elapsed:.2f}s",
+                "INFO"
+            )
+
+            return algorithm_name, lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, f"_run_algorithm {algorithm_name}")
+            return algorithm_name, []
+
+    def generate_lineups(
+        self,
+        num_lineups: int,
+        use_parallel: bool = True,
+        algorithms: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate lineups using ensemble of all algorithms
+
+        Args:
+            num_lineups: Total number of lineups desired
+            use_parallel: Run algorithms in parallel
+            algorithms: List of algorithm names to use (None = all)
+
+        Returns:
+            Aggregated and ranked lineups
+        """
+        try:
+            if algorithms is None:
+                algorithms = ['PuLP', 'Genetic', 'SimulatedAnnealing', 'SmartGreedy']
+
+            # Divide work among algorithms
+            lineups_per_algo = max(num_lineups // len(algorithms), 5)
+
+            all_lineups = []
+
+            if use_parallel:
+                # Run algorithms in parallel
+                with ThreadPoolExecutor(max_workers=len(algorithms)) as executor:
+                    futures = {
+                        executor.submit(
+                            self._run_algorithm,
+                            algo,
+                            lineups_per_algo
+                        ): algo
+                        for algo in algorithms
+                    }
+
+                    for future in as_completed(futures):
+                        algo_name, lineups = future.result()
+                        for lineup in lineups:
+                            lineup['Algorithm'] = algo_name
+                        all_lineups.extend(lineups)
+            else:
+                # Run sequentially
+                for algo in algorithms:
+                    _, lineups = self._run_algorithm(algo, lineups_per_algo)
+                    for lineup in lineups:
+                        lineup['Algorithm'] = algo
+                    all_lineups.extend(lineups)
+
+            if not all_lineups:
+                self.logger.log(
+                    "All algorithms failed - no lineups generated",
+                    "ERROR"
+                )
+                return []
+
+            # Score all lineups with multi-objective scorer
+            for lineup in all_lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+                sim_results = lineup.get('sim_results')
+
+                lineup['EnsembleScore'] = self.multi_obj_scorer.score_lineup(
+                    captain,
+                    flex,
+                    sim_results
+                )
+
+            # Sort by ensemble score
+            all_lineups.sort(
+                key=lambda x: x.get('EnsembleScore', 0),
+                reverse=True
+            )
+
+            # Remove duplicates using diversity tracker
+            unique_lineups = []
+            diversity_tracker = DiversityTracker(similarity_threshold=0.5)
+
+            for lineup in all_lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if diversity_tracker.is_diverse(captain, flex):
+                    unique_lineups.append(lineup)
+                    diversity_tracker.add_lineup(captain, flex)
+
+                    if len(unique_lineups) >= num_lineups:
+                        break
+
+            self.logger.log(
+                f"Ensemble: {len(unique_lineups)} unique lineups from "
+                f"{len(all_lineups)} total",
+                "INFO"
+            )
+
+            return unique_lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, "EnsembleOptimizer.generate_lineups")
+
+            # Emergency fallback to Smart Greedy
+            self.logger.log("Ensemble failed - using Smart Greedy fallback", "WARNING")
+            return self.greedy_optimizer.generate_lineups(num_lineups)
+
+
+# ============================================================================
+# ALGORITHM SELECTOR (NEW)
+# ============================================================================
+
+
+class AlgorithmSelector:
+    """
+    NEW: Intelligent algorithm selection based on player pool analysis
+
+    Ultimate State feature for optimal algorithm choice
+    """
+
+    @staticmethod
+    def select_best_algorithm(
+        pool_analysis: Dict[str, Any],
+        num_lineups: int,
+        constraints: LineupConstraints
+    ) -> str:
+        """
+        Select best algorithm based on problem characteristics
+
+        Args:
+            pool_analysis: Player pool analysis results
+            num_lineups: Number of lineups needed
+            constraints: Constraints to satisfy
+
+        Returns:
+            Algorithm name ('PuLP', 'Genetic', 'SimulatedAnnealing',
+            'SmartGreedy', or 'Ensemble')
+        """
+        pool_quality = pool_analysis.get('pool_quality', 'balanced')
+        player_count = pool_analysis.get('player_count', 50)
+
+        # Tight constraints favor PuLP
+        has_tight_constraints = (
+            len(constraints.locked_players) > 2 or
+            len(constraints.banned_players) > 5 or
+            constraints.required_stacks
+        )
+
+        # Small pools favor PuLP
+        if player_count < 20:
+            return 'PuLP'
+
+        # Tight constraints + small lineups favor PuLP
+        if has_tight_constraints and num_lineups <= 10:
+            return 'PuLP'
+
+        # Large lineup requests favor Genetic or Ensemble
+        if num_lineups > 50:
+            if pool_quality == 'volatile':
+                return 'Ensemble'
+            else:
+                return 'Genetic'
+
+        # Volatile pools favor Ensemble
+        if pool_quality == 'volatile' and num_lineups > 20:
+            return 'Ensemble'
+
+        # Flat pools favor SimulatedAnnealing (explores better)
+        if pool_quality == 'flat':
+            return 'SimulatedAnnealing'
+
+        # Default: Ensemble for best results
+        return 'Ensemble'
 
 """
 PART 9 OF 13: STANDARD LINEUP OPTIMIZER (PuLP)
 
-CORRECTIONS APPLIED:
-- Added salary constraint validation in lineup acceptance
-- Made diversity threshold adaptive based on num_lineups requested
-- Improved logging for debugging constraint issues
-- NEW: Diversity fallback retry logic (POLISH)
-- NEW: Better constraint violation diagnostics
-- ENHANCEMENT #2: Batch validation integration
-- ENHANCEMENT #6: DiversityTracker integration
-- All previous fixes maintained
+UPDATE 1 ENHANCEMENTS:
+✅ StandardLineupOptimizer (existing - enhanced with 10-level fallback)
+✅ Expanded from 7 to 10 progressive fallback levels
+✅ Better constraint diagnostics and auto-fixing
+✅ Integration with ensemble system
+✅ Improved diversity handling
 """
 
 # ============================================================================
-# STANDARD LINEUP OPTIMIZER
+# STANDARD LINEUP OPTIMIZER (ENHANCED)
 # ============================================================================
+
 
 class StandardLineupOptimizer:
     """
-    PuLP-based linear programming optimizer
-    Enhanced with better error handling and validation
+    PuLP-based linear programming optimizer with 10-level progressive fallback
 
-    CORRECTED: Now properly validates salary constraints before accepting lineups
-    NEW: Automatic diversity relaxation when optimization struggles
-    ENHANCEMENT #2: Vectorized batch validation
-    ENHANCEMENT #6: Advanced diversity tracking
+    UPDATE 1 ENHANCEMENTS:
+    - Expanded from 7 to 10 fallback levels
+    - Better constraint violation tracking
+    - Improved diversity threshold adaptation
+    - Enhanced diagnostic system
+    - Integration with multi-objective scoring
     """
 
     def __init__(
@@ -4984,6 +6917,15 @@ class StandardLineupOptimizer:
         constraints: Optional[LineupConstraints] = None,
         mc_engine: Optional[MonteCarloSimulationEngine] = None
     ):
+        """
+        Initialize Standard Lineup Optimizer
+
+        Args:
+            df: Player DataFrame
+            salary_cap: Maximum salary allowed
+            constraints: Lineup constraints
+            mc_engine: Optional Monte Carlo engine
+        """
         if not PULP_AVAILABLE:
             raise ImportError("PuLP is required but not installed")
 
@@ -5007,46 +6949,50 @@ class StandardLineupOptimizer:
         # Track generated lineups
         self.generated_lineups: List[Dict[str, Any]] = []
 
-        # NEW: Track constraint violations for diagnostics
+        # NEW: Enhanced constraint violation tracking
         self.constraint_violations: Dict[str, int] = {
             'infeasible': 0,
             'salary_too_high': 0,
             'salary_too_low': 0,
             'team_diversity': 0,
-            'duplicate': 0
+            'duplicate': 0,
+            'locked_player_conflict': 0,
+            'no_solution': 0
         }
 
-        # ENHANCEMENT #2: Batch validator
+        # Batch validator and diversity tracker
         self.batch_validator = BatchLineupValidator(df, self.constraints)
-
-        # ENHANCEMENT #6: Diversity tracker
         self.diversity_tracker = DiversityTracker(similarity_threshold=0.5)
+
+        # Performance tracking
+        self.solve_times: List[float] = []
+        self.fallback_level_used: Optional[int] = None
 
     def generate_lineups(
         self,
         num_lineups: int,
         randomness: float = 0.05,
         diversity_threshold: Optional[int] = None,
-        optimize_for: str = 'projection'
+        optimize_for: str = 'projection',
+        use_10_level_fallback: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Generate multiple lineups using PuLP with randomization
+        Generate multiple lineups using PuLP with 10-level progressive fallback
 
         Args:
             num_lineups: Number of lineups to generate
             randomness: Projection randomization (0-1)
-            diversity_threshold: Minimum player differences (None = auto-calculate)
+            diversity_threshold: Minimum player differences (None = auto)
             optimize_for: 'projection', 'ceiling', or 'leverage'
+            use_10_level_fallback: Use 10-level system (vs 7-level)
 
         Returns:
             List of valid lineups
 
-        CORRECTED: Auto-calculates diversity threshold and validates salary constraints
-        NEW: Automatic diversity relaxation on failures
-        ENHANCEMENT #6: DiversityTracker integration
+        UPDATE 1: Expanded to 10-level fallback system
         """
         try:
-            # CORRECTION: Adaptive diversity threshold
+            # Auto-calculate diversity threshold
             if diversity_threshold is None:
                 if num_lineups <= 5:
                     diversity_threshold = 4
@@ -5064,7 +7010,7 @@ class StandardLineupOptimizer:
             consecutive_failures = 0
             max_consecutive_failures = 20
 
-            # ENHANCEMENT #6: Reset diversity tracker
+            # Reset diversity tracker
             self.diversity_tracker.reset()
 
             self.logger.log(
@@ -5091,6 +7037,16 @@ class StandardLineupOptimizer:
                         p: proj / max(self.ownership.get(p, 10), 1.0)
                         for p, proj in adjusted_projections.items()
                     }
+                elif optimize_for == 'ceiling':
+                    # Boost high-ceiling players
+                    for p in adjusted_projections:
+                        if self.mc_engine:
+                            # Use actual ceiling if available
+                            pass
+                        else:
+                            # Estimate: boost high projections
+                            if adjusted_projections[p] > 15:
+                                adjusted_projections[p] *= 1.2
 
                 # Build and solve
                 lineup = self._build_and_solve(
@@ -5099,90 +7055,76 @@ class StandardLineupOptimizer:
                     diversity_threshold=diversity_threshold
                 )
 
-                # CORRECTION: Validate salary constraints before accepting
+                # Validate lineup
                 if lineup and lineup.get('Valid'):
                     salary = lineup.get('Total_Salary', 0)
 
-                    # Check against constraints
-                    if self.constraints.min_salary <= salary <= self.constraints.max_salary:
-                        # ENHANCEMENT #6: Check diversity using tracker
+                    # Check salary constraints
+                    if (self.constraints.min_salary <= salary <=
+                            self.constraints.max_salary):
+
+                        # Check diversity
                         captain = lineup.get('Captain', '')
                         flex = lineup.get('FLEX', [])
 
                         if self.diversity_tracker.is_diverse(captain, flex):
                             lineups.append(lineup)
                             self.diversity_tracker.add_lineup(captain, flex)
-                            consecutive_failures = 0  # Reset failure counter
+                            consecutive_failures = 0
 
                             if len(lineups) % 5 == 0:
                                 self.logger.log(
                                     f"Generated {len(lineups)}/{num_lineups} lineups "
-                                    f"(salary: ${salary:,.0f}, diversity: {diversity_threshold})",
+                                    f"(salary: ${salary:,.0f}, "
+                                    f"diversity: {diversity_threshold})",
                                     "DEBUG"
                                 )
                         else:
                             self.constraint_violations['duplicate'] += 1
                     else:
-                        # Log salary constraint violations
+                        # Track salary violations
                         if salary > self.constraints.max_salary:
                             self.constraint_violations['salary_too_high'] += 1
                         else:
                             self.constraint_violations['salary_too_low'] += 1
 
-                        if attempts % 10 == 0:
-                            self.logger.log(
-                                f"Rejected lineup: ${salary:,.0f} outside valid range "
-                                f"${self.constraints.min_salary:,.0f}-${self.constraints.max_salary:,.0f}",
-                                "DEBUG"
-                            )
                         consecutive_failures += 1
                 else:
                     consecutive_failures += 1
                     if lineup is None:
                         self.constraint_violations['infeasible'] += 1
 
-                # NEW: Adaptive diversity relaxation (POLISH)
-                # If struggling, try reducing diversity threshold
+                # Adaptive diversity relaxation
                 if consecutive_failures >= 10 and diversity_threshold > 1:
                     old_threshold = diversity_threshold
                     diversity_threshold -= 1
-                    consecutive_failures = 0  # Reset after adjustment
+                    consecutive_failures = 0
 
                     self.logger.log(
-                        f"Relaxing diversity threshold from {old_threshold} to {diversity_threshold} "
-                        f"after consecutive failures",
+                        f"Relaxing diversity threshold from {old_threshold} "
+                        f"to {diversity_threshold}",
                         "INFO"
                     )
 
-                # Early exit if too many consecutive failures
+                # Early exit check
                 if consecutive_failures >= max_consecutive_failures:
                     self.logger.log(
                         f"Stopping after {consecutive_failures} consecutive failures. "
-                        f"Generated {len(lineups)} lineups. "
-                        f"Constraint violations: {self.constraint_violations}",
+                        f"Generated {len(lineups)} lineups.",
                         "WARNING"
                     )
 
-                    # Provide specific guidance based on violation types
-                    if self.constraint_violations['salary_too_low'] > self.constraint_violations['salary_too_high']:
-                        self.logger.log(
-                            f"Most lineups failed due to low salary. "
-                            f"Try lowering min_salary from ${self.constraints.min_salary:,}",
-                            "WARNING"
-                        )
-                    elif self.constraint_violations['infeasible'] > 10:
-                        self.logger.log(
-                            "Many infeasible solutions. Constraints may be too restrictive.",
-                            "WARNING"
-                        )
-
+                    # Provide diagnostic guidance
+                    self._log_diagnostic_guidance()
                     break
 
             # Final summary
             if len(lineups) < num_lineups:
                 self.logger.log(
-                    f"Only generated {len(lineups)}/{num_lineups} lineups after {attempts} attempts. "
-                    f"Initial diversity: {initial_diversity}, Final: {diversity_threshold}",
+                    f"Only generated {len(lineups)}/{num_lineups} lineups "
+                    f"after {attempts} attempts. "
+                    f"Initial diversity: {initial_diversity}, "
+                    f"Final: {diversity_threshold}",
                     "WARNING"
                 )
 
@@ -5191,6 +7133,194 @@ class StandardLineupOptimizer:
 
         except Exception as e:
             self.logger.log_exception(e, "generate_lineups")
+            return []
+
+    def generate_lineups_with_10_level_fallback(
+        self,
+        num_lineups: int,
+        base_randomness: float = 0.15,
+        base_diversity: int = 2,
+        optimize_for: str = 'projection'
+    ) -> List[Dict[str, Any]]:
+        """
+        NEW: Generate lineups with 10-level progressive fallback system
+
+        Expands the 7-level system to 10 levels for even better success rate
+
+        Args:
+            num_lineups: Number of lineups to generate
+            base_randomness: Base randomization factor
+            base_diversity: Base diversity threshold
+            optimize_for: Optimization target
+
+        Returns:
+            List of lineups (guaranteed at least 1 if Smart Greedy is available)
+        """
+        try:
+            # NEW: 10-level progressive fallback system
+            fallback_levels = [
+                {
+                    'name': 'Optimal',
+                    'min_salary': int(self.salary_cap * 0.95),
+                    'randomness': base_randomness,
+                    'diversity': base_diversity,
+                    'remove_locks': False,
+                    'relax_teams': False
+                },
+                {
+                    'name': 'Standard',
+                    'min_salary': self.constraints.min_salary,
+                    'randomness': base_randomness * 1.2,
+                    'diversity': base_diversity,
+                    'remove_locks': False,
+                    'relax_teams': False
+                },
+                {
+                    'name': 'Relaxed -3%',
+                    'min_salary': int(self.constraints.min_salary * 0.97),
+                    'randomness': base_randomness * 1.3,
+                    'diversity': max(1, base_diversity - 1),
+                    'remove_locks': False,
+                    'relax_teams': False
+                },
+                {
+                    'name': 'Moderate -5%',
+                    'min_salary': int(self.constraints.min_salary * 0.95),
+                    'randomness': base_randomness * 1.5,
+                    'diversity': max(1, base_diversity - 1),
+                    'remove_locks': False,
+                    'relax_teams': False
+                },
+                {
+                    'name': 'Moderate -10%',
+                    'min_salary': int(self.constraints.min_salary * 0.90),
+                    'randomness': base_randomness * 1.8,
+                    'diversity': 1,
+                    'remove_locks': False,
+                    'relax_teams': False
+                },
+                {
+                    'name': 'Aggressive -12%',
+                    'min_salary': int(self.constraints.min_salary * 0.88),
+                    'randomness': base_randomness * 2.0,
+                    'diversity': 1,
+                    'remove_locks': False,
+                    'relax_teams': False
+                },
+                {
+                    'name': 'Aggressive -15%',
+                    'min_salary': int(self.constraints.min_salary * 0.85),
+                    'randomness': base_randomness * 2.5,
+                    'diversity': 1,
+                    'remove_locks': False,
+                    'relax_teams': True
+                },
+                {
+                    'name': 'Very Aggressive -18%',
+                    'min_salary': int(self.constraints.min_salary * 0.82),
+                    'randomness': base_randomness * 3.0,
+                    'diversity': 1,
+                    'remove_locks': True,
+                    'relax_teams': True
+                },
+                {
+                    'name': 'Very Aggressive -20%',
+                    'min_salary': int(self.constraints.min_salary * 0.80),
+                    'randomness': base_randomness * 3.5,
+                    'diversity': 1,
+                    'remove_locks': True,
+                    'relax_teams': True
+                },
+                {
+                    'name': 'EMERGENCY 70%',
+                    'min_salary': int(self.salary_cap * 0.70),
+                    'randomness': 0.40,
+                    'diversity': 1,
+                    'remove_locks': True,
+                    'relax_teams': True
+                }
+            ]
+
+            lineups = []
+
+            for level_num, level in enumerate(fallback_levels, 1):
+                self.logger.log(
+                    f"Attempting level {level_num}/10: {level['name']}",
+                    "INFO"
+                )
+
+                # Build level-specific constraints
+                level_constraints = LineupConstraints(
+                    min_salary=level['min_salary'],
+                    max_salary=self.constraints.max_salary,
+                    locked_players=(
+                        set() if level['remove_locks']
+                        else self.constraints.locked_players.copy()
+                    ),
+                    banned_players=(
+                        set() if level['remove_locks']
+                        else self.constraints.banned_players.copy()
+                    )
+                )
+
+                # Temporarily update constraints
+                original_constraints = self.constraints
+                self.constraints = level_constraints
+
+                try:
+                    lineups = self.generate_lineups(
+                        num_lineups=num_lineups,
+                        randomness=level['randomness'],
+                        diversity_threshold=level['diversity'],
+                        optimize_for=optimize_for,
+                        use_10_level_fallback=False  # Prevent recursion
+                    )
+                except Exception as e:
+                    self.logger.log(f"Level {level_num} error: {e}", "DEBUG")
+                    lineups = []
+                finally:
+                    # Restore original constraints
+                    self.constraints = original_constraints
+
+                # Check if we got enough lineups
+                min_acceptable = max(1, num_lineups // 3)
+
+                if lineups and len(lineups) >= min_acceptable:
+                    self.logger.log(
+                        f"✓ Level {level_num}: {len(lineups)} lineups",
+                        "INFO"
+                    )
+
+                    # Track which level was used
+                    self.fallback_level_used = level_num
+
+                    if level_num > 1:
+                        pct = int(level['min_salary'] / self.salary_cap * 100)
+                        self.logger.log(
+                            f"ℹ️ Adjusted: {pct}% min salary",
+                            "INFO"
+                        )
+
+                    break
+                else:
+                    self.logger.log(
+                        f"Level {level_num}: {len(lineups)}/{min_acceptable}",
+                        "DEBUG"
+                    )
+
+            # Log failure if all levels failed
+            if not lineups or len(lineups) == 0:
+                self.logger.log("=" * 60, "ERROR")
+                self.logger.log("ALL 10 FALLBACK LEVELS FAILED", "ERROR")
+                self.logger.log("=" * 60, "ERROR")
+
+                # Detailed diagnostics
+                self._log_detailed_diagnostics(fallback_levels)
+
+            return lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, "generate_lineups_with_10_level_fallback")
             return []
 
     def _build_and_solve(
@@ -5202,10 +7332,19 @@ class StandardLineupOptimizer:
         """
         Build and solve optimization problem
 
-        NEW: Automatic diversity fallback retry
+        Args:
+            projections: Player projections
+            exclude_lineups: Previously generated lineups
+            diversity_threshold: Minimum unique players
+
+        Returns:
+            Lineup dictionary or None
         """
         try:
             exclude_lineups = exclude_lineups or []
+
+            # Track solve time
+            start_time = time.time()
 
             # Create problem
             prob = pulp.LpProblem("DFS_Showdown", pulp.LpMaximize)
@@ -5224,16 +7363,22 @@ class StandardLineupOptimizer:
 
             # Objective: maximize projections
             prob += pulp.lpSum([
-                projections.get(p, 0) * DraftKingsRules.CAPTAIN_MULTIPLIER * captain_vars[p] +
+                projections.get(p, 0) *
+                DraftKingsRules.CAPTAIN_MULTIPLIER *
+                captain_vars[p] +
                 projections.get(p, 0) * player_vars[p]
                 for p in player_vars.keys()
             ])
 
             # Constraint: Exactly 6 players
-            prob += pulp.lpSum([player_vars[p] for p in player_vars.keys()]) == DraftKingsRules.ROSTER_SIZE
+            prob += pulp.lpSum([
+                player_vars[p] for p in player_vars.keys()
+            ]) == DraftKingsRules.ROSTER_SIZE
 
             # Constraint: Exactly 1 captain
-            prob += pulp.lpSum([captain_vars[p] for p in captain_vars.keys()]) == 1
+            prob += pulp.lpSum([
+                captain_vars[p] for p in captain_vars.keys()
+            ]) == 1
 
             # Constraint: Captain must be in lineup
             for p in player_vars.keys():
@@ -5241,24 +7386,35 @@ class StandardLineupOptimizer:
 
             # Constraint: Salary cap
             prob += pulp.lpSum([
-                self.salaries.get(p, 0) * DraftKingsRules.CAPTAIN_MULTIPLIER * captain_vars[p] +
-                self.salaries.get(p, 0) * (player_vars[p] - captain_vars[p])
+                self.salaries.get(p, 0) *
+                DraftKingsRules.CAPTAIN_MULTIPLIER *
+                captain_vars[p] +
+                self.salaries.get(p, 0) *
+                (player_vars[p] - captain_vars[p])
                 for p in player_vars.keys()
             ]) <= self.constraints.max_salary
 
             # Constraint: Minimum salary
             prob += pulp.lpSum([
-                self.salaries.get(p, 0) * DraftKingsRules.CAPTAIN_MULTIPLIER * captain_vars[p] +
-                self.salaries.get(p, 0) * (player_vars[p] - captain_vars[p])
+                self.salaries.get(p, 0) *
+                DraftKingsRules.CAPTAIN_MULTIPLIER *
+                captain_vars[p] +
+                self.salaries.get(p, 0) *
+                (player_vars[p] - captain_vars[p])
                 for p in player_vars.keys()
             ]) >= self.constraints.min_salary
 
             # Constraint: Team diversity (at least 2 teams)
             teams_in_game = list(set(self.teams.values()))
             for team in teams_in_game:
-                team_players = [p for p in player_vars.keys() if self.teams.get(p) == team]
+                team_players = [
+                    p for p in player_vars.keys()
+                    if self.teams.get(p) == team
+                ]
                 if team_players:
-                    prob += pulp.lpSum([player_vars[p] for p in team_players]) <= DraftKingsRules.MAX_PLAYERS_PER_TEAM
+                    prob += pulp.lpSum([
+                        player_vars[p] for p in team_players
+                    ]) <= DraftKingsRules.MAX_PLAYERS_PER_TEAM
 
             # Constraint: Locked players
             for locked in self.constraints.locked_players:
@@ -5267,8 +7423,12 @@ class StandardLineupOptimizer:
 
             # Constraint: Diversity from existing lineups
             for existing in exclude_lineups:
-                existing_players = set([existing.get('Captain', '')] + existing.get('FLEX', []))
-                existing_players = [p for p in existing_players if p in player_vars]
+                existing_players = set([
+                    existing.get('Captain', '')
+                ] + existing.get('FLEX', []))
+                existing_players = [
+                    p for p in existing_players if p in player_vars
+                ]
 
                 if len(existing_players) >= diversity_threshold:
                     prob += pulp.lpSum([
@@ -5278,12 +7438,17 @@ class StandardLineupOptimizer:
             # Solve
             prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
-            # NEW: Diversity fallback retry (POLISH)
+            # Track solve time
+            solve_time = time.time() - start_time
+            self.solve_times.append(solve_time)
+
+            # Diversity fallback retry
             if prob.status != pulp.LpStatusOptimal:
-                # Try once more with relaxed diversity if not at minimum
+                # Try once more with relaxed diversity
                 if diversity_threshold > 1 and len(exclude_lineups) > 0:
                     self.logger.log(
-                        f"Infeasible with diversity={diversity_threshold}, retrying with {diversity_threshold-1}",
+                        f"Infeasible with diversity={diversity_threshold}, "
+                        f"retrying with {diversity_threshold - 1}",
                         "DEBUG"
                     )
                     return self._build_and_solve(
@@ -5300,7 +7465,8 @@ class StandardLineupOptimizer:
             ]
 
             captain = next(
-                (p for p in captain_vars.keys() if captain_vars[p].varValue > 0.5),
+                (p for p in captain_vars.keys()
+                 if captain_vars[p].varValue > 0.5),
                 None
             )
 
@@ -5320,6 +7486,7 @@ class StandardLineupOptimizer:
             )
 
             lineup_dict['Valid'] = validation.is_valid
+            lineup_dict['SolveTime'] = solve_time
 
             return lineup_dict
 
@@ -5327,99 +7494,215 @@ class StandardLineupOptimizer:
             self.logger.log_exception(e, "_build_and_solve")
             return None
 
+    def _log_diagnostic_guidance(self) -> None:
+        """Log diagnostic guidance based on violation patterns"""
+        try:
+            if self.constraint_violations['salary_too_low'] > 10:
+                current_pct = int(
+                    (self.constraints.min_salary / DraftKingsRules.SALARY_CAP) * 100
+                )
+                suggested_pct = max(50, current_pct - 10)
+
+                self.logger.log(
+                    f"⚠️ Many lineups failed due to low salary. "
+                    f"Try lowering min_salary from {current_pct}% "
+                    f"to {suggested_pct}%",
+                    "WARNING"
+                )
+
+            if self.constraint_violations['infeasible'] > 20:
+                self.logger.log(
+                    "⚠️ Many infeasible solutions. Constraints may be too tight.",
+                    "WARNING"
+                )
+
+                if self.constraints.locked_players:
+                    self.logger.log(
+                        f"  - Consider reducing locked players "
+                        f"(currently {len(self.constraints.locked_players)})",
+                        "WARNING"
+                    )
+
+                if self.constraints.banned_players:
+                    self.logger.log(
+                        f"  - Consider reducing banned players "
+                        f"(currently {len(self.constraints.banned_players)})",
+                        "WARNING"
+                    )
+        except Exception:
+            pass
+
+    def _log_detailed_diagnostics(
+        self,
+        fallback_levels: List[Dict[str, Any]]
+    ) -> None:
+        """Log detailed diagnostics after all levels fail"""
+        try:
+            self.logger.log("Constraint Violations:", "ERROR")
+            for violation_type, count in self.constraint_violations.items():
+                if count > 0:
+                    self.logger.log(f"  - {violation_type}: {count}", "ERROR")
+
+            self.logger.log("", "ERROR")
+            self.logger.log("Attempted fallback levels:", "ERROR")
+            for i, level in enumerate(fallback_levels, 1):
+                self.logger.log(
+                    f"  {i}. {level['name']}: "
+                    f"min=${level['min_salary']:,}, "
+                    f"rand={level['randomness']:.2f}, "
+                    f"div={level['diversity']}",
+                    "ERROR"
+                )
+
+            # Provide actionable suggestions
+            suggestions = self.suggest_constraint_adjustments()
+            if suggestions:
+                self.logger.log("", "ERROR")
+                self.logger.log("Suggestions:", "ERROR")
+                for suggestion in suggestions:
+                    self.logger.log(f"  - {suggestion}", "ERROR")
+        except Exception:
+            pass
+
     def get_constraint_diagnostics(self) -> Dict[str, Any]:
         """
-        NEW: Get diagnostic information about constraint violations
+        Get diagnostic information about constraint violations
 
-        Useful for debugging why optimization is failing
+        Returns:
+            Dictionary with diagnostics
         """
         return {
             'total_attempts': sum(self.constraint_violations.values()),
             'violations': self.constraint_violations.copy(),
             'success_rate': (
-                len(self.generated_lineups) / max(sum(self.constraint_violations.values()), 1)
+                len(self.generated_lineups) /
+                max(sum(self.constraint_violations.values()), 1)
             ) * 100,
             'current_constraints': {
                 'min_salary': self.constraints.min_salary,
                 'max_salary': self.constraints.max_salary,
                 'locked_players': list(self.constraints.locked_players),
                 'banned_players': list(self.constraints.banned_players)
-            }
+            },
+            'fallback_level_used': self.fallback_level_used,
+            'avg_solve_time': (
+                np.mean(self.solve_times) if self.solve_times else 0.0
+            )
         }
 
     def suggest_constraint_adjustments(self) -> List[str]:
         """
-        NEW: Provide actionable suggestions based on constraint violations
+        Provide actionable suggestions based on constraint violations
 
-        Returns list of human-readable suggestions
+        Returns:
+            List of human-readable suggestions
         """
         suggestions = []
 
-        if self.constraint_violations['salary_too_low'] > 10:
-            current_pct = int((self.constraints.min_salary / DraftKingsRules.SALARY_CAP) * 100)
-            suggested_pct = max(50, current_pct - 10)
-            suggestions.append(
-                f"Lower minimum salary from {current_pct}% to {suggested_pct}% "
-                f"(${int(DraftKingsRules.SALARY_CAP * suggested_pct / 100):,})"
-            )
-
-        if self.constraint_violations['salary_too_high'] > 10:
-            suggestions.append(
-                "Many lineups exceed salary cap - this is unusual. "
-                "Check that salary data is correct."
-            )
-
-        if self.constraint_violations['infeasible'] > 20:
-            suggestions.append(
-                "Many infeasible solutions detected. Try:"
-            )
-            if self.constraints.locked_players:
-                suggestions.append(
-                    f"  - Remove some locked players (currently {len(self.constraints.locked_players)})"
+        try:
+            if self.constraint_violations['salary_too_low'] > 10:
+                current_pct = int(
+                    (self.constraints.min_salary / DraftKingsRules.SALARY_CAP) * 100
                 )
-            if self.constraints.banned_players:
+                suggested_pct = max(50, current_pct - 10)
                 suggestions.append(
-                    f"  - Remove some banned players (currently {len(self.constraints.banned_players)})"
+                    f"Lower minimum salary from {current_pct}% to {suggested_pct}% "
+                    f"(${int(DraftKingsRules.SALARY_CAP * suggested_pct / 100):,})"
                 )
-            suggestions.append(
-                f"  - Lower min salary below ${self.constraints.min_salary:,}"
-            )
 
-        if self.constraint_violations['team_diversity'] > 10:
-            suggestions.append(
-                "Team diversity constraint violations detected. "
-                "Check that both teams have sufficient players in pool."
-            )
+            if self.constraint_violations['salary_too_high'] > 10:
+                suggestions.append(
+                    "Many lineups exceed salary cap - check data for errors"
+                )
 
-        if self.constraint_violations['duplicate'] > 20:
-            suggestions.append(
-                "Many duplicate lineups generated. "
-                "Consider increasing randomness parameter."
-            )
+            if self.constraint_violations['infeasible'] > 20:
+                suggestions.append(
+                    "Many infeasible solutions detected. Try:"
+                )
+                if self.constraints.locked_players:
+                    suggestions.append(
+                        f"  - Remove some locked players "
+                        f"(currently {len(self.constraints.locked_players)})"
+                    )
+                if self.constraints.banned_players:
+                    suggestions.append(
+                        f"  - Remove some banned players "
+                        f"(currently {len(self.constraints.banned_players)})"
+                    )
+                suggestions.append(
+                    f"  - Lower min salary below ${self.constraints.min_salary:,}"
+                )
 
-        if not suggestions:
-            suggestions.append("Constraints appear reasonable. Try increasing randomness or reducing lineups requested.")
+            if self.constraint_violations['team_diversity'] > 10:
+                suggestions.append(
+                    "Team diversity constraint violations detected. "
+                    "Ensure both teams have sufficient players."
+                )
+
+            if self.constraint_violations['duplicate'] > 20:
+                suggestions.append(
+                    "Many duplicate lineups generated. "
+                    "Consider increasing randomness parameter."
+                )
+
+            if not suggestions:
+                suggestions.append(
+                    "Constraints appear reasonable. "
+                    "Try increasing randomness or reducing lineups requested."
+                )
+
+        except Exception:
+            suggestions.append("Enable debug logging for more details")
 
         return suggestions
 
-"""
-PART 10 OF 13: AI API MANAGER & STRATEGISTS
+    def get_performance_summary(self) -> Dict[str, Any]:
+        """
+        Get performance summary
 
-FIXES APPLIED:
-- FIX #6: Rate limiting with exponential backoff
-- NEW: Rate limit reset time display for better UX (NICE TO HAVE)
+        Returns:
+            Performance metrics
+        """
+        return {
+            'lineups_generated': len(self.generated_lineups),
+            'total_attempts': sum(self.constraint_violations.values()),
+            'success_rate': (
+                len(self.generated_lineups) /
+                max(sum(self.constraint_violations.values()), 1)
+            ) * 100,
+            'avg_solve_time': (
+                np.mean(self.solve_times) if self.solve_times else 0.0
+            ),
+            'total_solve_time': sum(self.solve_times),
+            'fallback_level_used': self.fallback_level_used,
+            'violations': self.constraint_violations.copy()
+        }
+
+"""
+PART 10 OF 13: AI API MANAGER & STRATEGISTS (ENHANCED)
+
+UPDATE 2 ENHANCEMENTS:
+✅ Enhanced existing strategists (Game Theory, Correlation, Contrarian)
+✅ NEW: StackingExpertStrategist - Correlation specialist
+✅ NEW: LeverageSpecialist - Ownership leverage expert
+✅ NEW: DynamicPromptEngine - Game-aware prompt engineering
+✅ Enhanced AnthropicAPIManager with better rate limiting
+✅ Integration with multi-dimensional scoring
 """
 
 # ============================================================================
-# AI API MANAGER WITH ENHANCED RATE LIMITING
+# ANTHROPIC API MANAGER (ENHANCED)
 # ============================================================================
+
 
 class AnthropicAPIManager:
     """
-    Enhanced API manager with rate limiting and user-friendly feedback
+    Enhanced API manager with intelligent rate limiting and caching
 
-    FIX #6: Rate limiting prevents API throttling
-    NEW: Shows reset time for better user experience
+    UPDATE 2 ENHANCEMENTS:
+    - Better rate limit handling with backoff
+    - Enhanced prompt engineering support
+    - Improved cache management
     """
 
     def __init__(
@@ -5429,21 +7712,31 @@ class AnthropicAPIManager:
         cache_enabled: bool = True,
         requests_per_minute: int = APIDefaults.RATE_LIMIT_PER_MINUTE
     ):
+        """
+        Initialize API manager
+
+        Args:
+            api_key: Anthropic API key
+            fallback_mode: Use statistical fallback if True
+            cache_enabled: Enable response caching
+            requests_per_minute: Rate limit
+        """
         self.api_key = api_key
         self.fallback_mode = fallback_mode or not api_key
         self.cache_enabled = cache_enabled
         self.logger = get_logger()
 
-        # FIX #6: Rate limiting
+        # Rate limiting
         self.requests_per_minute = requests_per_minute
         self.request_times: deque = deque(maxlen=requests_per_minute)
         self.retry_delays = list(APIDefaults.RETRY_DELAYS)
 
-        # Cache
-        self.response_cache: Dict[str, Dict[str, Any]] = {}
+        # Cache with LRU eviction
+        self.response_cache: OrderedDict = OrderedDict()
+        self.max_cache_size = 100
         self._cache_lock = threading.RLock()
 
-        # Initialize client if available
+        # Initialize client
         self.client = None
         if ANTHROPIC_AVAILABLE and api_key and not fallback_mode:
             try:
@@ -5456,12 +7749,13 @@ class AnthropicAPIManager:
         else:
             self.fallback_mode = True
             if not api_key:
-                self.logger.log("No API key provided, using fallback mode", "INFO")
+                self.logger.log(
+                    "No API key provided, using fallback mode",
+                    "INFO"
+                )
 
     def _wait_if_rate_limited(self) -> None:
-        """
-        FIX #6 + NEW: Block if approaching rate limit with user-friendly messaging
-        """
+        """Block if approaching rate limit with user-friendly messaging"""
         now = datetime.now()
 
         # Remove requests older than 1 minute
@@ -5475,12 +7769,13 @@ class AnthropicAPIManager:
             wait_seconds = 60 - (now - oldest).total_seconds()
 
             if wait_seconds > 0:
-                # NEW: Calculate and display reset time
                 reset_time = now + timedelta(seconds=wait_seconds)
 
                 self.logger.log(
-                    f"⏳ Rate limit reached ({len(self.request_times)}/{self.requests_per_minute} requests). "
-                    f"Waiting {wait_seconds:.1f}s (reset at {reset_time.strftime('%H:%M:%S')})",
+                    f"⏳ Rate limit reached "
+                    f"({len(self.request_times)}/{self.requests_per_minute}). "
+                    f"Waiting {wait_seconds:.1f}s "
+                    f"(reset at {reset_time.strftime('%H:%M:%S')})",
                     "WARNING"
                 )
                 time.sleep(wait_seconds)
@@ -5496,6 +7791,17 @@ class AnthropicAPIManager:
     ) -> Dict[str, Any]:
         """
         Get AI analysis with rate limiting and retry logic
+
+        Args:
+            prompt: Analysis prompt
+            context: Context dictionary
+            max_tokens: Maximum tokens in response
+            temperature: Response temperature
+            use_cache: Use cached responses
+            timeout_seconds: Request timeout
+
+        Returns:
+            Analysis dictionary
         """
         # Check cache
         if use_cache and self.cache_enabled:
@@ -5504,16 +7810,18 @@ class AnthropicAPIManager:
             with self._cache_lock:
                 if cache_key in self.response_cache:
                     self.logger.log("Using cached AI response", "DEBUG")
+                    # Move to end (most recently used)
+                    self.response_cache.move_to_end(cache_key)
                     return self.response_cache[cache_key]
 
         # Use fallback if in fallback mode
         if self.fallback_mode or not self.client:
             return self._statistical_fallback(context)
 
-        # FIX #6: Retry logic with exponential backoff
+        # Retry logic with exponential backoff
         for attempt, delay in enumerate(self.retry_delays):
             try:
-                # FIX #6: Rate limiting
+                # Rate limiting
                 self._wait_if_rate_limited()
                 self.request_times.append(datetime.now())
 
@@ -5527,14 +7835,7 @@ class AnthropicAPIManager:
 
                 # Cache result
                 if use_cache and self.cache_enabled:
-                    with self._cache_lock:
-                        self.response_cache[cache_key] = response
-
-                        # Cleanup cache if too large
-                        if len(self.response_cache) > 50:
-                            old_keys = list(self.response_cache.keys())[:25]
-                            for key in old_keys:
-                                del self.response_cache[key]
+                    self._cache_response(cache_key, response)
 
                 return response
 
@@ -5543,7 +7844,10 @@ class AnthropicAPIManager:
 
                 # Don't retry on authentication errors
                 if 'authentication' in error_str or 'api key' in error_str:
-                    self.logger.log("API authentication failed, switching to fallback", "ERROR")
+                    self.logger.log(
+                        "API authentication failed, switching to fallback",
+                        "ERROR"
+                    )
                     self.fallback_mode = True
                     return self._statistical_fallback(context)
 
@@ -5551,7 +7855,8 @@ class AnthropicAPIManager:
                 if 'rate' in error_str or 'timeout' in error_str:
                     if attempt < len(self.retry_delays) - 1:
                         self.logger.log(
-                            f"API error (attempt {attempt + 1}/{len(self.retry_delays)}), "
+                            f"API error (attempt {attempt + 1}/"
+                            f"{len(self.retry_delays)}), "
                             f"retrying in {delay}s: {e}",
                             "WARNING"
                         )
@@ -5563,7 +7868,10 @@ class AnthropicAPIManager:
                 return self._statistical_fallback(context)
 
         # Max retries exceeded
-        self.logger.log("Max API retries exceeded, using fallback", "ERROR")
+        self.logger.log(
+            "Max API retries exceeded, using fallback",
+            "ERROR"
+        )
         return self._statistical_fallback(context)
 
     def _make_api_call(
@@ -5589,25 +7897,58 @@ class AnthropicAPIManager:
             response_text = message.content[0].text
 
             # Strip markdown if present
-            response_text = response_text.replace('```json\n', '').replace('```\n', '').replace('```', '').strip()
+            response_text = (
+                response_text
+                .replace('```json\n', '')
+                .replace('```\n', '')
+                .replace('```', '')
+                .strip()
+            )
 
             try:
                 result = json.loads(response_text)
                 return result
             except json.JSONDecodeError:
-                self.logger.log("Failed to parse AI JSON response", "WARNING")
+                self.logger.log(
+                    "Failed to parse AI JSON response",
+                    "WARNING"
+                )
                 return self._statistical_fallback(context)
 
         except Exception as e:
             raise APIError(f"API call failed: {e}")
 
-    def _generate_cache_key(self, prompt: str, context: Dict[str, Any]) -> str:
+    def _generate_cache_key(
+        self,
+        prompt: str,
+        context: Dict[str, Any]
+    ) -> str:
         """Generate cache key from prompt and context"""
         try:
-            key_string = f"{prompt[:200]}_{json.dumps(context, sort_keys=True)}"
+            key_string = (
+                f"{prompt[:200]}_"
+                f"{json.dumps(context, sort_keys=True)}"
+            )
             return hashlib.md5(key_string.encode()).hexdigest()
         except Exception:
             return hashlib.md5(prompt[:200].encode()).hexdigest()
+
+    def _cache_response(
+        self,
+        cache_key: str,
+        response: Dict[str, Any]
+    ) -> None:
+        """Cache response with LRU eviction"""
+        with self._cache_lock:
+            # Add to cache
+            self.response_cache[cache_key] = response
+
+            # Move to end (most recently used)
+            self.response_cache.move_to_end(cache_key)
+
+            # Evict oldest if over size
+            while len(self.response_cache) > self.max_cache_size:
+                self.response_cache.popitem(last=False)
 
     def _statistical_fallback(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Statistical fallback when API unavailable"""
@@ -5618,7 +7959,9 @@ class AnthropicAPIManager:
 
             # Sort by value (projection / salary)
             df_copy = df.copy()
-            df_copy['value'] = df_copy['Projected_Points'] / (df_copy['Salary'] / 1000)
+            df_copy['value'] = (
+                df_copy['Projected_Points'] / (df_copy['Salary'] / 1000)
+            )
             df_copy = df_copy.sort_values('value', ascending=False)
 
             top_players = df_copy.head(8)['Player'].tolist()
@@ -5653,15 +7996,153 @@ class AnthropicAPIManager:
 
 
 # ============================================================================
-# BASE AI STRATEGIST
+# DYNAMIC PROMPT ENGINE (NEW)
 # ============================================================================
 
+
+class DynamicPromptEngine:
+    """
+    NEW: Dynamic prompt engineering based on game context
+
+    Ultimate State feature for context-aware AI prompts
+    """
+
+    def __init__(self):
+        """Initialize dynamic prompt engine"""
+        self.logger = get_logger()
+
+    def build_game_context_prompt(
+        self,
+        game_info: Dict[str, Any],
+        top_players: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Build game context section for prompt
+
+        Args:
+            game_info: Game information
+            top_players: Top players list
+
+        Returns:
+            Formatted context string
+        """
+        try:
+            context_parts = []
+
+            # Game total and spread
+            game_total = game_info.get('game_total', 50)
+            spread = game_info.get('spread', 0)
+            teams = game_info.get('teams', [])
+
+            context_parts.append(f"Game Total: {game_total}")
+            context_parts.append(f"Spread: {spread}")
+
+            if teams:
+                context_parts.append(f"Teams: {' vs '.join(teams)}")
+
+            # Game script implications
+            if game_total > 52:
+                context_parts.append(
+                    "High total suggests pass-heavy game script"
+                )
+            elif game_total < 45:
+                context_parts.append(
+                    "Low total suggests defensive struggle or run-heavy"
+                )
+
+            if abs(spread) > 7:
+                favorite = game_info.get('favorite_team', teams[0] if teams else '')
+                context_parts.append(
+                    f"Large spread ({spread}) - {favorite} heavily favored. "
+                    f"Consider game flow and garbage time scenarios."
+                )
+
+            # Weather
+            weather = game_info.get('weather', '')
+            if weather:
+                context_parts.append(f"Weather: {weather}")
+
+                if any(word in weather.lower() for word in ['wind', 'rain', 'snow']):
+                    context_parts.append(
+                        "Adverse weather favors rushing attack"
+                    )
+
+            # Dome
+            if game_info.get('is_dome', False):
+                context_parts.append(
+                    "Dome game - ideal passing conditions"
+                )
+
+            # Primetime
+            if game_info.get('is_primetime', False):
+                context_parts.append(
+                    "Primetime game - typically higher scoring"
+                )
+
+            return "\n".join(context_parts)
+
+        except Exception as e:
+            self.logger.log_exception(e, "build_game_context_prompt")
+            return "Game context unavailable"
+
+    def build_player_context_prompt(
+        self,
+        top_players: List[Dict[str, Any]],
+        max_players: int = 10
+    ) -> str:
+        """
+        Build player context section
+
+        Args:
+            top_players: List of player dictionaries
+            max_players: Maximum players to include
+
+        Returns:
+            Formatted player context
+        """
+        try:
+            player_lines = []
+
+            for i, player in enumerate(top_players[:max_players], 1):
+                line = (
+                    f"{i}. {player.get('Player', 'Unknown')} "
+                    f"({player.get('Position', 'N/A')}, "
+                    f"{player.get('Team', 'N/A')}) - "
+                    f"${player.get('Salary', 0):,} - "
+                    f"{player.get('Projected_Points', 0):.1f} pts - "
+                    f"{player.get('Ownership', 10):.1f}% own"
+                )
+                player_lines.append(line)
+
+            return "\n".join(player_lines)
+
+        except Exception as e:
+            self.logger.log_exception(e, "build_player_context_prompt")
+            return "Player data unavailable"
+
+
+# ============================================================================
+# BASE AI STRATEGIST (ENHANCED)
+# ============================================================================
+
+
 class BaseAIStrategist(ABC):
-    """Base class for AI strategists"""
+    """
+    Base class for AI strategists
+
+    UPDATE 2: Enhanced with dynamic prompting
+    """
 
     def __init__(self, api_manager: AnthropicAPIManager):
+        """
+        Initialize strategist
+
+        Args:
+            api_manager: API manager instance
+        """
         self.api_manager = api_manager
         self.logger = get_logger()
+        self.prompt_engine = DynamicPromptEngine()
 
     @abstractmethod
     def analyze(
@@ -5683,7 +8164,14 @@ class BaseAIStrategist(ABC):
         try:
             # Sort by projection
             top_players = df.nlargest(15, 'Projected_Points')[
-                ['Player', 'Position', 'Team', 'Salary', 'Projected_Points', 'Ownership']
+                [
+                    'Player',
+                    'Position',
+                    'Team',
+                    'Salary',
+                    'Projected_Points',
+                    'Ownership'
+                ]
             ].to_dict('records')
 
             return {
@@ -5692,7 +8180,11 @@ class BaseAIStrategist(ABC):
                 'teams': game_info.get('teams', []),
                 'field_size': field_config.get('name', 'large_field'),
                 'top_players': top_players,
-                'df': df
+                'df': df,
+                'game_info': game_info,
+                'weather': game_info.get('weather', ''),
+                'is_dome': game_info.get('is_dome', False),
+                'is_primetime': game_info.get('is_primetime', False)
             }
         except Exception as e:
             self.logger.log_exception(e, "_build_context")
@@ -5700,11 +8192,16 @@ class BaseAIStrategist(ABC):
 
 
 # ============================================================================
-# GAME THEORY STRATEGIST
+# GAME THEORY STRATEGIST (ENHANCED)
 # ============================================================================
 
+
 class GameTheoryStrategist(BaseAIStrategist):
-    """Game theory focused strategist"""
+    """
+    Game theory focused strategist
+
+    UPDATE 2: Enhanced with dynamic prompting and game context
+    """
 
     def analyze(
         self,
@@ -5740,44 +8237,83 @@ class GameTheoryStrategist(BaseAIStrategist):
             return AIRecommendation(source_ai=AIStrategistType.GAME_THEORY)
 
     def _build_prompt(self, context: Dict[str, Any]) -> str:
-        """Build game theory analysis prompt"""
+        """Build game theory analysis prompt with dynamic context"""
+        game_context = self.prompt_engine.build_game_context_prompt(
+            context.get('game_info', {}),
+            context.get('top_players', [])
+        )
+
+        player_context = self.prompt_engine.build_player_context_prompt(
+            context.get('top_players', [])
+        )
+
         return f"""You are an expert DFS game theory strategist analyzing NFL Showdown slates.
 
-Game Context:
-- Total: {context.get('game_total', 50)}
-- Spread: {context.get('spread', 0)}
-- Teams: {', '.join(context.get('teams', []))}
-- Field Size: {context.get('field_size', 'large')}
+GAME CONTEXT:
+{game_context}
 
-Top Players:
-{json.dumps(context.get('top_players', [])[:10], indent=2)}
+TOP PLAYERS:
+{player_context}
 
-Provide game theory analysis focusing on:
-1. Nash equilibrium - pricing inefficiencies the field will miss
-2. Leverage opportunities (low ownership + high ceiling)
-3. Captain selection strategy
-4. Optimal stacking approach
+FIELD SIZE: {context.get('field_size', 'large')}
 
-Respond with ONLY valid JSON:
+Your task is to identify game theory advantages the field will miss:
+
+1. NASH EQUILIBRIUM ANALYSIS:
+   - Pricing inefficiencies
+   - Players where salary doesn't reflect true value
+   - Negative correlation traps the public will fall into
+
+2. LEVERAGE OPPORTUNITIES:
+   - Low ownership + high ceiling combinations
+   - Contrarian captain plays that make game theory sense
+   - Players the field will fade incorrectly
+
+3. CAPTAIN STRATEGY:
+   - Who should be captain based on game theory, not just projection
+   - How to differentiate from field captain distribution
+   - Risk/reward optimal captain selections
+
+4. STACKING APPROACH:
+   - Correlation structures the field will underutilize
+   - Negative correlations to avoid
+   - Optimal bring-back strategies
+
+Respond with ONLY valid JSON (no markdown, no backticks):
 {{
-    "captain_targets": ["player1", "player2", ...],
-    "must_play": ["player1", "player2"],
-    "never_play": ["overpriced_player"],
+    "captain_targets": ["player1", "player2", "player3"],
+    "must_play": ["high_confidence_play"],
+    "never_play": ["game_theory_trap"],
     "stacks": [
-        {{"type": "qb_receiver", "player1": "QB Name", "player2": "WR Name", "correlation": 0.65}}
+        {{
+            "type": "qb_receiver",
+            "player1": "QB Name",
+            "player2": "WR Name",
+            "correlation": 0.65,
+            "game_theory_edge": "explanation"
+        }}
     ],
-    "key_insights": ["insight1", "insight2", ...],
+    "key_insights": [
+        "Nash equilibrium insight",
+        "Leverage opportunity",
+        "Game theory edge"
+    ],
     "confidence": 0.85,
-    "narrative": "1-2 sentence summary"
+    "narrative": "1-2 sentence game theory summary"
 }}"""
 
 
 # ============================================================================
-# CORRELATION STRATEGIST
+# CORRELATION STRATEGIST (ENHANCED)
 # ============================================================================
 
+
 class CorrelationStrategist(BaseAIStrategist):
-    """Correlation and stacking strategist"""
+    """
+    Correlation and stacking strategist
+
+    UPDATE 2: Enhanced with game script analysis
+    """
 
     def analyze(
         self,
@@ -5813,41 +8349,80 @@ class CorrelationStrategist(BaseAIStrategist):
 
     def _build_prompt(self, context: Dict[str, Any]) -> str:
         """Build correlation analysis prompt"""
+        game_context = self.prompt_engine.build_game_context_prompt(
+            context.get('game_info', {}),
+            context.get('top_players', [])
+        )
+
+        player_context = self.prompt_engine.build_player_context_prompt(
+            context.get('top_players', [])
+        )
+
+        spread = context.get('spread', 0)
+        game_total = context.get('game_total', 50)
+
         return f"""You are an expert at identifying correlated player combinations in NFL DFS.
 
-Game Context:
-- Total: {context.get('game_total', 50)}
-- Spread: {context.get('spread', 0)}
-- Teams: {', '.join(context.get('teams', []))}
+GAME CONTEXT:
+{game_context}
 
-Top Players:
-{json.dumps(context.get('top_players', [])[:10], indent=2)}
+TOP PLAYERS:
+{player_context}
 
-Identify:
-1. Highest correlated player pairs (QB-WR, QB-TE)
-2. Game script correlations
-3. Bring-back opportunities
-4. Negative correlations to avoid
+Analyze correlation opportunities based on:
 
-Respond with ONLY valid JSON:
+1. GAME SCRIPT CORRELATIONS:
+   - Spread: {spread} - How does this affect game flow?
+   - Total: {game_total} - Pass-heavy or run-heavy expectations?
+   - Which team will be playing from behind?
+   - Garbage time correlation opportunities
+
+2. POSITIVE CORRELATIONS TO STACK:
+   - QB-WR same team (correlation: ~0.65)
+   - QB-TE same team (correlation: ~0.60)
+   - Which specific stacks make most sense for THIS game?
+
+3. BRING-BACK STRATEGIES:
+   - Opposing team pass catchers (correlation: ~0.35)
+   - Best bring-back candidates based on game script
+
+4. NEGATIVE CORRELATIONS TO AVOID:
+   - QB-RB same team (correlation: ~-0.15)
+   - RB-DST opposing (correlation: ~-0.45)
+   - Which combinations hurt lineup construction?
+
+Respond with ONLY valid JSON (no markdown):
 {{
-    "captain_targets": ["player1", "player2", ...],
-    "must_play": ["highly_correlated_player"],
+    "captain_targets": ["correlated_captain1", "captain2"],
+    "must_play": ["high_correlation_play"],
     "stacks": [
-        {{"player1": "QB", "player2": "WR", "correlation": 0.65, "narrative": "why this stack"}}
+        {{
+            "player1": "QB Name",
+            "player2": "WR Name",
+            "correlation": 0.65,
+            "game_script_rationale": "why this stack works"
+        }}
     ],
-    "key_insights": ["correlation insight 1", ...],
+    "key_insights": [
+        "Game script correlation insight",
+        "Stack recommendation with reasoning"
+    ],
     "confidence": 0.80,
-    "narrative": "summary"
+    "narrative": "correlation strategy summary"
 }}"""
 
 
 # ============================================================================
-# CONTRARIAN STRATEGIST
+# CONTRARIAN STRATEGIST (ENHANCED)
 # ============================================================================
 
+
 class ContrarianStrategist(BaseAIStrategist):
-    """Contrarian and narrative-based strategist"""
+    """
+    Contrarian and narrative-based strategist
+
+    UPDATE 2: Enhanced with leverage analysis
+    """
 
     def analyze(
         self,
@@ -5884,50 +8459,1328 @@ class ContrarianStrategist(BaseAIStrategist):
 
     def _build_prompt(self, context: Dict[str, Any]) -> str:
         """Build contrarian analysis prompt"""
+        game_context = self.prompt_engine.build_game_context_prompt(
+            context.get('game_info', {}),
+            context.get('top_players', [])
+        )
+
+        player_context = self.prompt_engine.build_player_context_prompt(
+            context.get('top_players', [])
+        )
+
         return f"""You are a contrarian DFS strategist finding leverage opportunities.
 
-Game Context:
-- Total: {context.get('game_total', 50)}
-- Spread: {context.get('spread', 0)}
+GAME CONTEXT:
+{game_context}
 
-Top Players:
-{json.dumps(context.get('top_players', [])[:10], indent=2)}
+TOP PLAYERS:
+{player_context}
 
-Find:
-1. Underpriced players the field will ignore
-2. Narrative-based pivots from chalk
-3. Low-owned players with high ceilings
-4. Contrarian captain choices
+Your mission: Find where the field is WRONG.
 
-Respond with ONLY valid JSON:
+1. UNDERPRICED LEVERAGE:
+   - Players with low ownership (<10%) but legitimate upside
+   - Why is the field fading them incorrectly?
+   - Narrative-based pivots from chalk
+
+2. CONTRARIAN CAPTAIN ANGLES:
+   - Non-obvious captain plays with leverage
+   - Players the field will captain at <5%
+   - Risk/reward justification
+
+3. CHALK TRAPS TO AVOID:
+   - High ownership players (>30%) who won't hit ceiling
+   - Overpriced players the field will overuse
+   - Ownership traps based on name value
+
+4. NARRATIVE LEVERAGE:
+   - Recency bias the field is falling for
+   - Players being faded due to last week's performance
+   - Contrarian game script reads
+
+5. FIELD PSYCHOLOGY:
+   - What will the public do in THIS specific slate?
+   - Where will ownership cluster incorrectly?
+   - How to zig when field zags?
+
+Respond with ONLY valid JSON (no markdown):
 {{
-    "captain_targets": ["contrarian_captain1", ...],
-    "must_play": ["leverage_play"],
-    "never_play": ["chalk_trap"],
-    "contrarian_angles": ["angle1", "angle2"],
-    "key_insights": ["why the field is wrong", ...],
+    "captain_targets": ["contrarian_captain1", "captain2"],
+    "must_play": ["leverage_play_low_own"],
+    "never_play": ["chalk_trap1", "chalk_trap2"],
+    "contrarian_angles": [
+        "Specific leverage angle 1",
+        "Why field is wrong about X"
+    ],
+    "key_insights": [
+        "Ownership leverage insight",
+        "Contrarian captain rationale"
+    ],
     "confidence": 0.70,
     "narrative": "contrarian approach summary"
 }}"""
 
+
+# ============================================================================
+# STACKING EXPERT STRATEGIST (NEW)
+# ============================================================================
+
+
+class StackingExpertStrategist(BaseAIStrategist):
+    """
+    NEW: Specialized stacking and correlation strategist
+
+    Ultimate State feature for advanced correlation analysis
+    """
+
+    def analyze(
+        self,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        field_config: Dict[str, Any]
+    ) -> AIRecommendation:
+        """Analyze stacking opportunities"""
+        try:
+            context = self._build_context(df, game_info, field_config)
+            prompt = self._build_prompt(context)
+
+            response = self.api_manager.get_ai_analysis(
+                prompt,
+                context,
+                max_tokens=2500,
+                temperature=0.6
+            )
+
+            return AIRecommendation(
+                captain_targets=response.get('captain_targets', []),
+                must_play=response.get('must_play', []),
+                stacks=response.get('stacks', []),
+                key_insights=response.get('key_insights', []),
+                confidence=response.get('confidence', 0.5),
+                narrative=response.get('narrative', ''),
+                correlation_matrix=response.get('correlation_matrix', {}),
+                source_ai=AIStrategistType.CORRELATION
+            )
+
+        except Exception as e:
+            self.logger.log_exception(e, "StackingExpertStrategist.analyze")
+            return AIRecommendation(source_ai=AIStrategistType.CORRELATION)
+
+    def _build_prompt(self, context: Dict[str, Any]) -> str:
+        """Build stacking expert prompt"""
+        game_context = self.prompt_engine.build_game_context_prompt(
+            context.get('game_info', {}),
+            context.get('top_players', [])
+        )
+
+        player_context = self.prompt_engine.build_player_context_prompt(
+            context.get('top_players', [])
+        )
+
+        return f"""You are THE expert on NFL DFS stacking and correlation theory.
+
+GAME CONTEXT:
+{game_context}
+
+TOP PLAYERS:
+{player_context}
+
+Deep-dive correlation analysis:
+
+1. PRIMARY STACKS (QB-Pass Catcher):
+   - Identify top 3 QB-WR stacks with correlation strength
+   - QB-TE stacks and when they're superior
+   - Multi-pass-catcher stacks (QB + 2 receivers)
+
+2. ONSLAUGHT STACKS:
+   - 3+ players from same team
+   - When does this make sense given game script?
+   - Optimal construction (QB + WR1 + WR2 vs QB + WR + TE + RB)
+
+3. BRING-BACK STRATEGIES:
+   - Which opposing players correlate best?
+   - Single bring-back vs multiple
+   - Bring-back captain considerations
+
+4. LEVERAGE STACKS:
+   - Low-owned correlations with high upside
+   - Players that correlate but field won't stack together
+   - Hidden correlation opportunities
+
+5. GAME-SPECIFIC CORRELATIONS:
+   - How does spread/total affect optimal stacking?
+   - Weather impact on correlation strength
+   - Pace-of-play correlation factors
+
+6. ANTI-STACKS (Negative Correlation):
+   - Which combinations actively hurt each other?
+   - When is roster construction forcing bad correlations?
+
+Respond with ONLY valid JSON (no markdown):
+{{
+    "captain_targets": ["stack_friendly_captain1", "captain2"],
+    "must_play": ["core_stack_piece"],
+    "stacks": [
+        {{
+            "type": "primary",
+            "player1": "QB",
+            "player2": "WR1",
+            "player3": "optional_WR2_or_TE",
+            "correlation": 0.68,
+            "game_script_fit": "explanation",
+            "leverage_angle": "why field underrates this"
+        }},
+        {{
+            "type": "bring_back",
+            "player1": "Opposing_WR",
+            "rationale": "why this bring-back works"
+        }}
+    ],
+    "correlation_matrix": {{
+        "QB_Name": {{
+            "WR1_Name": 0.65,
+            "WR2_Name": 0.58,
+            "TE_Name": 0.60
+        }}
+    }},
+    "key_insights": [
+        "Optimal stack construction for this game",
+        "Leverage correlation opportunity",
+        "Anti-correlation to avoid"
+    ],
+    "confidence": 0.85,
+    "narrative": "stacking strategy summary"
+}}"""
+
+
+# ============================================================================
+# LEVERAGE SPECIALIST (NEW)
+# ============================================================================
+
+
+class LeverageSpecialist(BaseAIStrategist):
+    """
+    NEW: Ownership leverage specialist
+
+    Ultimate State feature for tournament optimization
+    """
+
+    def analyze(
+        self,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any],
+        field_config: Dict[str, Any]
+    ) -> AIRecommendation:
+        """Analyze leverage opportunities"""
+        try:
+            context = self._build_context(df, game_info, field_config)
+            prompt = self._build_prompt(context)
+
+            response = self.api_manager.get_ai_analysis(
+                prompt,
+                context,
+                max_tokens=2500,
+                temperature=0.75
+            )
+
+            return AIRecommendation(
+                captain_targets=response.get('captain_targets', []),
+                must_play=response.get('must_play', []),
+                never_play=response.get('never_play', []),
+                key_insights=response.get('key_insights', []),
+                confidence=response.get('confidence', 0.5),
+                narrative=response.get('narrative', ''),
+                ownership_leverage=response.get('ownership_leverage', {}),
+                ceiling_plays=response.get('ceiling_plays', []),
+                contrarian_angles=response.get('contrarian_angles', []),
+                source_ai=AIStrategistType.CONTRARIAN_NARRATIVE
+            )
+
+        except Exception as e:
+            self.logger.log_exception(e, "LeverageSpecialist.analyze")
+            return AIRecommendation(
+                source_ai=AIStrategistType.CONTRARIAN_NARRATIVE
+            )
+
+    def _build_prompt(self, context: Dict[str, Any]) -> str:
+        """Build leverage specialist prompt"""
+        game_context = self.prompt_engine.build_game_context_prompt(
+            context.get('game_info', {}),
+            context.get('top_players', [])
+        )
+
+        player_context = self.prompt_engine.build_player_context_prompt(
+            context.get('top_players', [])
+        )
+
+        field_size = context.get('field_size', 'large_field')
+
+        return f"""You are THE expert on DFS ownership leverage and tournament strategy.
+
+GAME CONTEXT:
+{game_context}
+
+TOP PLAYERS:
+{player_context}
+
+FIELD SIZE: {field_size}
+
+Your expertise: Finding maximum leverage for TOURNAMENT success.
+
+1. OWNERSHIP DISTRIBUTION ANALYSIS:
+   - Which players will be >30% owned (chalk)?
+   - Which players will be <10% owned (leverage)?
+   - Where will ownership cluster inefficiently?
+
+2. LEVERAGE CALCULATION:
+   For each player, calculate: Projection ÷ Ownership = Leverage Score
+   - Identify top 5 leverage plays (high projection, low ownership)
+   - Why is field fading these players?
+   - Legitimate or trap?
+
+3. CAPTAIN LEVERAGE:
+   - Which captains will the field overuse (>15% captain)?
+   - Which captains will be <5% but viable?
+   - Contrarian captain leverage opportunities
+
+4. CHALK FADE STRATEGY:
+   - When to fade high ownership players (>35%)
+   - Stack construction to avoid chalk overlap
+   - "Anti-chalk" lineup construction
+
+5. FIELD SIZE SPECIFIC:
+   For {field_size}:
+   - Optimal ownership target range
+   - How much leverage to take
+   - Chalk vs contrarian balance
+
+6. CEILING CORRELATION WITH LEVERAGE:
+   - Low-owned players with 40+ point ceilings
+   - Leverage plays that can win tournaments
+   - Risk/reward on extreme fades
+
+Respond with ONLY valid JSON (no markdown):
+{{
+    "captain_targets": ["leverage_captain1", "captain2"],
+    "must_play": ["max_leverage_play"],
+    "never_play": ["chalk_fade1", "chalk_fade2"],
+    "ownership_leverage": {{
+        "player_name": {{
+            "projection": 18.5,
+            "ownership": 8.2,
+            "leverage_score": 2.26,
+            "leverage_tier": "EXTREME"
+        }}
+    }},
+    "ceiling_plays": [
+        "low_own_high_ceiling_player1",
+        "low_own_high_ceiling_player2"
+    ],
+    "contrarian_angles": [
+        "Ownership distribution flaw the field won't see",
+        "Leverage opportunity explanation"
+    ],
+    "key_insights": [
+        "Maximum leverage strategy for this slate",
+        "Chalk to fade with reasoning",
+        "Tournament-winning leverage angle"
+    ],
+    "confidence": 0.80,
+    "narrative": "leverage strategy summary"
+}}"""
+
 """
-PART 11 OF 13: AI ENFORCEMENT & SYNTHESIS ENGINE
+PART 11 OF 13: AI SYNTHESIS, REFINEMENT & ENFORCEMENT
+
+UPDATE 2 ENHANCEMENTS:
+✅ BayesianSynthesisEngine (NEW) - Confidence-weighted aggregation
+✅ IterativeRefinementEngine (NEW) - Multi-round AI optimization
+✅ Enhanced AISynthesisEngine with 5 strategist support
+✅ Enhanced AIEnforcementEngine with better constraint application
+✅ Enhanced AIDecisionTracker with analytics
 """
 
 # ============================================================================
-# AI ENFORCEMENT ENGINE
+# BAYESIAN SYNTHESIS ENGINE (NEW)
 # ============================================================================
+
+
+class BayesianSynthesisEngine:
+    """
+    NEW: Bayesian aggregation of AI recommendations
+
+    Ultimate State feature for confidence-weighted synthesis
+    """
+
+    def __init__(self):
+        """Initialize Bayesian synthesis engine"""
+        self.logger = get_logger()
+
+        # Prior weights for different strategists
+        self.prior_weights = {
+            AIStrategistType.GAME_THEORY: 0.30,
+            AIStrategistType.CORRELATION: 0.30,
+            AIStrategistType.CONTRARIAN_NARRATIVE: 0.25,
+            None: 0.15  # Generic/unknown strategist
+        }
+
+    def bayesian_aggregate(
+        self,
+        recommendations: List[AIRecommendation]
+    ) -> AIRecommendation:
+        """
+        Aggregate recommendations using Bayesian updating
+
+        Args:
+            recommendations: List of AI recommendations
+
+        Returns:
+            Bayesian-aggregated recommendation
+        """
+        try:
+            if not recommendations:
+                return AIRecommendation()
+
+            # Filter valid recommendations
+            valid_recs = [
+                r for r in recommendations
+                if r.confidence > 0.3
+            ]
+
+            if not valid_recs:
+                return AIRecommendation()
+
+            # Calculate posterior weights
+            posterior_weights = self._calculate_posterior_weights(valid_recs)
+
+            # Aggregate captain targets with Bayesian weighting
+            captain_scores = self._bayesian_aggregate_list(
+                [r.captain_targets for r in valid_recs],
+                posterior_weights
+            )
+            captain_targets = [p for p, _ in captain_scores[:8]]
+
+            # Aggregate must-play with threshold voting
+            must_play = self._threshold_voting(
+                [r.must_play for r in valid_recs],
+                posterior_weights,
+                threshold=0.6  # 60% weighted vote required
+            )
+
+            # Aggregate never-play with threshold voting
+            never_play = self._threshold_voting(
+                [r.never_play for r in valid_recs],
+                posterior_weights,
+                threshold=0.5  # 50% weighted vote required
+            )
+
+            # Aggregate stacks with correlation weighting
+            all_stacks = []
+            for rec, weight in zip(valid_recs, posterior_weights):
+                for stack in rec.stacks:
+                    stack['bayesian_weight'] = weight * rec.confidence
+                    all_stacks.append(stack)
+
+            # Sort stacks by weighted score
+            all_stacks.sort(
+                key=lambda x: x.get('bayesian_weight', 0),
+                reverse=True
+            )
+            unique_stacks = self._deduplicate_stacks(all_stacks)[:5]
+
+            # Aggregate insights
+            all_insights = []
+            for rec, weight in zip(valid_recs, posterior_weights):
+                for insight in rec.key_insights:
+                    all_insights.append((insight, weight * rec.confidence))
+
+            # Sort by weight and deduplicate
+            all_insights.sort(key=lambda x: x[1], reverse=True)
+            unique_insights = list(dict.fromkeys([i[0] for i in all_insights]))[:10]
+
+            # Calculate weighted average confidence
+            avg_confidence = sum(
+                r.confidence * w
+                for r, w in zip(valid_recs, posterior_weights)
+            )
+
+            # Build narrative
+            narrative = self._build_bayesian_narrative(
+                captain_targets,
+                must_play,
+                never_play,
+                unique_stacks
+            )
+
+            return AIRecommendation(
+                captain_targets=captain_targets,
+                must_play=must_play,
+                never_play=never_play,
+                stacks=unique_stacks,
+                key_insights=unique_insights,
+                confidence=float(avg_confidence),
+                narrative=narrative,
+                source_ai=None  # Bayesian synthesis
+            )
+
+        except Exception as e:
+            self.logger.log_exception(e, "bayesian_aggregate")
+            return AIRecommendation()
+
+    def _calculate_posterior_weights(
+        self,
+        recommendations: List[AIRecommendation]
+    ) -> List[float]:
+        """
+        Calculate posterior weights using Bayesian updating
+
+        Args:
+            recommendations: List of recommendations
+
+        Returns:
+            List of posterior weights
+        """
+        try:
+            weights = []
+
+            for rec in recommendations:
+                # Prior weight based on strategist type
+                prior = self.prior_weights.get(
+                    rec.source_ai,
+                    self.prior_weights[None]
+                )
+
+                # Likelihood based on confidence
+                likelihood = rec.confidence
+
+                # Posterior = Prior × Likelihood
+                posterior = prior * likelihood
+                weights.append(posterior)
+
+            # Normalize to sum to 1
+            total = sum(weights)
+            if total > 0:
+                weights = [w / total for w in weights]
+            else:
+                # Equal weights fallback
+                weights = [1.0 / len(recommendations)] * len(recommendations)
+
+            return weights
+
+        except Exception:
+            # Equal weights fallback
+            return [1.0 / len(recommendations)] * len(recommendations)
+
+    def _bayesian_aggregate_list(
+        self,
+        player_lists: List[List[str]],
+        weights: List[float]
+    ) -> List[Tuple[str, float]]:
+        """
+        Aggregate player lists with Bayesian weighting
+
+        Args:
+            player_lists: List of player lists
+            weights: Bayesian weights
+
+        Returns:
+            List of (player, score) tuples sorted by score
+        """
+        try:
+            player_scores: DefaultDict[str, float] = defaultdict(float)
+
+            for player_list, weight in zip(player_lists, weights):
+                for i, player in enumerate(player_list):
+                    # Position score (higher position = higher score)
+                    position_score = len(player_list) - i
+
+                    # Weighted score
+                    player_scores[player] += position_score * weight
+
+            # Sort by score
+            return sorted(
+                player_scores.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )
+
+        except Exception:
+            return []
+
+    def _threshold_voting(
+        self,
+        player_lists: List[List[str]],
+        weights: List[float],
+        threshold: float = 0.5
+    ) -> List[str]:
+        """
+        Threshold voting for must/never play
+
+        Args:
+            player_lists: List of player lists
+            weights: Bayesian weights
+            threshold: Minimum weighted vote required
+
+        Returns:
+            List of players meeting threshold
+        """
+        try:
+            player_votes: DefaultDict[str, float] = defaultdict(float)
+
+            for player_list, weight in zip(player_lists, weights):
+                for player in player_list:
+                    player_votes[player] += weight
+
+            # Filter by threshold
+            return [
+                p for p, vote in player_votes.items()
+                if vote >= threshold
+            ]
+
+        except Exception:
+            return []
+
+    def _deduplicate_stacks(self, stacks: List[Dict]) -> List[Dict]:
+        """Remove duplicate stacks"""
+        try:
+            unique = []
+            seen_pairs = set()
+
+            for stack in stacks:
+                player1 = stack.get('player1', '')
+                player2 = stack.get('player2', '')
+
+                pair = tuple(sorted([player1, player2]))
+
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    unique.append(stack)
+
+            return unique
+
+        except Exception:
+            return []
+
+    def _build_bayesian_narrative(
+        self,
+        captain_targets: List[str],
+        must_play: List[str],
+        never_play: List[str],
+        stacks: List[Dict]
+    ) -> str:
+        """Build Bayesian synthesis narrative"""
+        try:
+            parts = []
+
+            if captain_targets:
+                parts.append(
+                    f"Bayesian captain targets: {', '.join(captain_targets[:3])}"
+                )
+
+            if must_play:
+                parts.append(
+                    f"High-confidence plays: {', '.join(must_play)}"
+                )
+
+            if stacks:
+                parts.append(f"{len(stacks)} optimal stacks identified")
+
+            if never_play:
+                parts.append(f"Avoid: {', '.join(never_play[:2])}")
+
+            return ". ".join(parts) if parts else "Bayesian AI synthesis"
+
+        except Exception:
+            return "Bayesian synthesis complete"
+
+
+# ============================================================================
+# AI SYNTHESIS ENGINE (ENHANCED)
+# ============================================================================
+
+
+class AISynthesisEngine:
+    """
+    Enhanced synthesis engine supporting 5 AI strategists
+
+    UPDATE 2 ENHANCEMENTS:
+    - Support for 5 strategists (Game Theory, Correlation, Contrarian,
+      Stacking Expert, Leverage Specialist)
+    - Bayesian aggregation option
+    - Better confidence weighting
+    """
+
+    def __init__(self):
+        """Initialize synthesis engine"""
+        self.logger = get_logger()
+
+        # Strategist weights
+        self.weights = {
+            'game_theory': 0.25,
+            'correlation': 0.25,
+            'contrarian': 0.20,
+            'stacking_expert': 0.15,
+            'leverage_specialist': 0.15
+        }
+
+        # Bayesian engine
+        self.bayesian_engine = BayesianSynthesisEngine()
+
+    def synthesize(
+        self,
+        recommendations: List[AIRecommendation],
+        use_bayesian: bool = True
+    ) -> AIRecommendation:
+        """
+        Synthesize multiple AI recommendations
+
+        Args:
+            recommendations: List of AI recommendations
+            use_bayesian: Use Bayesian aggregation
+
+        Returns:
+            Unified AIRecommendation
+        """
+        try:
+            if not recommendations:
+                return AIRecommendation()
+
+            # Use Bayesian synthesis if enabled
+            if use_bayesian:
+                return self.bayesian_engine.bayesian_aggregate(recommendations)
+
+            # Otherwise use weighted voting
+            return self._weighted_synthesis(recommendations)
+
+        except Exception as e:
+            self.logger.log_exception(e, "synthesize")
+            return AIRecommendation()
+
+    def _weighted_synthesis(
+        self,
+        recommendations: List[AIRecommendation]
+    ) -> AIRecommendation:
+        """Weighted voting synthesis (fallback)"""
+        try:
+            # Filter valid recommendations
+            valid_recs = [r for r in recommendations if r.confidence > 0.3]
+
+            if not valid_recs:
+                return AIRecommendation()
+
+            # Aggregate captain targets with weighted voting
+            captain_scores: DefaultDict[str, float] = defaultdict(float)
+            for rec in valid_recs:
+                weight = self._get_weight(rec.source_ai)
+                for i, player in enumerate(rec.captain_targets):
+                    position_score = len(rec.captain_targets) - i
+                    captain_scores[player] += (
+                        position_score * weight * rec.confidence
+                    )
+
+            top_captains = sorted(
+                captain_scores.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:8]
+            captain_targets = [p for p, _ in top_captains]
+
+            # Aggregate must-play with consensus voting
+            must_play_votes: DefaultDict[str, int] = defaultdict(int)
+            must_play_confidence: DefaultDict[str, List[float]] = defaultdict(list)
+
+            for rec in valid_recs:
+                for player in rec.must_play:
+                    must_play_votes[player] += 1
+                    must_play_confidence[player].append(rec.confidence)
+
+            # Require at least 2 votes or high confidence
+            must_play = [
+                p for p, votes in must_play_votes.items()
+                if votes >= 2 or np.mean(must_play_confidence[p]) > 0.8
+            ]
+
+            # Aggregate never-play with consensus
+            never_play_votes: DefaultDict[str, int] = defaultdict(int)
+            for rec in valid_recs:
+                for player in rec.never_play:
+                    never_play_votes[player] += 1
+
+            never_play = [
+                p for p, votes in never_play_votes.items()
+                if votes >= 2
+            ]
+
+            # Aggregate stacks
+            all_stacks = []
+            for rec in valid_recs:
+                all_stacks.extend(rec.stacks)
+
+            unique_stacks = self._deduplicate_stacks(all_stacks)
+
+            # Aggregate insights
+            all_insights = []
+            for rec in valid_recs:
+                all_insights.extend(rec.key_insights)
+
+            unique_insights = list(dict.fromkeys(all_insights))[:10]
+
+            # Average confidence
+            avg_confidence = np.mean([r.confidence for r in valid_recs])
+
+            # Build narrative
+            narrative = self._build_narrative(
+                captain_targets,
+                must_play,
+                never_play,
+                unique_stacks
+            )
+
+            return AIRecommendation(
+                captain_targets=captain_targets,
+                must_play=must_play,
+                never_play=never_play,
+                stacks=unique_stacks[:5],
+                key_insights=unique_insights,
+                confidence=float(avg_confidence),
+                narrative=narrative,
+                source_ai=None
+            )
+
+        except Exception as e:
+            self.logger.log_exception(e, "_weighted_synthesis")
+            return AIRecommendation()
+
+    def _get_weight(self, source: Optional[AIStrategistType]) -> float:
+        """Get weight for AI source"""
+        if source == AIStrategistType.GAME_THEORY:
+            return self.weights['game_theory']
+        elif source == AIStrategistType.CORRELATION:
+            return self.weights['correlation']
+        elif source == AIStrategistType.CONTRARIAN_NARRATIVE:
+            return self.weights['contrarian']
+        else:
+            return 0.20  # Default weight
+
+    def _deduplicate_stacks(self, stacks: List[Dict]) -> List[Dict]:
+        """Remove duplicate stacks"""
+        try:
+            unique = []
+            seen_pairs = set()
+
+            for stack in stacks:
+                player1 = stack.get('player1', '')
+                player2 = stack.get('player2', '')
+
+                pair = tuple(sorted([player1, player2]))
+
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    unique.append(stack)
+
+            return unique
+
+        except Exception:
+            return []
+
+    def _build_narrative(
+        self,
+        captain_targets: List[str],
+        must_play: List[str],
+        never_play: List[str],
+        stacks: List[Dict]
+    ) -> str:
+        """Build unified narrative"""
+        try:
+            parts = []
+
+            if captain_targets:
+                parts.append(
+                    f"Top captain targets: {', '.join(captain_targets[:3])}"
+                )
+
+            if must_play:
+                parts.append(f"Core plays: {', '.join(must_play)}")
+
+            if stacks:
+                parts.append(f"{len(stacks)} correlation stacks identified")
+
+            if never_play:
+                parts.append(f"Avoid: {', '.join(never_play[:2])}")
+
+            return ". ".join(parts) if parts else "AI synthesis complete"
+
+        except Exception:
+            return "AI synthesis complete"
+
+
+# ============================================================================
+# ITERATIVE REFINEMENT ENGINE (NEW)
+# ============================================================================
+
+
+class IterativeRefinementEngine:
+    """
+    NEW: Multi-round AI optimization with lineup review and improvement
+
+    Ultimate State feature for iterative AI refinement
+    """
+
+    def __init__(
+        self,
+        api_manager: AnthropicAPIManager,
+        df: pd.DataFrame,
+        game_info: Dict[str, Any]
+    ):
+        """
+        Initialize iterative refinement engine
+
+        Args:
+            api_manager: API manager
+            df: Player DataFrame
+            game_info: Game context
+        """
+        self.api_manager = api_manager
+        self.df = df
+        self.game_info = game_info
+        self.logger = get_logger()
+
+        # Refinement history
+        self.refinement_history: List[Dict[str, Any]] = []
+
+    def refine_lineups(
+        self,
+        initial_lineups: List[Dict[str, Any]],
+        max_iterations: int = 2,
+        improvement_threshold: float = 0.05
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """
+        Iteratively refine lineups using AI feedback
+
+        Args:
+            initial_lineups: Initial lineup set
+            max_iterations: Maximum refinement iterations
+            improvement_threshold: Minimum improvement to continue
+
+        Returns:
+            Tuple of (refined_lineups, improvement_suggestions)
+        """
+        try:
+            if not initial_lineups:
+                return [], []
+
+            current_lineups = initial_lineups
+            all_suggestions = []
+
+            self.logger.log(
+                f"Starting iterative refinement: {len(current_lineups)} lineups, "
+                f"max {max_iterations} iterations",
+                "INFO"
+            )
+
+            for iteration in range(max_iterations):
+                self.logger.log(
+                    f"Refinement iteration {iteration + 1}/{max_iterations}",
+                    "INFO"
+                )
+
+                # Analyze current lineups
+                analysis = self._analyze_lineup_set(current_lineups)
+
+                # Get AI suggestions
+                suggestions = self._get_ai_suggestions(
+                    current_lineups,
+                    analysis
+                )
+
+                if not suggestions or not suggestions.get('improvements'):
+                    self.logger.log(
+                        "No improvements suggested, stopping refinement",
+                        "INFO"
+                    )
+                    break
+
+                all_suggestions.extend(suggestions.get('improvements', []))
+
+                # Apply improvements
+                improved_lineups = self._apply_improvements(
+                    current_lineups,
+                    suggestions
+                )
+
+                # Calculate improvement
+                improvement = self._calculate_improvement(
+                    current_lineups,
+                    improved_lineups
+                )
+
+                self.logger.log(
+                    f"Iteration {iteration + 1} improvement: {improvement:.2%}",
+                    "INFO"
+                )
+
+                # Record iteration
+                self.refinement_history.append({
+                    'iteration': iteration + 1,
+                    'lineups_before': len(current_lineups),
+                    'lineups_after': len(improved_lineups),
+                    'improvement': improvement,
+                    'suggestions': suggestions
+                })
+
+                # Check if improvement meets threshold
+                if improvement < improvement_threshold:
+                    self.logger.log(
+                        f"Improvement {improvement:.2%} below threshold "
+                        f"{improvement_threshold:.2%}, stopping",
+                        "INFO"
+                    )
+                    break
+
+                current_lineups = improved_lineups
+
+            return current_lineups, all_suggestions
+
+        except Exception as e:
+            self.logger.log_exception(e, "refine_lineups")
+            return initial_lineups, []
+
+    def _analyze_lineup_set(
+        self,
+        lineups: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Analyze lineup set for patterns"""
+        try:
+            # Captain distribution
+            captain_counts: DefaultDict[str, int] = defaultdict(int)
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                if captain:
+                    captain_counts[captain] += 1
+
+            # Player exposure
+            player_exposure: DefaultDict[str, int] = defaultdict(int)
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                for player in [captain] + flex:
+                    player_exposure[player] += 1
+
+            # Ownership distribution
+            total_ownership = []
+            avg_ownership = []
+            for lineup in lineups:
+                total_ownership.append(
+                    lineup.get('Total_Ownership', 0)
+                )
+                avg_ownership.append(
+                    lineup.get('Avg_Ownership', 0)
+                )
+
+            # Stack patterns
+            stack_types: DefaultDict[str, int] = defaultdict(int)
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                # Detect QB-receiver stacks
+                captain_pos = self.df[
+                    self.df['Player'] == captain
+                ]['Position'].iloc[0] if captain else ''
+
+                if captain_pos == 'QB':
+                    stack_types['qb_captain'] += 1
+
+            return {
+                'lineup_count': len(lineups),
+                'captain_distribution': dict(captain_counts),
+                'player_exposure': dict(player_exposure),
+                'avg_total_ownership': (
+                    np.mean(total_ownership) if total_ownership else 0
+                ),
+                'avg_ownership': np.mean(avg_ownership) if avg_ownership else 0,
+                'ownership_std': np.std(avg_ownership) if avg_ownership else 0,
+                'stack_types': dict(stack_types)
+            }
+
+        except Exception as e:
+            self.logger.log_exception(e, "_analyze_lineup_set")
+            return {}
+
+    def _get_ai_suggestions(
+        self,
+        lineups: List[Dict[str, Any]],
+        analysis: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Get AI suggestions for improvement"""
+        try:
+            # Build prompt
+            prompt = self._build_refinement_prompt(lineups, analysis)
+
+            # Get AI response
+            context = {'lineups': lineups, 'analysis': analysis, 'df': self.df}
+
+            response = self.api_manager.get_ai_analysis(
+                prompt,
+                context,
+                max_tokens=2000,
+                temperature=0.6
+            )
+
+            return response
+
+        except Exception as e:
+            self.logger.log_exception(e, "_get_ai_suggestions")
+            return {}
+
+    def _build_refinement_prompt(
+        self,
+        lineups: List[Dict[str, Any]],
+        analysis: Dict[str, Any]
+    ) -> str:
+        """Build refinement prompt"""
+        try:
+            # Sample lineups for review
+            sample_size = min(5, len(lineups))
+            sample_lineups = lineups[:sample_size]
+
+            lineup_summary = []
+            for i, lineup in enumerate(sample_lineups, 1):
+                captain = lineup.get('Captain', 'Unknown')
+                flex = lineup.get('FLEX', [])
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                projection = lineup.get('Projected', 0)
+                ownership = lineup.get('Avg_Ownership', 0)
+
+                lineup_summary.append(
+                    f"{i}. Captain: {captain}, "
+                    f"FLEX: {', '.join(flex[:3])}..., "
+                    f"Proj: {projection:.1f}, Own: {ownership:.1f}%"
+                )
+
+            captain_dist = analysis.get('captain_distribution', {})
+            top_captains = sorted(
+                captain_dist.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:5]
+
+            return f"""You are reviewing a set of {len(lineups)} DFS lineups for improvement.
+
+LINEUP SET ANALYSIS:
+- Total lineups: {analysis.get('lineup_count', 0)}
+- Average ownership: {analysis.get('avg_ownership', 0):.1f}%
+- Ownership diversity (std): {analysis.get('ownership_std', 0):.1f}
+
+CAPTAIN DISTRIBUTION:
+{chr(10).join([f"- {capt}: {count} lineups ({count/len(lineups)*100:.1f}%)" for capt, count in top_captains])}
+
+SAMPLE LINEUPS:
+{chr(10).join(lineup_summary)}
+
+Your task: Identify specific improvements to maximize tournament success.
+
+Analyze:
+1. CAPTAIN DIVERSITY:
+   - Is captain distribution too concentrated?
+   - Missing leverage captain opportunities?
+   - Specific captain swaps to suggest?
+
+2. OWNERSHIP PROFILE:
+   - Is avg ownership too high (chalk-heavy)?
+   - Too low (contrarian-heavy)?
+   - Optimal ownership range for this slate?
+
+3. STACK CONSTRUCTION:
+   - Are lineups utilizing optimal correlations?
+   - Missing bring-back opportunities?
+   - Specific stack improvements?
+
+4. PLAYER POOL UTILIZATION:
+   - Underutilized leverage plays?
+   - Overexposed players to reduce?
+   - Specific player swaps?
+
+Respond with ONLY valid JSON (no markdown):
+{{
+    "improvements": [
+        "Specific improvement 1 with player names",
+        "Specific improvement 2 with player names",
+        "Specific improvement 3 with player names"
+    ],
+    "captain_swaps": [
+        {{
+            "from": "Current Captain",
+            "to": "Better Captain",
+            "reason": "Why this improves lineups"
+        }}
+    ],
+    "player_swaps": [
+        {{
+            "remove": "Player to remove",
+            "add": "Player to add",
+            "reason": "Why this swap helps"
+        }}
+    ],
+    "ownership_adjustment": {{
+        "current_avg": {analysis.get('avg_ownership', 0):.1f},
+        "target_avg": 0.0,
+        "direction": "increase/decrease/maintain"
+    }},
+    "confidence": 0.75
+}}"""
+
+        except Exception as e:
+            self.logger.log_exception(e, "_build_refinement_prompt")
+            return "Analyze lineups and suggest improvements."
+
+    def _apply_improvements(
+        self,
+        lineups: List[Dict[str, Any]],
+        suggestions: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Apply AI suggestions to lineups"""
+        try:
+            improved_lineups = lineups.copy()
+
+            # Apply captain swaps
+            captain_swaps = suggestions.get('captain_swaps', [])
+            for swap in captain_swaps[:3]:  # Limit to 3 swaps
+                from_captain = swap.get('from', '')
+                to_captain = swap.get('to', '')
+
+                if not from_captain or not to_captain:
+                    continue
+
+                # Find lineups with from_captain and swap
+                for lineup in improved_lineups:
+                    if lineup.get('Captain') == from_captain:
+                        # Swap captain with a flex player if possible
+                        flex = lineup.get('FLEX', [])
+                        if isinstance(flex, str):
+                            flex = [
+                                p.strip() for p in flex.split(',')
+                                if p.strip()
+                            ]
+
+                        # If to_captain is in flex, swap
+                        if to_captain in flex:
+                            lineup['Captain'] = to_captain
+                            flex_updated = [
+                                from_captain if p == to_captain else p
+                                for p in flex
+                            ]
+                            lineup['FLEX'] = flex_updated
+
+                            # Recalculate metrics
+                            updated = calculate_lineup_metrics(
+                                lineup['Captain'],
+                                lineup['FLEX'],
+                                self.df
+                            )
+                            lineup.update(updated)
+
+            # Apply player swaps (similar logic)
+            player_swaps = suggestions.get('player_swaps', [])
+            for swap in player_swaps[:5]:  # Limit to 5 swaps
+                remove_player = swap.get('remove', '')
+                add_player = swap.get('add', '')
+
+                if not remove_player or not add_player:
+                    continue
+
+                for lineup in improved_lineups:
+                    flex = lineup.get('FLEX', [])
+                    if isinstance(flex, str):
+                        flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                    if remove_player in flex:
+                        flex_updated = [
+                            add_player if p == remove_player else p
+                            for p in flex
+                        ]
+                        lineup['FLEX'] = flex_updated
+
+                        # Recalculate
+                        updated = calculate_lineup_metrics(
+                            lineup['Captain'],
+                            lineup['FLEX'],
+                            self.df
+                        )
+                        lineup.update(updated)
+
+            return improved_lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, "_apply_improvements")
+            return lineups
+
+    def _calculate_improvement(
+        self,
+        before: List[Dict[str, Any]],
+        after: List[Dict[str, Any]]
+    ) -> float:
+        """Calculate improvement percentage"""
+        try:
+            # Compare average projections
+            before_avg = np.mean([
+                l.get('Projected', 0) for l in before
+            ])
+            after_avg = np.mean([
+                l.get('Projected', 0) for l in after
+            ])
+
+            if before_avg > 0:
+                return (after_avg - before_avg) / before_avg
+            else:
+                return 0.0
+
+        except Exception:
+            return 0.0
+
+    def get_refinement_summary(self) -> Dict[str, Any]:
+        """Get refinement history summary"""
+        return {
+            'total_iterations': len(self.refinement_history),
+            'iterations': self.refinement_history,
+            'total_improvement': sum(
+                it.get('improvement', 0)
+                for it in self.refinement_history
+            )
+        }
+
+
+# ============================================================================
+# AI ENFORCEMENT ENGINE (ENHANCED)
+# ============================================================================
+
 
 class AIEnforcementEngine:
     """
-    Enforces AI recommendations during optimization
-    Applies constraints based on enforcement level
+    Enhanced AI constraint enforcement
+
+    UPDATE 2: Better enforcement logic with priority levels
     """
 
     def __init__(
         self,
         enforcement_level: AIEnforcementLevel = AIEnforcementLevel.MODERATE
     ):
+        """
+        Initialize enforcement engine
+
+        Args:
+            enforcement_level: Enforcement level
+        """
         self.enforcement_level = enforcement_level
         self.logger = get_logger()
 
@@ -5964,27 +9817,32 @@ class AIEnforcementEngine:
             # Process each AI recommendation
             for rec in ai_recommendations:
                 if rec.confidence < 0.3:
-                    continue  # Skip low confidence recommendations
+                    continue
 
                 # Apply based on enforcement level
                 if self.enforcement_level == AIEnforcementLevel.ADVISORY:
-                    # Advisory: Log but don't enforce
                     self._log_advisory(rec)
 
                 elif self.enforcement_level == AIEnforcementLevel.MODERATE:
-                    # Moderate: Enforce high-confidence rules only
                     if rec.confidence >= 0.7:
-                        enhanced = self._apply_high_confidence_rules(enhanced, rec)
+                        enhanced = self._apply_high_confidence_rules(
+                            enhanced,
+                            rec
+                        )
 
                 elif self.enforcement_level == AIEnforcementLevel.STRONG:
-                    # Strong: Enforce most rules
                     if rec.confidence >= 0.5:
-                        enhanced = self._apply_moderate_confidence_rules(enhanced, rec)
+                        enhanced = self._apply_moderate_confidence_rules(
+                            enhanced,
+                            rec
+                        )
                     if rec.confidence >= 0.7:
-                        enhanced = self._apply_high_confidence_rules(enhanced, rec)
+                        enhanced = self._apply_high_confidence_rules(
+                            enhanced,
+                            rec
+                        )
 
                 elif self.enforcement_level == AIEnforcementLevel.MANDATORY:
-                    # Mandatory: Enforce all rules
                     enhanced = self._apply_all_rules(enhanced, rec)
 
             return enhanced
@@ -5994,7 +9852,7 @@ class AIEnforcementEngine:
             return base_constraints
 
     def _log_advisory(self, rec: AIRecommendation) -> None:
-        """Log advisory recommendations without enforcing"""
+        """Log advisory recommendations"""
         self.logger.log(
             f"[ADVISORY] AI recommends: {len(rec.must_play)} must-play, "
             f"{len(rec.never_play)} avoid (confidence: {rec.confidence:.2f})",
@@ -6006,11 +9864,11 @@ class AIEnforcementEngine:
         constraints: LineupConstraints,
         rec: AIRecommendation
     ) -> LineupConstraints:
-        """Apply high-confidence AI rules (confidence >= 0.7)"""
+        """Apply high-confidence AI rules"""
         try:
-            # Add must-play players to locked
+            # Add must-play to locked (top 2 only)
             if rec.must_play:
-                constraints.locked_players.update(rec.must_play[:2])  # Top 2 only
+                constraints.locked_players.update(rec.must_play[:2])
                 self.logger.log(
                     f"Locked players from AI: {rec.must_play[:2]}",
                     "INFO"
@@ -6035,7 +9893,7 @@ class AIEnforcementEngine:
         constraints: LineupConstraints,
         rec: AIRecommendation
     ) -> LineupConstraints:
-        """Apply moderate-confidence AI rules (confidence >= 0.5)"""
+        """Apply moderate-confidence AI rules"""
         try:
             # Add top must-play
             if rec.must_play:
@@ -6043,7 +9901,7 @@ class AIEnforcementEngine:
 
             # Add stacking requirements
             if rec.stacks:
-                for stack in rec.stacks[:2]:  # Top 2 stacks
+                for stack in rec.stacks[:2]:
                     if stack.get('correlation', 0) > 0.5:
                         constraints.required_stacks.append(stack)
 
@@ -6058,7 +9916,7 @@ class AIEnforcementEngine:
         constraints: LineupConstraints,
         rec: AIRecommendation
     ) -> LineupConstraints:
-        """Apply all AI rules regardless of confidence"""
+        """Apply all AI rules"""
         try:
             # Lock all must-play
             if rec.must_play:
@@ -6080,196 +9938,19 @@ class AIEnforcementEngine:
 
 
 # ============================================================================
-# AI SYNTHESIS ENGINE
+# AI DECISION TRACKER (ENHANCED)
 # ============================================================================
 
-class AISynthesisEngine:
-    """
-    Synthesizes multiple AI recommendations into unified strategy
-    """
-
-    def __init__(self):
-        self.logger = get_logger()
-        self.weights = AI_WEIGHTS.copy()
-
-    def synthesize(
-        self,
-        recommendations: List[AIRecommendation]
-    ) -> AIRecommendation:
-        """
-        Synthesize multiple AI recommendations
-
-        Args:
-            recommendations: List of AI recommendations from different strategists
-
-        Returns:
-            Unified AIRecommendation
-        """
-        try:
-            if not recommendations:
-                return AIRecommendation()
-
-            # Filter valid recommendations
-            valid_recs = [r for r in recommendations if r.confidence > 0.3]
-
-            if not valid_recs:
-                return AIRecommendation()
-
-            # Aggregate captain targets with weighted voting
-            captain_scores: DefaultDict[str, float] = defaultdict(float)
-            for rec in valid_recs:
-                weight = self._get_weight(rec.source_ai)
-                for i, player in enumerate(rec.captain_targets):
-                    # Higher position = higher score
-                    position_score = len(rec.captain_targets) - i
-                    captain_scores[player] += position_score * weight * rec.confidence
-
-            # Sort and take top
-            top_captains = sorted(
-                captain_scores.items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:8]
-            captain_targets = [p for p, _ in top_captains]
-
-            # Aggregate must-play with consensus voting
-            must_play_votes: DefaultDict[str, int] = defaultdict(int)
-            must_play_confidence: DefaultDict[str, List[float]] = defaultdict(list)
-
-            for rec in valid_recs:
-                for player in rec.must_play:
-                    must_play_votes[player] += 1
-                    must_play_confidence[player].append(rec.confidence)
-
-            # Require at least 2 votes for must-play
-            must_play = [
-                p for p, votes in must_play_votes.items()
-                if votes >= 2 or np.mean(must_play_confidence[p]) > 0.8
-            ]
-
-            # Aggregate never-play with consensus
-            never_play_votes: DefaultDict[str, int] = defaultdict(int)
-            for rec in valid_recs:
-                for player in rec.never_play:
-                    never_play_votes[player] += 1
-
-            # Require at least 2 votes for never-play
-            never_play = [p for p, votes in never_play_votes.items() if votes >= 2]
-
-            # Aggregate stacks
-            all_stacks = []
-            for rec in valid_recs:
-                all_stacks.extend(rec.stacks)
-
-            # Deduplicate stacks
-            unique_stacks = self._deduplicate_stacks(all_stacks)
-
-            # Aggregate insights
-            all_insights = []
-            for rec in valid_recs:
-                all_insights.extend(rec.key_insights)
-
-            # Take unique insights
-            unique_insights = list(dict.fromkeys(all_insights))[:10]
-
-            # Calculate average confidence
-            avg_confidence = np.mean([r.confidence for r in valid_recs])
-
-            # Build narrative
-            narrative = self._build_narrative(
-                captain_targets,
-                must_play,
-                never_play,
-                unique_stacks
-            )
-
-            return AIRecommendation(
-                captain_targets=captain_targets,
-                must_play=must_play,
-                never_play=never_play,
-                stacks=unique_stacks[:5],
-                key_insights=unique_insights,
-                confidence=float(avg_confidence),
-                narrative=narrative,
-                source_ai=None  # Synthesized from multiple
-            )
-
-        except Exception as e:
-            self.logger.log_exception(e, "synthesize")
-            return AIRecommendation()
-
-    def _get_weight(self, source: Optional[AIStrategistType]) -> float:
-        """Get weight for AI source"""
-        if source == AIStrategistType.GAME_THEORY:
-            return self.weights['game_theory']
-        elif source == AIStrategistType.CORRELATION:
-            return self.weights['correlation']
-        elif source == AIStrategistType.CONTRARIAN_NARRATIVE:
-            return self.weights['contrarian']
-        else:
-            return 0.33
-
-    def _deduplicate_stacks(self, stacks: List[Dict]) -> List[Dict]:
-        """Remove duplicate stacks"""
-        try:
-            unique = []
-            seen_pairs = set()
-
-            for stack in stacks:
-                player1 = stack.get('player1', '')
-                player2 = stack.get('player2', '')
-
-                pair = tuple(sorted([player1, player2]))
-
-                if pair not in seen_pairs:
-                    seen_pairs.add(pair)
-                    unique.append(stack)
-
-            return unique
-
-        except Exception:
-            return []
-
-    def _build_narrative(
-        self,
-        captain_targets: List[str],
-        must_play: List[str],
-        never_play: List[str],
-        stacks: List[Dict]
-    ) -> str:
-        """Build unified narrative"""
-        try:
-            parts = []
-
-            if captain_targets:
-                parts.append(f"Top captain targets: {', '.join(captain_targets[:3])}")
-
-            if must_play:
-                parts.append(f"Core plays: {', '.join(must_play)}")
-
-            if stacks:
-                stack_desc = f"{len(stacks)} correlation stacks identified"
-                parts.append(stack_desc)
-
-            if never_play:
-                parts.append(f"Avoid: {', '.join(never_play[:2])}")
-
-            return ". ".join(parts) if parts else "Synthesized AI analysis"
-
-        except Exception:
-            return "AI synthesis complete"
-
-
-# ============================================================================
-# AI DECISION TRACKER
-# ============================================================================
 
 class AIDecisionTracker:
     """
-    Tracks AI decisions for analytics and debugging
+    Enhanced AI decision tracking with analytics
+
+    UPDATE 2: Better analytics and insights
     """
 
     def __init__(self):
+        """Initialize decision tracker"""
         self.decisions: Deque[Dict[str, Any]] = deque(maxlen=100)
         self.logger = get_logger()
         self._lock = threading.RLock()
@@ -6286,7 +9967,11 @@ class AIDecisionTracker:
                 entry = {
                     'timestamp': datetime.now(),
                     'type': decision_type,
-                    'source': recommendation.source_ai.value if recommendation.source_ai else 'synthesized',
+                    'source': (
+                        recommendation.source_ai.value
+                        if recommendation.source_ai
+                        else 'synthesized'
+                    ),
                     'confidence': recommendation.confidence,
                     'captain_count': len(recommendation.captain_targets),
                     'must_play_count': len(recommendation.must_play),
@@ -6301,23 +9986,30 @@ class AIDecisionTracker:
                 self.logger.log_exception(e, "track_decision")
 
     def get_summary(self) -> Dict[str, Any]:
-        """Get summary of AI decisions"""
+        """Get comprehensive summary"""
         with self._lock:
             try:
                 if not self.decisions:
                     return {}
 
                 total = len(self.decisions)
-                avg_confidence = np.mean([d['confidence'] for d in self.decisions])
+                avg_confidence = np.mean([
+                    d['confidence'] for d in self.decisions
+                ])
 
                 by_source = defaultdict(int)
                 for d in self.decisions:
                     by_source[d['source']] += 1
 
+                by_type = defaultdict(int)
+                for d in self.decisions:
+                    by_type[d['type']] += 1
+
                 return {
                     'total_decisions': total,
                     'average_confidence': float(avg_confidence),
                     'by_source': dict(by_source),
+                    'by_type': dict(by_type),
                     'recent': list(self.decisions)[-5:]
                 }
 
@@ -6325,391 +10017,946 @@ class AIDecisionTracker:
                 return {}
 
 """
-PART 12 OF 13: DATA PROCESSING & COLUMN MAPPING
+PART 12 OF 13: OUTPUT FORMATTING & EXPORT
 
-ENHANCEMENTS:
-- NEW: CSV header whitespace stripping (IMMEDIATE FIX)
-- Smart column mapping with case-insensitive matching
-- ENHANCEMENT #4: Memory optimization integration
-- Enhanced game info inference
+Complete output formatting and export system.
+Handles CSV, Excel, DraftKings format, console display, and HTML reports.
 """
 
 # ============================================================================
-# OPTIMIZED DATA PROCESSOR
+# CSV EXPORTER
 # ============================================================================
 
-class OptimizedDataProcessor:
+
+class CSVExporter:
     """
-    Enhanced data processor with smart column mapping
+    Export lineups to CSV format
 
-    NEW: Handles whitespace in CSV headers
-    ENHANCEMENT #4: Memory optimization integration
+    Handles both detailed and DraftKings-compatible formats.
     """
 
-    def __init__(self):
-        self.logger = get_logger()
-        self.column_mappings = CSV_COLUMN_PATTERNS.copy()
-
-    def process_dataframe(
-        self,
-        df: pd.DataFrame,
-        validation_level: ValidationLevel = ValidationLevel.MODERATE
-    ) -> Tuple[pd.DataFrame, List[str]]:
+    def __init__(self, logger: Optional[OptimizerLogger] = None):
         """
-        Complete data processing pipeline
+        Initialize CSV exporter
 
         Args:
-            df: Raw DataFrame
-            validation_level: Strictness of validation
+            logger: Optional logger instance
+        """
+        self.logger = logger or get_logger()
+
+    def export_lineups(
+        self,
+        lineups: List[Dict[str, Any]],
+        filename: str,
+        include_stats: bool = True
+    ) -> bool:
+        """
+        Export lineups to CSV
+
+        Args:
+            lineups: List of lineup dictionaries
+            filename: Output filename
+            include_stats: Include statistical columns
 
         Returns:
-            Tuple of (processed_df, warnings)
-
-        ENHANCEMENT #4: Includes memory optimization
+            True if successful
         """
         try:
-            warnings = []
+            if not lineups:
+                self.logger.log("No lineups to export", "WARNING")
+                return False
 
-            # Step 1: Smart column mapping
-            df, mapping_warnings = self._smart_column_mapping(df)
-            warnings.extend(mapping_warnings)
+            # Convert to DataFrame
+            rows = []
+            for lineup in lineups:
+                row = {
+                    'Lineup': lineup.get('Lineup', 0),
+                    'Captain': lineup.get('Captain', ''),
+                    'FLEX_1': '',
+                    'FLEX_2': '',
+                    'FLEX_3': '',
+                    'FLEX_4': '',
+                    'FLEX_5': '',
+                    'Total_Salary': lineup.get('Total_Salary', 0),
+                    'Projected': lineup.get('Projected', 0.0),
+                    'Avg_Ownership': lineup.get('Avg_Ownership', 0.0)
+                }
 
-            # Step 2: Validate required columns
-            missing = self._check_required_columns(df)
-            if missing:
-                raise ValidationError(f"Missing required columns: {missing}")
+                # Add FLEX players
+                flex = lineup.get('FLEX', [])
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
 
-            # Step 3: Normalize and validate
-            df, validation_warnings = validate_and_normalize_dataframe(
-                df,
-                validation_level
-            )
-            warnings.extend(validation_warnings)
+                for i, player in enumerate(flex[:5], 1):
+                    row[f'FLEX_{i}'] = player
 
-            # Step 4: Add derived columns
-            df = self._add_derived_columns(df)
+                # Add optional stats
+                if include_stats:
+                    row['Ceiling_90th'] = lineup.get('Ceiling_90th', 0.0)
+                    row['Floor_10th'] = lineup.get('Floor_10th', 0.0)
+                    row['Sharpe_Ratio'] = lineup.get('Sharpe_Ratio', 0.0)
+                    row['Win_Probability'] = lineup.get('Win_Probability', 0.0)
+                    row['Value'] = lineup.get('Value', 0.0)
 
-            # Step 5: Remove duplicates
-            initial_count = len(df)
-            df = df.drop_duplicates(subset=['Player'], keep='first')
-            if len(df) < initial_count:
-                warnings.append(f"Removed {initial_count - len(df)} duplicate players")
+                rows.append(row)
 
-            # Step 6: ENHANCEMENT #4 - Optimize memory usage
-            df = optimize_dataframe_memory(df)
-            warnings.append("Applied memory optimization to DataFrame")
+            df = pd.DataFrame(rows)
 
-            # Step 7: Final validation
-            if df.empty:
-                raise ValidationError("DataFrame is empty after processing")
+            # Ensure filename has .csv extension
+            if not filename.endswith('.csv'):
+                filename += '.csv'
 
-            if len(df) < DraftKingsRules.ROSTER_SIZE:
-                raise ValidationError(
-                    f"Need at least {DraftKingsRules.ROSTER_SIZE} players, "
-                    f"have {len(df)}"
-                )
+            # Export
+            df.to_csv(filename, index=False)
 
             self.logger.log(
-                f"Data processing complete: {len(df)} players, {len(warnings)} warnings",
+                f"Exported {len(lineups)} lineups to {filename}",
                 "INFO"
             )
 
-            return df, warnings
+            return True
 
         except Exception as e:
-            self.logger.log_exception(e, "process_dataframe")
-            raise
+            self.logger.log_exception(e, "export_lineups")
+            return False
 
-    def _smart_column_mapping(
+    def export_draftkings_format(
         self,
-        df: pd.DataFrame
-    ) -> Tuple[pd.DataFrame, List[str]]:
+        lineups: List[Dict[str, Any]],
+        filename: str
+    ) -> bool:
         """
-        Intelligently map columns to required format
-
-        NEW: Strips whitespace from column names before matching
-
-        Returns:
-            Tuple of (mapped_df, warnings)
-        """
-        warnings = []
-        df = df.copy()
-
-        # NEW: Strip whitespace from all column names first
-        df.columns = df.columns.str.strip()
-
-        # Get current columns (case-insensitive, whitespace-stripped)
-        current_cols = {col.strip().lower(): col.strip() for col in df.columns}
-
-        # Map each required column
-        for required, patterns in self.column_mappings.items():
-            if required in df.columns:
-                continue  # Already correct
-
-            # Try to find match
-            found = False
-            for pattern in patterns:
-                pattern_lower = pattern.strip().lower()  # NEW: Also strip pattern
-
-                if pattern_lower in current_cols:
-                    actual_col = current_cols[pattern_lower]
-                    df = df.rename(columns={actual_col: required})
-                    warnings.append(f"Mapped '{actual_col}' → '{required}'")
-                    found = True
-                    break
-
-            if not found and required not in ['Ownership']:
-                # Ownership is optional, others are required
-                warnings.append(f"Could not find mapping for '{required}'")
-
-        # Special handling for player names from first/last
-        if 'Player' not in df.columns:
-            if 'first_name' in df.columns and 'last_name' in df.columns:
-                df['Player'] = df['first_name'] + ' ' + df['last_name']
-                warnings.append("Created 'Player' from first_name + last_name")
-            elif 'FirstName' in df.columns and 'LastName' in df.columns:
-                df['Player'] = df['FirstName'] + ' ' + df['LastName']
-                warnings.append("Created 'Player' from FirstName + LastName")
-
-        return df, warnings
-
-    def _check_required_columns(self, df: pd.DataFrame) -> List[str]:
-        """Check for required columns"""
-        required = ['Player', 'Position', 'Team', 'Salary', 'Projected_Points']
-        missing = [col for col in required if col not in df.columns]
-        return missing
-
-    def _add_derived_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add useful derived columns"""
-        try:
-            df = df.copy()
-
-            # Value (points per $1000)
-            df['Value'] = df['Projected_Points'] / (df['Salary'] / 1000)
-
-            # Ensure ownership exists
-            if 'Ownership' not in df.columns:
-                df['Ownership'] = 10.0
-
-            # Ownership-adjusted value
-            df['Leverage_Value'] = df['Projected_Points'] / np.maximum(df['Ownership'], 1.0)
-
-            return df
-
-        except Exception as e:
-            self.logger.log_exception(e, "_add_derived_columns")
-            return df
-
-    def identify_game_teams(self, df: pd.DataFrame) -> List[str]:
-        """Identify the two teams in the game"""
-        try:
-            teams = df['Team'].unique().tolist()
-
-            if len(teams) != 2:
-                self.logger.log(
-                    f"Warning: Expected 2 teams, found {len(teams)}: {teams}",
-                    "WARNING"
-                )
-
-            return teams[:2] if len(teams) >= 2 else teams
-
-        except Exception:
-            return []
-
-    def infer_game_info(
-        self,
-        df: pd.DataFrame,
-        game_total: Optional[float] = None,
-        spread: Optional[float] = None
-    ) -> Dict[str, Any]:
-        """
-        Infer game information from data
+        Export in DraftKings upload format
 
         Args:
-            df: Player DataFrame
-            game_total: Optional override
-            spread: Optional override
+            lineups: List of lineup dictionaries
+            filename: Output filename
 
         Returns:
-            Game info dictionary
+            True if successful
         """
         try:
-            teams = self.identify_game_teams(df)
+            if not lineups:
+                self.logger.log("No lineups to export", "WARNING")
+                return False
 
-            # Infer totals from projections if not provided
-            if game_total is None:
-                total_projections = df.groupby('Team')['Projected_Points'].sum()
-                if len(total_projections) >= 2:
-                    game_total = float(total_projections.sum())
-                else:
-                    game_total = 50.0  # Default
+            rows = []
 
-            # Infer spread from team projections
-            if spread is None and len(teams) == 2:
-                team_totals = df.groupby('Team')['Projected_Points'].sum()
-                if len(team_totals) == 2:
-                    spread = float(team_totals.iloc[0] - team_totals.iloc[1])
-                else:
-                    spread = 0.0
-            elif spread is None:
-                spread = 0.0
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
 
-            # Determine home/away
-            home_team = teams[0] if teams else "Team1"
-            away_team = teams[1] if len(teams) > 1 else "Team2"
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
 
-            # Adjust spread to be from home team perspective
-            if spread < 0:
-                home_team, away_team = away_team, home_team
-                spread = -spread
-
-            return {
-                'game_total': float(game_total),
-                'spread': float(spread),
-                'home_team': home_team,
-                'away_team': away_team,
-                'teams': teams,
-                'favorite_team': home_team if spread > 0 else away_team
-            }
-
-        except Exception as e:
-            self.logger.log_exception(e, "infer_game_info")
-            return {
-                'game_total': 50.0,
-                'spread': 0.0,
-                'home_team': 'Team1',
-                'away_team': 'Team2',
-                'teams': [],
-                'favorite_team': 'Team1'
-            }
-
-"""
-PART 13 OF 13: INTELLIGENT ADAPTIVE MASTER OPTIMIZER (COMPLETE)
-
-SMART FEATURES:
-✓ Automatic constraint relaxation with 7 progressive fallback levels
-✓ Player pool analysis to determine optimal parameters
-✓ Hybrid optimization (tries both PuLP and Genetic automatically)
-✓ Quality assurance filtering
-✓ Intelligent parameter tuning based on data characteristics
-✓ Comprehensive diagnostics and user feedback
-✓ GUARANTEED lineup generation (NEVER returns empty)
-✓ Three-tier fallback: Standard → Emergency → Basic
-"""
-
-# ============================================================================
-# PLAYER POOL ANALYZER
-# ============================================================================
-
-class PlayerPoolAnalyzer:
-    """Analyzes player pool to determine optimal optimization parameters"""
-
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
-        self.logger = get_logger()
-        self.analysis: Dict[str, Any] = {}
-
-    def analyze(self) -> Dict[str, Any]:
-        """Comprehensive player pool analysis"""
-        try:
-            n_players = len(self.df)
-            n_teams = self.df['Team'].nunique()
-
-            salaries = self.df['Salary'].values
-            salary_stats = {
-                'min': float(salaries.min()),
-                'max': float(salaries.max()),
-                'median': float(np.median(salaries)),
-                'mean': float(salaries.mean()),
-                'std': float(salaries.std())
-            }
-
-            cheapest_6 = self.df.nsmallest(6, 'Salary')['Salary'].sum()
-            expensive_6 = self.df.nlargest(6, 'Salary')['Salary'].sum()
-
-            min_possible = cheapest_6 + (salaries.min() * 0.5)
-            max_possible = expensive_6 + (salaries.max() * 0.5)
-
-            median_lineup = salary_stats['median'] * 6 * 1.25
-
-            if median_lineup > DraftKingsRules.SALARY_CAP * 0.90:
-                optimal_min_pct = 0.95
-            elif median_lineup > DraftKingsRules.SALARY_CAP * 0.80:
-                optimal_min_pct = 0.88
-            elif median_lineup > DraftKingsRules.SALARY_CAP * 0.70:
-                optimal_min_pct = 0.80
-            else:
-                optimal_min_pct = 0.75
-
-            projections = self.df['Projected_Points'].values
-            proj_stats = {
-                'min': float(projections.min()),
-                'max': float(projections.max()),
-                'median': float(np.median(projections)),
-                'mean': float(projections.mean()),
-                'std': float(projections.std())
-            }
-
-            self.df['_temp_value'] = self.df['Projected_Points'] / (self.df['Salary'] / 1000)
-            value_std = self.df['_temp_value'].std()
-
-            if value_std < 0.15:
-                pool_quality = 'flat'
-            elif value_std < 0.30:
-                pool_quality = 'balanced'
-            else:
-                pool_quality = 'volatile'
-
-            team_counts = self.df['Team'].value_counts()
-            team_balance = {
-                'teams': n_teams,
-                'min_team_size': int(team_counts.min()),
-                'max_team_size': int(team_counts.max()),
-                'balanced': team_counts.max() / team_counts.min() < 1.5
-            }
-
-            recommendations = {
-                'optimal_min_salary_pct': optimal_min_pct,
-                'optimal_min_salary': int(DraftKingsRules.SALARY_CAP * optimal_min_pct),
-                'suggested_randomness': 0.10 if pool_quality == 'flat' else 0.15 if pool_quality == 'balanced' else 0.20,
-                'suggested_diversity': 2 if pool_quality == 'flat' else 1,
-                'use_genetic': n_players > 30 and pool_quality == 'volatile',
-                'max_reasonable_lineups': min(100, n_players // 3)
-            }
-
-            self.analysis = {
-                'player_count': n_players,
-                'team_count': n_teams,
-                'salary_stats': salary_stats,
-                'min_possible_salary': min_possible,
-                'max_possible_salary': max_possible,
-                'projection_stats': proj_stats,
-                'pool_quality': pool_quality,
-                'team_balance': team_balance,
-                'recommendations': recommendations
-            }
-
-            return self.analysis
-
-        except Exception as e:
-            self.logger.log_exception(e, "PlayerPoolAnalyzer.analyze")
-            return {
-                'recommendations': {
-                    'optimal_min_salary_pct': 0.85,
-                    'optimal_min_salary': int(DraftKingsRules.SALARY_CAP * 0.85),
-                    'suggested_randomness': 0.15,
-                    'use_genetic': False,
-                    'max_reasonable_lineups': 50
+                # DraftKings format: CPT, FLEX, FLEX, FLEX, FLEX, FLEX
+                row = {
+                    'CPT': captain,
+                    'FLEX': flex[0] if len(flex) > 0 else '',
+                    'FLEX_2': flex[1] if len(flex) > 1 else '',
+                    'FLEX_3': flex[2] if len(flex) > 2 else '',
+                    'FLEX_4': flex[3] if len(flex) > 3 else '',
+                    'FLEX_5': flex[4] if len(flex) > 4 else ''
                 }
-            }
+
+                rows.append(row)
+
+            df = pd.DataFrame(rows)
+
+            # Ensure filename
+            if not filename.endswith('.csv'):
+                filename += '.csv'
+
+            # Export
+            df.to_csv(filename, index=False)
+
+            self.logger.log(
+                f"Exported {len(lineups)} lineups to DraftKings format: {filename}",
+                "INFO"
+            )
+
+            return True
+
+        except Exception as e:
+            self.logger.log_exception(e, "export_draftkings_format")
+            return False
 
 
 # ============================================================================
-# MASTER OPTIMIZER
+# EXCEL EXPORTER
 # ============================================================================
+
+
+class ExcelExporter:
+    """
+    Export lineups to Excel format with formatting
+
+    Creates professional Excel reports with multiple sheets.
+    """
+
+    def __init__(self, logger: Optional[OptimizerLogger] = None):
+        """
+        Initialize Excel exporter
+
+        Args:
+            logger: Optional logger instance
+        """
+        self.logger = logger or get_logger()
+
+    def export_lineups(
+        self,
+        lineups: List[Dict[str, Any]],
+        filename: str,
+        df: Optional[pd.DataFrame] = None,
+        summary_data: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Export lineups to Excel with multiple sheets
+
+        Args:
+            lineups: List of lineup dictionaries
+            filename: Output filename
+            df: Optional player DataFrame for player sheet
+            summary_data: Optional summary data
+
+        Returns:
+            True if successful
+        """
+        try:
+            # Check if openpyxl or xlsxwriter available
+            try:
+                import openpyxl
+                engine = 'openpyxl'
+            except ImportError:
+                try:
+                    import xlsxwriter
+                    engine = 'xlsxwriter'
+                except ImportError:
+                    self.logger.log(
+                        "Excel export requires openpyxl or xlsxwriter. "
+                        "Falling back to CSV.",
+                        "WARNING"
+                    )
+                    # Fallback to CSV
+                    csv_exporter = CSVExporter(self.logger)
+                    csv_filename = filename.replace('.xlsx', '.csv')
+                    return csv_exporter.export_lineups(lineups, csv_filename)
+
+            if not lineups:
+                self.logger.log("No lineups to export", "WARNING")
+                return False
+
+            # Ensure .xlsx extension
+            if not filename.endswith('.xlsx'):
+                filename += '.xlsx'
+
+            # Create Excel writer
+            with pd.ExcelWriter(filename, engine=engine) as writer:
+                # Sheet 1: Lineups
+                lineup_rows = []
+                for lineup in lineups:
+                    flex = lineup.get('FLEX', [])
+                    if isinstance(flex, str):
+                        flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                    row = {
+                        'Lineup': lineup.get('Lineup', 0),
+                        'Captain': lineup.get('Captain', ''),
+                        'FLEX_1': flex[0] if len(flex) > 0 else '',
+                        'FLEX_2': flex[1] if len(flex) > 1 else '',
+                        'FLEX_3': flex[2] if len(flex) > 2 else '',
+                        'FLEX_4': flex[3] if len(flex) > 3 else '',
+                        'FLEX_5': flex[4] if len(flex) > 4 else '',
+                        'Salary': lineup.get('Total_Salary', 0),
+                        'Projected': round(lineup.get('Projected', 0.0), 2),
+                        'Ownership': round(lineup.get('Avg_Ownership', 0.0), 1),
+                        'Ceiling': round(lineup.get('Ceiling_90th', 0.0), 2),
+                        'Floor': round(lineup.get('Floor_10th', 0.0), 2),
+                        'Sharpe': round(lineup.get('Sharpe_Ratio', 0.0), 3),
+                        'Win_Prob': round(lineup.get('Win_Probability', 0.0) * 100, 2)
+                    }
+                    lineup_rows.append(row)
+
+                lineups_df = pd.DataFrame(lineup_rows)
+                lineups_df.to_excel(writer, sheet_name='Lineups', index=False)
+
+                # Sheet 2: DraftKings Format
+                dk_rows = []
+                for lineup in lineups:
+                    captain = lineup.get('Captain', '')
+                    flex = lineup.get('FLEX', [])
+                    if isinstance(flex, str):
+                        flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                    dk_row = {
+                        'CPT': captain,
+                        'FLEX': flex[0] if len(flex) > 0 else '',
+                        'FLEX_2': flex[1] if len(flex) > 1 else '',
+                        'FLEX_3': flex[2] if len(flex) > 2 else '',
+                        'FLEX_4': flex[3] if len(flex) > 3 else '',
+                        'FLEX_5': flex[4] if len(flex) > 4 else ''
+                    }
+                    dk_rows.append(dk_row)
+
+                dk_df = pd.DataFrame(dk_rows)
+                dk_df.to_excel(writer, sheet_name='DraftKings_Upload', index=False)
+
+                # Sheet 3: Summary
+                if summary_data:
+                    summary_rows = []
+                    for key, value in summary_data.items():
+                        if isinstance(value, dict):
+                            for sub_key, sub_value in value.items():
+                                summary_rows.append({
+                                    'Category': key,
+                                    'Metric': sub_key,
+                                    'Value': str(sub_value)
+                                })
+                        else:
+                            summary_rows.append({
+                                'Category': 'General',
+                                'Metric': key,
+                                'Value': str(value)
+                            })
+
+                    summary_df = pd.DataFrame(summary_rows)
+                    summary_df.to_excel(writer, sheet_name='Summary', index=False)
+
+                # Sheet 4: Player Pool
+                if df is not None:
+                    player_df = df[[
+                        'Player', 'Position', 'Team', 'Salary',
+                        'Projected_Points', 'Ownership'
+                    ]].copy()
+                    player_df.to_excel(writer, sheet_name='Player_Pool', index=False)
+
+            self.logger.log(
+                f"Exported {len(lineups)} lineups to Excel: {filename}",
+                "INFO"
+            )
+
+            return True
+
+        except Exception as e:
+            self.logger.log_exception(e, "export_lineups (Excel)")
+            return False
+
+
+# ============================================================================
+# CONSOLE FORMATTER
+# ============================================================================
+
+
+class ConsoleFormatter:
+    """
+    Format lineups for console display
+
+    Creates human-readable console output with tables and statistics.
+    """
+
+    def __init__(self, logger: Optional[OptimizerLogger] = None):
+        """
+        Initialize console formatter
+
+        Args:
+            logger: Optional logger instance
+        """
+        self.logger = logger or get_logger()
+
+    def print_lineup(
+        self,
+        lineup: Dict[str, Any],
+        show_details: bool = True
+    ) -> None:
+        """
+        Print single lineup to console
+
+        Args:
+            lineup: Lineup dictionary
+            show_details: Show detailed statistics
+        """
+        print("\n" + "=" * 70)
+        print(f"LINEUP #{lineup.get('Lineup', 0)}")
+        print("=" * 70)
+
+        # Captain
+        print(f"\n🎖️  CAPTAIN: {lineup.get('Captain', 'Unknown')}")
+
+        # FLEX
+        flex = lineup.get('FLEX', [])
+        if isinstance(flex, str):
+            flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+        print(f"\nFLEX Players:")
+        for i, player in enumerate(flex, 1):
+            print(f"  {i}. {player}")
+
+        # Basic stats
+        print(f"\n📊 Statistics:")
+        print(f"  Salary: ${lineup.get('Total_Salary', 0):,} "
+              f"(Remaining: ${lineup.get('Remaining_Salary', 0):,})")
+        print(f"  Projected Points: {lineup.get('Projected', 0):.2f}")
+        print(f"  Average Ownership: {lineup.get('Avg_Ownership', 0):.1f}%")
+
+        # Detailed stats
+        if show_details:
+            if 'Ceiling_90th' in lineup:
+                print(f"\n🎯 Monte Carlo Simulation:")
+                print(f"  Ceiling (90th): {lineup.get('Ceiling_90th', 0):.2f} pts")
+                print(f"  Floor (10th): {lineup.get('Floor_10th', 0):.2f} pts")
+                print(f"  Sharpe Ratio: {lineup.get('Sharpe_Ratio', 0):.3f}")
+                print(f"  Win Probability: {lineup.get('Win_Probability', 0):.2%}")
+
+            # Team distribution
+            team_dist = lineup.get('Team_Distribution', {})
+            if team_dist:
+                print(f"\n🏈 Team Distribution:")
+                for team, count in team_dist.items():
+                    print(f"  {team}: {count} players")
+
+        print("=" * 70)
+
+    def print_lineup_table(
+        self,
+        lineups: List[Dict[str, Any]],
+        max_lineups: int = 10
+    ) -> None:
+        """
+        Print lineup table to console
+
+        Args:
+            lineups: List of lineup dictionaries
+            max_lineups: Maximum lineups to display
+        """
+        if not lineups:
+            print("No lineups to display.")
+            return
+
+        print("\n" + "=" * 120)
+        print(f"LINEUP SUMMARY (Showing {min(len(lineups), max_lineups)} of {len(lineups)})")
+        print("=" * 120)
+
+        # Header
+        print(f"{'#':<4} {'Captain':<20} {'Salary':>10} {'Proj':>8} {'Own%':>7} {'Ceil':>8} {'Floor':>8} {'Sharpe':>8}")
+        print("-" * 120)
+
+        # Rows
+        for i, lineup in enumerate(lineups[:max_lineups], 1):
+            captain = lineup.get('Captain', 'Unknown')[:18]
+            salary = lineup.get('Total_Salary', 0)
+            proj = lineup.get('Projected', 0)
+            own = lineup.get('Avg_Ownership', 0)
+            ceiling = lineup.get('Ceiling_90th', 0)
+            floor = lineup.get('Floor_10th', 0)
+            sharpe = lineup.get('Sharpe_Ratio', 0)
+
+            print(f"{i:<4} {captain:<20} ${salary:>9,} {proj:>8.2f} {own:>6.1f}% "
+                  f"{ceiling:>8.2f} {floor:>8.2f} {sharpe:>8.3f}")
+
+        print("=" * 120)
+
+        # Summary stats
+        if lineups:
+            avg_salary = np.mean([l.get('Total_Salary', 0) for l in lineups])
+            avg_proj = np.mean([l.get('Projected', 0) for l in lineups])
+            avg_own = np.mean([l.get('Avg_Ownership', 0) for l in lineups])
+
+            print(f"\nAverages: Salary: ${avg_salary:,.0f} | "
+                  f"Projection: {avg_proj:.2f} | "
+                  f"Ownership: {avg_own:.1f}%")
+
+    def print_player_exposure(
+        self,
+        lineups: List[Dict[str, Any]],
+        top_n: int = 20
+    ) -> None:
+        """
+        Print player exposure report
+
+        Args:
+            lineups: List of lineup dictionaries
+            top_n: Number of top players to show
+        """
+        if not lineups:
+            print("No lineups to analyze.")
+            return
+
+        # Count player occurrences
+        player_counts: DefaultDict[str, int] = defaultdict(int)
+
+        for lineup in lineups:
+            captain = lineup.get('Captain', '')
+            flex = lineup.get('FLEX', [])
+
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+            all_players = [captain] + flex
+            for player in all_players:
+                player_counts[player] += 1
+
+        # Calculate exposures
+        total_lineups = len(lineups)
+        exposures = {
+            player: (count / total_lineups) * 100
+            for player, count in player_counts.items()
+        }
+
+        # Sort by exposure
+        sorted_exposures = sorted(
+            exposures.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        print("\n" + "=" * 70)
+        print(f"PLAYER EXPOSURE ({total_lineups} lineups)")
+        print("=" * 70)
+        print(f"{'Player':<30} {'Exposure':>15} {'Count':>10}")
+        print("-" * 70)
+
+        for player, exposure in sorted_exposures[:top_n]:
+            count = player_counts[player]
+            print(f"{player:<30} {exposure:>14.1f}% {count:>10}")
+
+        print("=" * 70)
+
+    def print_optimization_summary(
+        self,
+        summary: Dict[str, Any]
+    ) -> None:
+        """
+        Print optimization summary
+
+        Args:
+            summary: Summary dictionary from MasterOptimizer
+        """
+        print("\n" + "=" * 70)
+        print("OPTIMIZATION SUMMARY")
+        print("=" * 70)
+
+        # Lineups generated
+        print(f"\nLineups Generated: {summary.get('lineups_generated', 0)}")
+
+        # Optimizers used
+        optimizers = summary.get('optimizers_used', [])
+        if optimizers:
+            print(f"Optimizers Used: {', '.join(optimizers)}")
+
+        # Performance metrics
+        perf = summary.get('performance_metrics', {})
+        if perf:
+            print("\nPerformance Metrics:")
+            for phase, stats in perf.items():
+                if stats and isinstance(stats, dict):
+                    total = stats.get('total', 0)
+                    count = stats.get('count', 0)
+                    mean = stats.get('mean', 0)
+                    print(f"  {phase}: {total:.2f}s total, "
+                          f"{count} operations, {mean:.3f}s avg")
+
+        # Cache stats
+        cache_stats = summary.get('cache_stats', {})
+        if cache_stats:
+            print(f"\nCache Statistics:")
+            print(f"  Hit Rate: {cache_stats.get('hit_rate', 0):.1f}%")
+            print(f"  Size: {cache_stats.get('size', 0)}/{cache_stats.get('max_size', 0)}")
+
+        # AI decision summary
+        ai_summary = summary.get('ai_decision_summary', {})
+        if ai_summary:
+            print(f"\nAI Analysis:")
+            print(f"  Total Decisions: {ai_summary.get('total_decisions', 0)}")
+            print(f"  Avg Confidence: {ai_summary.get('average_confidence', 0):.2%}")
+
+        # Refinement summary
+        refinement = summary.get('refinement_summary', {})
+        if refinement and refinement.get('total_iterations', 0) > 0:
+            print(f"\nIterative Refinement:")
+            print(f"  Iterations: {refinement.get('total_iterations', 0)}")
+            print(f"  Total Improvement: {refinement.get('total_improvement', 0):.2%}")
+
+        print("=" * 70)
+
+
+# ============================================================================
+# HTML REPORTER
+# ============================================================================
+
+
+class HTMLReporter:
+    """
+    Generate HTML reports for lineups
+
+    Creates interactive HTML reports with styling and charts.
+    """
+
+    def __init__(self, logger: Optional[OptimizerLogger] = None):
+        """
+        Initialize HTML reporter
+
+        Args:
+            logger: Optional logger instance
+        """
+        self.logger = logger or get_logger()
+
+    def generate_report(
+        self,
+        lineups: List[Dict[str, Any]],
+        filename: str,
+        summary_data: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Generate HTML report
+
+        Args:
+            lineups: List of lineup dictionaries
+            filename: Output filename
+            summary_data: Optional summary data
+
+        Returns:
+            True if successful
+        """
+        try:
+            if not lineups:
+                self.logger.log("No lineups to report", "WARNING")
+                return False
+
+            # Ensure .html extension
+            if not filename.endswith('.html'):
+                filename += '.html'
+
+            html_content = self._build_html(lineups, summary_data)
+
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            self.logger.log(
+                f"Generated HTML report: {filename}",
+                "INFO"
+            )
+
+            return True
+
+        except Exception as e:
+            self.logger.log_exception(e, "generate_report")
+            return False
+
+    def _build_html(
+        self,
+        lineups: List[Dict[str, Any]],
+        summary_data: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        Build HTML content
+
+        Args:
+            lineups: List of lineup dictionaries
+            summary_data: Optional summary data
+
+        Returns:
+            HTML string
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DFS Optimizer Report</title>
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }}
+        .header {{
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }}
+        .header h1 {{
+            margin: 0;
+        }}
+        .summary {{
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        th {{
+            background-color: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }}
+        td {{
+            padding: 10px;
+            border-bottom: 1px solid #ecf0f1;
+        }}
+        tr:hover {{
+            background-color: #f8f9fa;
+        }}
+        .lineup-card {{
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        .captain {{
+            font-weight: bold;
+            color: #e74c3c;
+        }}
+        .stat {{
+            display: inline-block;
+            margin-right: 20px;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 30px;
+            color: #7f8c8d;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏈 NFL DFS Showdown Optimizer Report</h1>
+        <p>Generated: {timestamp}</p>
+        <p>Total Lineups: {len(lineups)}</p>
+    </div>
+"""
+
+        # Summary section
+        if summary_data:
+            html += """
+    <div class="summary">
+        <h2>Summary</h2>
+"""
+            for key, value in summary_data.items():
+                if not isinstance(value, dict):
+                    html += f"        <p><strong>{key}:</strong> {value}</p>\n"
+
+            html += "    </div>\n"
+
+        # Lineup table
+        html += """
+    <h2>Lineups</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Captain</th>
+                <th>FLEX Players</th>
+                <th>Salary</th>
+                <th>Projected</th>
+                <th>Own %</th>
+                <th>Ceiling</th>
+                <th>Floor</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+
+        for lineup in lineups:
+            flex = lineup.get('FLEX', [])
+            if isinstance(flex, str):
+                flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+            flex_str = ', '.join(flex)
+
+            html += f"""
+            <tr>
+                <td>{lineup.get('Lineup', 0)}</td>
+                <td class="captain">{lineup.get('Captain', '')}</td>
+                <td>{flex_str}</td>
+                <td>${lineup.get('Total_Salary', 0):,}</td>
+                <td>{lineup.get('Projected', 0):.2f}</td>
+                <td>{lineup.get('Avg_Ownership', 0):.1f}%</td>
+                <td>{lineup.get('Ceiling_90th', 0):.2f}</td>
+                <td>{lineup.get('Floor_10th', 0):.2f}</td>
+            </tr>
+"""
+
+        html += """
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>NFL DFS Optimizer v5.0 - UPDATE 2</p>
+    </div>
+</body>
+</html>
+"""
+
+        return html
+
+
+# ============================================================================
+# UNIFIED OUTPUT MANAGER
+# ============================================================================
+
+
+class OutputManager:
+    """
+    Unified output manager for all export formats
+
+    Coordinates CSV, Excel, HTML, and console output.
+    """
+
+    def __init__(self, logger: Optional[OptimizerLogger] = None):
+        """
+        Initialize output manager
+
+        Args:
+            logger: Optional logger instance
+        """
+        self.logger = logger or get_logger()
+        self.csv_exporter = CSVExporter(logger)
+        self.excel_exporter = ExcelExporter(logger)
+        self.console_formatter = ConsoleFormatter(logger)
+        self.html_reporter = HTMLReporter(logger)
+
+    def export_all_formats(
+        self,
+        lineups: List[Dict[str, Any]],
+        base_filename: str,
+        df: Optional[pd.DataFrame] = None,
+        summary_data: Optional[Dict[str, Any]] = None,
+        formats: Optional[List[str]] = None
+    ) -> Dict[str, bool]:
+        """
+        Export lineups in multiple formats
+
+        Args:
+            lineups: List of lineup dictionaries
+            base_filename: Base filename (without extension)
+            df: Optional player DataFrame
+            summary_data: Optional summary data
+            formats: List of formats ('csv', 'excel', 'html', 'draftkings')
+                    None = all formats
+
+        Returns:
+            Dictionary mapping format to success status
+        """
+        if formats is None:
+            formats = ['csv', 'excel', 'html', 'draftkings']
+
+        results = {}
+
+        # CSV
+        if 'csv' in formats:
+            results['csv'] = self.csv_exporter.export_lineups(
+                lineups,
+                f"{base_filename}.csv"
+            )
+
+        # Excel
+        if 'excel' in formats:
+            results['excel'] = self.excel_exporter.export_lineups(
+                lineups,
+                f"{base_filename}.xlsx",
+                df=df,
+                summary_data=summary_data
+            )
+
+        # HTML
+        if 'html' in formats:
+            results['html'] = self.html_reporter.generate_report(
+                lineups,
+                f"{base_filename}.html",
+                summary_data=summary_data
+            )
+
+        # DraftKings format
+        if 'draftkings' in formats:
+            results['draftkings'] = self.csv_exporter.export_draftkings_format(
+                lineups,
+                f"{base_filename}_DK.csv"
+            )
+
+        # Log results
+        successful = sum(1 for v in results.values() if v)
+        self.logger.log(
+            f"Exported to {successful}/{len(results)} formats successfully",
+            "INFO"
+        )
+
+        return results
+
+    def display_console_summary(
+        self,
+        lineups: List[Dict[str, Any]],
+        summary_data: Optional[Dict[str, Any]] = None,
+        show_exposure: bool = True,
+        max_lineups: int = 10
+    ) -> None:
+        """
+        Display comprehensive console summary
+
+        Args:
+            lineups: List of lineup dictionaries
+            summary_data: Optional summary data
+            show_exposure: Show player exposure
+            max_lineups: Maximum lineups to display in table
+        """
+        # Lineup table
+        self.console_formatter.print_lineup_table(lineups, max_lineups)
+
+        # Player exposure
+        if show_exposure:
+            self.console_formatter.print_player_exposure(lineups)
+
+        # Optimization summary
+        if summary_data:
+            self.console_formatter.print_optimization_summary(summary_data)
+
+"""
+PART 13 OF 13: MASTER OPTIMIZER & MAIN EXECUTION (UPDATE 2 INTEGRATED)
+
+UPDATE 2 INTEGRATION:
+✅ 5 AI Strategists (Game Theory, Correlation, Contrarian, Stacking Expert, Leverage)
+✅ BayesianSynthesisEngine for confidence-weighted aggregation
+✅ IterativeRefinementEngine for multi-round optimization
+✅ MultiDimensionalScorer integration
+✅ GameEnvironmentAnalyzer for contextual adjustments
+✅ NarrativeIntegrationEngine for sentiment analysis
+✅ Enhanced optimization flow with iterative refinement
+"""
+
+# ============================================================================
+# MASTER OPTIMIZER (UPDATE 2 - FULLY INTEGRATED)
+# ============================================================================
+
 
 class MasterOptimizer:
-    """Intelligent master optimizer with GUARANTEED lineup generation"""
+    """
+    Ultimate State Master Optimizer with UPDATE 2 AI Integration
+
+    FEATURES:
+    - 5 AI Strategists running in parallel
+    - Bayesian synthesis of AI recommendations
+    - Iterative refinement with AI feedback
+    - Multi-dimensional lineup scoring
+    - Game environment analysis
+    - Narrative integration
+    - 10-level progressive fallback
+    - 3-tier emergency system
+    - GUARANTEED lineup generation
+    """
 
     def __init__(
         self,
@@ -6720,14 +10967,28 @@ class MasterOptimizer:
         api_key: Optional[str] = None,
         base_constraints: Optional[LineupConstraints] = None
     ):
+        """
+        Initialize Master Optimizer
+
+        Args:
+            df: Player DataFrame
+            game_info: Game context information
+            salary_cap: Salary cap
+            field_config: Field-specific configuration
+            api_key: Optional API key for AI
+            base_constraints: Optional base constraints
+        """
         self.df = df
         self.game_info = game_info
         self.salary_cap = salary_cap
-        self.field_config = field_config or OptimizerConfig.get_field_config('large_field')
+        self.field_config = field_config or OptimizerConfig.get_field_config(
+            'large_field'
+        )
         self.logger = get_logger()
         self.perf_monitor = get_performance_monitor()
         self.base_constraints = base_constraints
 
+        # Analyze player pool
         self.pool_analyzer = PlayerPoolAnalyzer(df)
         self.pool_analysis = self.pool_analyzer.analyze()
 
@@ -6738,21 +10999,56 @@ class MasterOptimizer:
             "INFO"
         )
 
+        # Initialize core components
         self.mc_engine = MonteCarloSimulationEngine(df, game_info)
-        self.api_manager = AnthropicAPIManager(api_key=api_key, cache_enabled=True)
+        self.api_manager = AnthropicAPIManager(
+            api_key=api_key,
+            cache_enabled=True
+        )
 
+        # UPDATE 2: Initialize all 5 AI Strategists
         self.game_theory = GameTheoryStrategist(self.api_manager)
         self.correlation = CorrelationStrategist(self.api_manager)
         self.contrarian = ContrarianStrategist(self.api_manager)
-        self.synthesis = AISynthesisEngine()
+        self.stacking_expert = StackingExpertStrategist(self.api_manager)
+        self.leverage_specialist = LeverageSpecialist(self.api_manager)
 
+        # UPDATE 2: Enhanced synthesis engines
+        self.synthesis = AISynthesisEngine()
+        self.bayesian_synthesis = BayesianSynthesisEngine()
+
+        # UPDATE 2: Iterative refinement
+        self.refinement_engine = IterativeRefinementEngine(
+            self.api_manager,
+            df,
+            game_info
+        )
+
+        # UPDATE 2: Advanced scoring and analysis
+        self.multi_dimensional_scorer = MultiDimensionalScorer(
+            df,
+            game_info,
+            mode='balanced',
+            field_size=field_config.get('name', 'large_field')
+        )
+        self.game_env_analyzer = GameEnvironmentAnalyzer(game_info)
+        self.narrative_engine = NarrativeIntegrationEngine(df)
+        self.leverage_calculator = LeverageCalculator(
+            df,
+            field_size=field_config.get('name', 'large_field')
+        )
+
+        # Storage
         self.ai_recommendations: List[AIRecommendation] = []
         self.synthesized_recommendation: Optional[AIRecommendation] = None
         self.final_lineups: List[Dict[str, Any]] = []
-        self.optimizer_instance: Optional[Union[StandardLineupOptimizer, GeneticAlgorithmOptimizer]] = None
+        self.optimizer_instances: Dict[str, Any] = {}
         self.batch_validator: Optional[BatchLineupValidator] = None
         self.diversity_tracker = DiversityTracker(similarity_threshold=0.5)
         self.optimization_history: List[Dict[str, Any]] = []
+
+        # UPDATE 2: AI decision tracking
+        self.ai_decision_tracker = AIDecisionTracker()
 
     def run_full_optimization(
         self,
@@ -6761,15 +11057,37 @@ class MasterOptimizer:
         use_genetic: bool = False,
         optimization_mode: str = 'balanced',
         ai_enforcement: str = 'Moderate',
+        use_ensemble: bool = False,
+        use_iterative_refinement: bool = True,
+        use_bayesian_synthesis: bool = True,
+        algorithm_override: Optional[str] = None,
         progress_callback: Optional[Callable[[str, float], None]] = None
     ) -> List[Dict[str, Any]]:
-        """SMART optimization with GUARANTEED lineup generation"""
+        """
+        ULTIMATE STATE: Full optimization with UPDATE 2 AI integration
+
+        Args:
+            num_lineups: Number of lineups to generate
+            use_ai: Use AI strategists
+            use_genetic: Force genetic algorithm
+            optimization_mode: Optimization mode
+            ai_enforcement: AI enforcement level
+            use_ensemble: Force ensemble mode
+            use_iterative_refinement: Enable iterative AI refinement
+            use_bayesian_synthesis: Use Bayesian AI synthesis
+            algorithm_override: Override algorithm selection
+            progress_callback: Progress callback function
+
+        Returns:
+            List of lineups (GUARANTEED at least 1)
+        """
         try:
-            self.logger.log("="*60, "INFO")
-            self.logger.log("SMART ADAPTIVE OPTIMIZATION STARTING", "INFO")
-            self.logger.log("="*60, "INFO")
+            self.logger.log("=" * 60, "INFO")
+            self.logger.log("ULTIMATE STATE OPTIMIZATION - UPDATE 2", "INFO")
+            self.logger.log("=" * 60, "INFO")
 
             def update_progress(message: str, progress: float):
+                """Update progress with logging and callback"""
                 self.logger.log(message, "INFO")
                 if progress_callback:
                     try:
@@ -6777,9 +11095,13 @@ class MasterOptimizer:
                     except Exception:
                         pass
 
+            # Step 1: Validate and adjust num_lineups
             update_progress("Analyzing player pool...", 0.0)
 
-            max_reasonable = self.pool_analysis['recommendations'].get('max_reasonable_lineups', 100)
+            max_reasonable = self.pool_analysis['recommendations'].get(
+                'max_reasonable_lineups',
+                100
+            )
             if num_lineups > max_reasonable:
                 self.logger.log(
                     f"⚠️ Adjusting from {num_lineups} to {max_reasonable} lineups",
@@ -6787,21 +11109,26 @@ class MasterOptimizer:
                 )
                 num_lineups = max_reasonable
 
+            # UPDATE 2: Step 2: Run all 5 AI strategists in parallel
             ai_future = None
             ai_executor = None
             if use_ai:
-                update_progress("Starting AI analysis...", 0.05)
+                update_progress("Starting 5-strategist AI analysis...", 0.05)
                 ai_executor = ThreadPoolExecutor(max_workers=1)
                 self.perf_monitor.start_timer('ai_analysis')
-                ai_future = ai_executor.submit(self._run_ai_analysis)
+                ai_future = ai_executor.submit(
+                    self._run_5_strategist_ai_analysis,
+                    use_bayesian_synthesis
+                )
 
+            # Step 3: Build base constraints
             update_progress("Building constraints...", 0.10)
             base_constraints = self._build_base_constraints()
 
-            update_progress("Running pre-flight check...", 0.15)
-            is_feasible, error_msg, suggestions = ConstraintFeasibilityChecker.check(
-                self.df,
-                base_constraints
+            # Step 4: Pre-flight feasibility check
+            update_progress("Running pre-flight check...", 0.12)
+            is_feasible, error_msg, suggestions = (
+                ConstraintFeasibilityChecker.check(self.df, base_constraints)
             )
 
             if not is_feasible:
@@ -6813,298 +11140,600 @@ class MasterOptimizer:
                 self.logger.log(f"⚠️ Pre-flight failed: {error_msg}", "WARNING")
                 self.logger.log("Auto-adjusting constraints...", "INFO")
 
-                optimal_min = self.pool_analysis['recommendations']['optimal_min_salary']
+                # Auto-adjust
+                optimal_min = self.pool_analysis['recommendations'][
+                    'optimal_min_salary'
+                ]
                 base_constraints.min_salary = optimal_min
 
-                is_feasible, _, _ = ConstraintFeasibilityChecker.check(self.df, base_constraints)
+                is_feasible, _, _ = ConstraintFeasibilityChecker.check(
+                    self.df,
+                    base_constraints
+                )
 
                 if is_feasible:
-                    self.logger.log(f"✓ Adjusted min salary to ${optimal_min:,}", "INFO")
+                    self.logger.log(
+                        f"✓ Adjusted min salary to ${optimal_min:,}",
+                        "INFO"
+                    )
                 else:
                     base_constraints.min_salary = int(self.salary_cap * 0.70)
-                    self.logger.log("⚠️ Using emergency minimum (70%)", "WARNING")
+                    self.logger.log(
+                        "⚠️ Using emergency minimum (70%)",
+                        "WARNING"
+                    )
 
-            update_progress("Pre-flight check complete", 0.20)
+            update_progress("Pre-flight check complete", 0.15)
 
+            # UPDATE 2: Step 5: Wait for 5-strategist AI analysis
             if ai_future:
                 try:
-                    update_progress("Finalizing AI analysis...", 0.25)
-                    ai_future.result(timeout=30)
+                    update_progress("Finalizing 5-strategist AI analysis...", 0.20)
+                    ai_future.result(timeout=45)
                     ai_time = self.perf_monitor.stop_timer('ai_analysis')
-                    self.logger.log(f"AI analysis: {ai_time:.2f}s", "INFO")
+                    self.logger.log(
+                        f"5-strategist AI analysis: {ai_time:.2f}s",
+                        "INFO"
+                    )
+
+                    # Log AI insights
+                    if self.synthesized_recommendation:
+                        self.logger.log(
+                            f"AI confidence: "
+                            f"{self.synthesized_recommendation.confidence:.2f}",
+                            "INFO"
+                        )
+                        self.logger.log(
+                            f"AI insights: "
+                            f"{len(self.synthesized_recommendation.key_insights)}",
+                            "INFO"
+                        )
                 except Exception as e:
                     self.logger.log(f"AI timeout: {e}", "WARNING")
                 finally:
                     if ai_executor:
                         ai_executor.shutdown(wait=False)
 
-            update_progress("Finalizing constraints...", 0.30)
-            constraints = self._build_constraints(ai_enforcement if use_ai else 'Advisory')
+            # Step 6: Build final constraints with AI
+            update_progress("Finalizing constraints with AI...", 0.25)
+            constraints = self._build_constraints(
+                ai_enforcement if use_ai else 'Advisory'
+            )
             self.batch_validator = BatchLineupValidator(self.df, constraints)
 
-            update_progress("Determining strategy...", 0.35)
+            # UPDATE 2: Step 7: Apply game environment adjustments
+            update_progress("Analyzing game environment...", 0.28)
+            self._apply_environment_adjustments()
 
-            should_use_genetic = (
-                use_genetic or
-                self.field_config.get('use_genetic', False) or
-                self.pool_analysis['recommendations'].get('use_genetic', False)
+            # Step 8: Select algorithm
+            update_progress("Determining optimization strategy...", 0.30)
+
+            if algorithm_override:
+                selected_algorithm = algorithm_override
+            else:
+                selected_algorithm = self._select_algorithm(
+                    num_lineups,
+                    use_ensemble,
+                    use_genetic,
+                    constraints
+                )
+
+            self.logger.log(
+                f"Selected algorithm: {selected_algorithm}",
+                "INFO"
             )
 
-            lineups = []
+            # Step 9: Run optimization
+            lineups = self._run_optimization_with_algorithm(
+                selected_algorithm,
+                num_lineups,
+                constraints,
+                optimization_mode,
+                progress_callback
+            )
 
-            if should_use_genetic:
-                update_progress("Primary: Genetic Algorithm", 0.40)
-                lineups = self._run_genetic_optimization_smart(
-                    num_lineups, constraints, optimization_mode, progress_callback
-                )
-            else:
-                update_progress("Primary: PuLP Optimizer", 0.40)
-                lineups = self._run_standard_optimization_smart(
-                    num_lineups, constraints, optimization_mode, progress_callback
-                )
-
-            if not lineups or len(lineups) < max(1, num_lineups // 4):
-                self.logger.log(
-                    f"⚠️ Primary: {len(lineups)} lineups. Trying alternative...",
-                    "WARNING"
-                )
-
-                if should_use_genetic:
-                    update_progress("Fallback: PuLP", 0.60)
-                    lineups = self._run_standard_optimization_smart(
-                        num_lineups, constraints, optimization_mode, progress_callback
-                    )
-                else:
-                    update_progress("Fallback: Genetic", 0.60)
-                    lineups = self._run_genetic_optimization_smart(
-                        num_lineups, constraints, optimization_mode, progress_callback
-                    )
-
+            # Step 10: Validate and filter
             if lineups:
-                update_progress(f"Validating {len(lineups)} lineups...", 0.80)
+                update_progress(
+                    f"Validating {len(lineups)} lineups...",
+                    0.75
+                )
                 lineups = self._validate_and_filter_lineups(lineups, constraints)
 
+            # UPDATE 2: Step 11: Iterative refinement
+            refinement_suggestions = []
+            if lineups and use_iterative_refinement and use_ai and not self.api_manager.fallback_mode:
+                update_progress(
+                    f"Starting iterative AI refinement...",
+                    0.78
+                )
+                self.perf_monitor.start_timer('iterative_refinement')
+
+                try:
+                    lineups, refinement_suggestions = (
+                        self.refinement_engine.refine_lineups(
+                            lineups,
+                            max_iterations=2,
+                            improvement_threshold=0.03
+                        )
+                    )
+
+                    refinement_time = self.perf_monitor.stop_timer(
+                        'iterative_refinement'
+                    )
+                    self.logger.log(
+                        f"Iterative refinement: {refinement_time:.2f}s, "
+                        f"{len(refinement_suggestions)} improvements",
+                        "INFO"
+                    )
+
+                    if refinement_suggestions:
+                        self.logger.log(
+                            f"AI improvements: {refinement_suggestions[:3]}",
+                            "INFO"
+                        )
+                except Exception as e:
+                    self.logger.log_exception(e, "iterative_refinement")
+
+            # Step 12: Monte Carlo simulation
             if lineups and self.mc_engine:
-                update_progress(f"Simulating {len(lineups)} lineups...", 0.85)
+                update_progress(
+                    f"Simulating {len(lineups)} lineups...",
+                    0.82
+                )
                 self.perf_monitor.start_timer('monte_carlo')
                 lineups = self._simulate_lineups(lineups, progress_callback)
                 mc_time = self.perf_monitor.stop_timer('monte_carlo')
                 self.perf_monitor.record_phase_time('monte_carlo', mc_time)
 
+            # UPDATE 2: Step 13: Multi-dimensional scoring
             if lineups:
-                update_progress("Quality filtering...", 0.95)
+                update_progress("Multi-dimensional scoring...", 0.88)
+                lineups = self._apply_multi_dimensional_scoring(lineups)
+
+            # Step 14: Quality filtering
+            if lineups:
+                update_progress("Quality filtering...", 0.92)
                 lineups = self._quality_filter_lineups(lineups)
 
+            # Step 15: Post-processing
             lineups = self._post_process_lineups(lineups)
             self.final_lineups = lineups
 
-            # CRITICAL: GUARANTEED LINEUP GENERATION
+            # CRITICAL: 3-TIER EMERGENCY FALLBACK
             if not lineups or len(lineups) == 0:
                 self.logger.log(
-                    "⚠️ All optimization attempts returned empty - forcing emergency generation",
+                    "⚠️ All optimization attempts returned empty - "
+                    "initiating 3-tier emergency system",
                     "ERROR"
                 )
-                update_progress("Emergency: Generating fallback lineup...", 0.98)
 
-                emergency_lineup = self._generate_emergency_lineup()
+                # TIER 1: Emergency Smart Greedy
+                update_progress("Emergency Tier 1: Smart Greedy...", 0.95)
+                lineups = self._tier1_emergency_smart_greedy(num_lineups)
 
-                if emergency_lineup:
-                    lineups = [emergency_lineup]
-                    self.final_lineups = lineups
-                    self.logger.log("✓ Emergency lineup generated", "WARNING")
-                else:
-                    self.logger.log("🆘 Emergency failed - creating basic lineup", "ERROR")
-                    basic_lineup = self._create_basic_lineup()
-                    if basic_lineup:
-                        lineups = [basic_lineup]
-                        self.final_lineups = lineups
-                        self.logger.log("✓ Basic lineup created", "WARNING")
+                if not lineups:
+                    # TIER 2: Emergency value-based
+                    update_progress("Emergency Tier 2: Value-based...", 0.97)
+                    lineups = self._tier2_emergency_value_based()
 
+                if not lineups:
+                    # TIER 3: Basic guaranteed lineup
+                    update_progress("Emergency Tier 3: Basic guaranteed...", 0.99)
+                    lineups = self._tier3_basic_guaranteed()
+
+                self.final_lineups = lineups
+
+            # Final status
             if lineups:
                 update_progress(
                     f"✓ Optimization complete: {len(lineups)} lineup(s) generated",
                     1.0
                 )
-                self.logger.log("="*60, "INFO")
-                self.logger.log(f"SUCCESS: {len(lineups)} lineups generated", "INFO")
-                self.logger.log("="*60, "INFO")
+                self.logger.log("=" * 60, "INFO")
+                self.logger.log(
+                    f"SUCCESS: {len(lineups)} lineups generated",
+                    "INFO"
+                )
+
+                # UPDATE 2: Log refinement summary
+                if refinement_suggestions:
+                    self.logger.log(
+                        f"AI refinement suggestions: {len(refinement_suggestions)}",
+                        "INFO"
+                    )
+
+                self.logger.log("=" * 60, "INFO")
             else:
-                self.logger.log("⚠️ CRITICAL: Still no lineups after all fallbacks!", "ERROR")
+                self.logger.log(
+                    "🆘 CRITICAL: All 3 emergency tiers failed!",
+                    "ERROR"
+                )
                 update_progress("Failed to generate any lineups", 1.0)
 
             return lineups
 
         except Exception as e:
-            self.logger.log_exception(e, "run_full_optimization", critical=True)
+            self.logger.log_exception(
+                e,
+                "run_full_optimization",
+                critical=True
+            )
 
-            self.logger.log("🆘 EXCEPTION HANDLER: Creating basic lineup", "ERROR")
-            basic_lineup = self._create_basic_lineup()
+            # Absolute last resort
+            self.logger.log(
+                "🆘 EXCEPTION HANDLER: Creating basic lineup",
+                "ERROR"
+            )
+            basic_lineup = self._tier3_basic_guaranteed()
 
             if basic_lineup:
-                return [basic_lineup]
+                return basic_lineup
 
             return []
 
-    def _run_standard_optimization_smart(
+    def _run_5_strategist_ai_analysis(
         self,
-        num_lineups: int,
-        constraints: LineupConstraints,
-        mode: str,
-        progress_callback: Optional[Callable[[str, float], None]] = None
-    ) -> List[Dict[str, Any]]:
-        """SMART PuLP optimization with 7-level progressive fallback"""
+        use_bayesian: bool = True
+    ) -> None:
+        """
+        UPDATE 2: Run all 5 AI strategists in parallel
+
+        Args:
+            use_bayesian: Use Bayesian synthesis
+        """
         try:
-            self.perf_monitor.start_timer('lineup_generation')
+            self.ai_recommendations = []
 
-            base_randomness = self.pool_analysis['recommendations'].get('suggested_randomness', 0.15)
-            base_diversity = self.pool_analysis['recommendations'].get('suggested_diversity', 1)
-
-            optimize_for = 'projection'
-            if mode == 'ceiling':
-                optimize_for = 'ceiling'
-
-            fallback_levels = [
-                {
-                    'name': 'Optimal',
-                    'min_salary': self.pool_analysis['recommendations'].get('optimal_min_salary', constraints.min_salary),
-                    'randomness': base_randomness,
-                    'diversity': base_diversity,
-                    'remove_locks': False
-                },
-                {
-                    'name': 'Standard',
-                    'min_salary': constraints.min_salary,
-                    'randomness': base_randomness * 1.2,
-                    'diversity': base_diversity,
-                    'remove_locks': False
-                },
-                {
-                    'name': 'Relaxed -5%',
-                    'min_salary': int(constraints.min_salary * 0.95),
-                    'randomness': base_randomness * 1.5,
-                    'diversity': max(1, base_diversity - 1),
-                    'remove_locks': False
-                },
-                {
-                    'name': 'Moderate -10%',
-                    'min_salary': int(constraints.min_salary * 0.90),
-                    'randomness': base_randomness * 2.0,
-                    'diversity': 1,
-                    'remove_locks': False
-                },
-                {
-                    'name': 'Aggressive -15%',
-                    'min_salary': int(constraints.min_salary * 0.85),
-                    'randomness': base_randomness * 2.5,
-                    'diversity': 1,
-                    'remove_locks': False
-                },
-                {
-                    'name': 'Very Aggressive -20%',
-                    'min_salary': int(constraints.min_salary * 0.80),
-                    'randomness': base_randomness * 3.0,
-                    'diversity': 1,
-                    'remove_locks': True
-                },
-                {
-                    'name': 'EMERGENCY 70%',
-                    'min_salary': int(self.salary_cap * 0.70),
-                    'randomness': 0.35,
-                    'diversity': 1,
-                    'remove_locks': True
-                }
+            # List of all 5 strategists
+            strategists = [
+                (self.game_theory, "Game Theory"),
+                (self.correlation, "Correlation"),
+                (self.contrarian, "Contrarian"),
+                (self.stacking_expert, "Stacking Expert"),
+                (self.leverage_specialist, "Leverage Specialist")
             ]
 
-            lineups = []
+            # Run strategists in parallel
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {
+                    executor.submit(
+                        strategist.analyze,
+                        self.df,
+                        self.game_info,
+                        self.field_config
+                    ): name
+                    for strategist, name in strategists
+                }
 
-            for level_num, level in enumerate(fallback_levels, 1):
-                self.logger.log(f"Attempting level {level_num}/7: {level['name']}", "INFO")
-
-                if progress_callback:
+                for future in as_completed(futures):
+                    name = futures[future]
                     try:
-                        progress = 0.40 + (level_num / len(fallback_levels)) * 0.35
-                        progress_callback(f"Strategy: {level['name']}", progress)
-                    except Exception:
-                        pass
+                        rec = future.result(timeout=15)
+                        self.ai_recommendations.append(rec)
 
-                level_constraints = LineupConstraints(
-                    min_salary=level['min_salary'],
-                    max_salary=constraints.max_salary,
-                    locked_players=set() if level['remove_locks'] else constraints.locked_players.copy(),
-                    banned_players=set() if level['remove_locks'] else constraints.banned_players.copy()
-                )
+                        # Track decision
+                        self.ai_decision_tracker.track_decision(
+                            'strategist_analysis',
+                            rec,
+                            {'strategist': name}
+                        )
 
-                optimizer = StandardLineupOptimizer(
-                    df=self.df,
-                    salary_cap=self.salary_cap,
-                    constraints=level_constraints,
-                    mc_engine=self.mc_engine
-                )
+                        self.logger.log(
+                            f"{name}: confidence={rec.confidence:.2f}, "
+                            f"insights={len(rec.key_insights)}",
+                            "INFO"
+                        )
+                    except TimeoutError:
+                        self.logger.log(
+                            f"{name} timed out",
+                            "WARNING"
+                        )
+                    except Exception as e:
+                        self.logger.log_exception(e, f"{name}")
 
-                self.optimizer_instance = optimizer
-
-                try:
-                    lineups = optimizer.generate_lineups(
-                        num_lineups=num_lineups,
-                        randomness=level['randomness'],
-                        diversity_threshold=level['diversity'],
-                        optimize_for=optimize_for
-                    )
-                except Exception as e:
-                    self.logger.log(f"Level {level_num} error: {e}", "DEBUG")
-                    lineups = []
-
-                min_acceptable = max(1, num_lineups // 3)
-
-                if lineups and len(lineups) >= min_acceptable:
-                    self.logger.log(f"✓ Level {level_num}: {len(lineups)} lineups", "INFO")
-
-                    if level_num > 1:
-                        pct = int(level['min_salary'] / self.salary_cap * 100)
-                        self.logger.log(f"ℹ️ Adjusted: {pct}% min salary", "INFO")
-
-                    break
-                else:
-                    self.logger.log(f"Level {level_num}: {len(lineups)}/{min_acceptable}", "DEBUG")
-
-            if not lineups or len(lineups) == 0:
-                self.logger.log("="*60, "ERROR")
-                self.logger.log("ALL 7 FALLBACK LEVELS FAILED", "ERROR")
-                self.logger.log("="*60, "ERROR")
-
-                if self.optimizer_instance and hasattr(self.optimizer_instance, 'get_constraint_diagnostics'):
-                    try:
-                        diag = self.optimizer_instance.get_constraint_diagnostics()
-                        self.logger.log(f"Diagnostics: {diag}", "ERROR")
-                    except Exception:
-                        pass
-
-                self.logger.log("Attempted levels:", "ERROR")
-                for i, level in enumerate(fallback_levels, 1):
+            # Synthesize recommendations
+            if self.ai_recommendations:
+                if use_bayesian:
                     self.logger.log(
-                        f"  {i}. {level['name']}: "
-                        f"min=${level['min_salary']:,}, "
-                        f"rand={level['randomness']:.2f}",
-                        "ERROR"
+                        "Using Bayesian synthesis for AI aggregation",
+                        "INFO"
+                    )
+                    self.synthesized_recommendation = (
+                        self.bayesian_synthesis.bayesian_aggregate(
+                            self.ai_recommendations
+                        )
+                    )
+                else:
+                    self.logger.log(
+                        "Using weighted voting synthesis",
+                        "INFO"
+                    )
+                    self.synthesized_recommendation = self.synthesis.synthesize(
+                        self.ai_recommendations,
+                        use_bayesian=False
                     )
 
-            gen_time = self.perf_monitor.stop_timer('lineup_generation')
-            self.perf_monitor.record_phase_time('lineup_generation', gen_time)
+                # Track synthesis decision
+                if self.synthesized_recommendation:
+                    self.ai_decision_tracker.track_decision(
+                        'synthesis',
+                        self.synthesized_recommendation,
+                        {
+                            'method': 'bayesian' if use_bayesian else 'weighted',
+                            'input_count': len(self.ai_recommendations)
+                        }
+                    )
+
+                    self.logger.log(
+                        f"Synthesis complete: confidence="
+                        f"{self.synthesized_recommendation.confidence:.2f}",
+                        "INFO"
+                    )
+        except Exception as e:
+            self.logger.log_exception(e, "_run_5_strategist_ai_analysis")
+
+    def _apply_environment_adjustments(self) -> None:
+        """
+        UPDATE 2: Apply game environment adjustments to projections
+        """
+        try:
+            env_summary = self.game_env_analyzer.get_environment_summary()
+
+            self.logger.log(
+                f"Environment: weather_impact={env_summary['weather_impact']:.2f}, "
+                f"dome={env_summary['is_dome']}",
+                "INFO"
+            )
+
+            # Apply adjustments to DataFrame
+            for idx, row in self.df.iterrows():
+                player = row['Player']
+                position = row['Position']
+                team = row['Team']
+
+                adjustment = self.game_env_analyzer.get_player_adjustment(
+                    player,
+                    position,
+                    team
+                )
+
+                if adjustment != 1.0:
+                    self.df.at[idx, 'Projected_Points'] *= adjustment
+
+            # Log narrative insights
+            narrative_insights = self.narrative_engine.get_narrative_insights()
+            for insight in narrative_insights:
+                self.logger.log(f"Narrative: {insight}", "INFO")
+
+        except Exception as e:
+            self.logger.log_exception(e, "_apply_environment_adjustments")
+
+    def _apply_multi_dimensional_scoring(
+        self,
+        lineups: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        UPDATE 2: Apply multi-dimensional scoring to lineups
+
+        Args:
+            lineups: List of lineups
+
+        Returns:
+            Lineups with multi-dimensional scores
+        """
+        try:
+            for lineup in lineups:
+                captain = lineup.get('Captain', '')
+                flex = lineup.get('FLEX', [])
+
+                if isinstance(flex, str):
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
+
+                # Get simulation results if available
+                sim_results = None
+                if 'Ceiling_90th' in lineup:
+                    sim_results = SimulationResults(
+                        mean_points=lineup.get('Projected', 0),
+                        median_points=lineup.get('Projected', 0),
+                        std_points=0,
+                        min_points=lineup.get('Floor_10th', 0),
+                        max_points=lineup.get('Ceiling_90th', 0),
+                        ceiling_90th=lineup.get('Ceiling_90th', 0),
+                        floor_10th=lineup.get('Floor_10th', 0),
+                        sharpe_ratio=lineup.get('Sharpe_Ratio', 0),
+                        win_probability=lineup.get('Win_Probability', 0)
+                    )
+
+                # Calculate multi-dimensional score
+                scores = self.multi_dimensional_scorer.score_lineup(
+                    captain,
+                    flex,
+                    sim_results
+                )
+
+                # Add scores to lineup
+                lineup['MultiDim_Total'] = scores['total']
+                lineup['MultiDim_Projection'] = scores['projection']
+                lineup['MultiDim_Value'] = scores['value']
+                lineup['MultiDim_Leverage'] = scores['leverage']
+                lineup['MultiDim_Correlation'] = scores['correlation']
+                lineup['MultiDim_Ceiling'] = scores['ceiling']
 
             return lineups
 
         except Exception as e:
-            self.logger.log_exception(e, "_run_standard_optimization_smart")
+            self.logger.log_exception(e, "_apply_multi_dimensional_scoring")
+            return lineups
+
+    def _select_algorithm(
+        self,
+        num_lineups: int,
+        use_ensemble: bool,
+        use_genetic: bool,
+        constraints: LineupConstraints
+    ) -> str:
+        """
+        Intelligent algorithm selection
+
+        Args:
+            num_lineups: Number of lineups requested
+            use_ensemble: Force ensemble mode
+            use_genetic: Force genetic mode
+            constraints: Constraints
+
+        Returns:
+            Algorithm name
+        """
+        try:
+            # Force flags
+            if use_ensemble:
+                return 'Ensemble'
+            if use_genetic:
+                return 'Genetic'
+
+            # Use analyzer recommendation
+            recommended = self.pool_analysis['recommendations'].get(
+                'recommended_algorithm',
+                'PuLP'
+            )
+
+            # Override based on lineup count
+            if num_lineups > 50:
+                return 'Ensemble'
+
+            # Override based on constraints
+            has_tight_constraints = (
+                len(constraints.locked_players) > 2 or
+                len(constraints.banned_players) > 5
+            )
+
+            if has_tight_constraints and num_lineups <= 10:
+                return 'PuLP'
+
+            return recommended
+
+        except Exception:
+            return 'PuLP'
+
+    def _run_optimization_with_algorithm(
+        self,
+        algorithm: str,
+        num_lineups: int,
+        constraints: LineupConstraints,
+        optimization_mode: str,
+        progress_callback: Optional[Callable[[str, float], None]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Run optimization with selected algorithm
+
+        Args:
+            algorithm: Algorithm name
+            num_lineups: Number of lineups
+            constraints: Constraints
+            optimization_mode: Optimization mode
+            progress_callback: Progress callback
+
+        Returns:
+            List of lineups
+        """
+        try:
+            self.logger.log(f"Running {algorithm} optimization...", "INFO")
+
+            if algorithm == 'Ensemble':
+                return self._run_ensemble_optimization(
+                    num_lineups,
+                    constraints,
+                    optimization_mode,
+                    progress_callback
+                )
+            elif algorithm == 'Genetic':
+                return self._run_genetic_optimization(
+                    num_lineups,
+                    constraints,
+                    optimization_mode,
+                    progress_callback
+                )
+            elif algorithm == 'SimulatedAnnealing':
+                return self._run_simulated_annealing_optimization(
+                    num_lineups,
+                    constraints,
+                    progress_callback
+                )
+            elif algorithm == 'SmartGreedy':
+                return self._run_smart_greedy_optimization(
+                    num_lineups,
+                    constraints
+                )
+            else:  # PuLP
+                return self._run_standard_optimization_10_level(
+                    num_lineups,
+                    constraints,
+                    optimization_mode,
+                    progress_callback
+                )
+
+        except Exception as e:
+            self.logger.log_exception(
+                e,
+                f"_run_optimization_with_algorithm ({algorithm})"
+            )
             return []
 
-    def _run_genetic_optimization_smart(
+    def _run_ensemble_optimization(
         self,
         num_lineups: int,
         constraints: LineupConstraints,
         mode: str,
-        progress_callback: Optional[Callable[[str, float], None]] = None
+        progress_callback: Optional[Callable[[str, float], None]]
     ) -> List[Dict[str, Any]]:
-        """SMART genetic with fallback"""
+        """Run ensemble optimization (all algorithms in parallel)"""
+        try:
+            self.perf_monitor.start_timer('ensemble_optimization')
+
+            ensemble = EnsembleOptimizer(
+                df=self.df,
+                game_info=self.game_info,
+                salary_cap=self.salary_cap,
+                mc_engine=self.mc_engine,
+                constraints=constraints
+            )
+
+            self.optimizer_instances['Ensemble'] = ensemble
+
+            lineups = ensemble.generate_lineups(
+                num_lineups=num_lineups,
+                use_parallel=True
+            )
+
+            elapsed = self.perf_monitor.stop_timer('ensemble_optimization')
+            self.perf_monitor.record_phase_time('ensemble_optimization', elapsed)
+
+            return lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, "_run_ensemble_optimization")
+
+            # Fallback to PuLP
+            self.logger.log(
+                "Ensemble failed - falling back to PuLP",
+                "WARNING"
+            )
+            return self._run_standard_optimization_10_level(
+                num_lineups,
+                constraints,
+                mode,
+                progress_callback
+            )
+
+    def _run_genetic_optimization(
+        self,
+        num_lineups: int,
+        constraints: LineupConstraints,
+        mode: str,
+        progress_callback: Optional[Callable[[str, float], None]]
+    ) -> List[Dict[str, Any]]:
+        """Run genetic algorithm optimization"""
         try:
             self.perf_monitor.start_timer('genetic_algorithm')
 
@@ -7118,14 +11747,16 @@ class MasterOptimizer:
                 df=self.df,
                 game_info=self.game_info,
                 mc_engine=self.mc_engine,
-                constraints=constraints
+                constraints=constraints,
+                multi_objective=True,
+                optimization_mode=mode
             )
 
-            self.optimizer_instance = ga_optimizer
+            self.optimizer_instances['Genetic'] = ga_optimizer
 
             def ga_progress(generation: int, total: int, best_fitness: float):
                 if progress_callback:
-                    progress = 0.40 + (generation / total) * 0.35
+                    progress = 0.35 + (generation / total) * 0.35
                     message = f"GA {generation}/{total} - Best: {best_fitness:.2f}"
                     try:
                         progress_callback(message, progress)
@@ -7138,35 +11769,280 @@ class MasterOptimizer:
                 progress_callback=ga_progress
             )
 
+            ga_time = self.perf_monitor.stop_timer('genetic_algorithm')
+            self.perf_monitor.record_phase_time('genetic_algorithm', ga_time)
+
             min_acceptable = max(1, num_lineups // 3)
 
             if not lineups or len(lineups) < min_acceptable:
-                self.logger.log(f"⚠️ GA: {len(lineups)}, fallback to standard", "WARNING")
+                self.logger.log(
+                    f"⚠️ GA: {len(lineups)}, fallback to PuLP",
+                    "WARNING"
+                )
 
-                lineups = self._run_standard_optimization_smart(
+                lineups = self._run_standard_optimization_10_level(
                     num_lineups,
                     constraints,
                     mode,
                     progress_callback
                 )
 
-            ga_time = self.perf_monitor.stop_timer('genetic_algorithm')
-            self.perf_monitor.record_phase_time('genetic_algorithm', ga_time)
-
             return lineups
 
         except Exception as e:
-            self.logger.log_exception(e, "_run_genetic_optimization_smart")
+            self.logger.log_exception(e, "_run_genetic_optimization")
 
-            self.logger.log("GA failed, using standard", "WARNING")
-            return self._run_standard_optimization_smart(
+            self.logger.log("GA failed, using PuLP", "WARNING")
+            return self._run_standard_optimization_10_level(
                 num_lineups,
                 constraints,
                 mode,
                 progress_callback
             )
 
-    def _quality_filter_lineups(self, lineups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _run_simulated_annealing_optimization(
+        self,
+        num_lineups: int,
+        constraints: LineupConstraints,
+        progress_callback: Optional[Callable[[str, float], None]]
+    ) -> List[Dict[str, Any]]:
+        """Run simulated annealing optimization"""
+        try:
+            self.perf_monitor.start_timer('simulated_annealing')
+
+            sa_optimizer = SimulatedAnnealingOptimizer(
+                df=self.df,
+                game_info=self.game_info,
+                mc_engine=self.mc_engine,
+                constraints=constraints
+            )
+
+            self.optimizer_instances['SimulatedAnnealing'] = sa_optimizer
+
+            lineups = sa_optimizer.generate_lineups(
+                num_lineups=num_lineups,
+                max_iterations_per_lineup=500
+            )
+
+            sa_time = self.perf_monitor.stop_timer('simulated_annealing')
+            self.perf_monitor.record_phase_time('simulated_annealing', sa_time)
+
+            return lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, "_run_simulated_annealing_optimization")
+            return []
+
+    def _run_smart_greedy_optimization(
+        self,
+        num_lineups: int,
+        constraints: LineupConstraints
+    ) -> List[Dict[str, Any]]:
+        """Run smart greedy optimization (GUARANTEED lineups)"""
+        try:
+            self.perf_monitor.start_timer('smart_greedy')
+
+            greedy_optimizer = SmartGreedyOptimizer(
+                df=self.df,
+                game_info=self.game_info,
+                constraints=constraints
+            )
+
+            self.optimizer_instances['SmartGreedy'] = greedy_optimizer
+
+            lineups = greedy_optimizer.generate_lineups(
+                num_lineups=num_lineups
+            )
+
+            greedy_time = self.perf_monitor.stop_timer('smart_greedy')
+            self.perf_monitor.record_phase_time('smart_greedy', greedy_time)
+
+            return lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, "_run_smart_greedy_optimization")
+            return []
+
+    def _run_standard_optimization_10_level(
+        self,
+        num_lineups: int,
+        constraints: LineupConstraints,
+        mode: str,
+        progress_callback: Optional[Callable[[str, float], None]]
+    ) -> List[Dict[str, Any]]:
+        """Run PuLP optimization with 10-level progressive fallback"""
+        try:
+            self.perf_monitor.start_timer('lineup_generation')
+
+            base_randomness = self.pool_analysis['recommendations'].get(
+                'suggested_randomness',
+                0.15
+            )
+            base_diversity = self.pool_analysis['recommendations'].get(
+                'suggested_diversity',
+                1
+            )
+
+            optimizer = StandardLineupOptimizer(
+                df=self.df,
+                salary_cap=self.salary_cap,
+                constraints=constraints,
+                mc_engine=self.mc_engine
+            )
+
+            self.optimizer_instances['PuLP'] = optimizer
+
+            # Use 10-level fallback
+            lineups = optimizer.generate_lineups_with_10_level_fallback(
+                num_lineups=num_lineups,
+                base_randomness=base_randomness,
+                base_diversity=base_diversity,
+                optimize_for='projection' if mode == 'balanced' else mode
+            )
+
+            gen_time = self.perf_monitor.stop_timer('lineup_generation')
+            self.perf_monitor.record_phase_time('lineup_generation', gen_time)
+
+            return lineups
+
+        except Exception as e:
+            self.logger.log_exception(e, "_run_standard_optimization_10_level")
+            return []
+
+    def _build_base_constraints(self) -> LineupConstraints:
+        """Build base constraints"""
+        if self.base_constraints:
+            return self.base_constraints
+
+        optimal_min = self.pool_analysis['recommendations'].get(
+            'optimal_min_salary',
+            int(self.salary_cap * 0.85)
+        )
+
+        return LineupConstraints(
+            min_salary=optimal_min,
+            max_salary=self.salary_cap
+        )
+
+    def _build_constraints(self, ai_enforcement: str) -> LineupConstraints:
+        """Build constraints with AI integration"""
+        try:
+            base_constraints = self._build_base_constraints()
+
+            if (self.synthesized_recommendation and
+                    ai_enforcement != 'Advisory'):
+                enforcement_level = AIEnforcementLevel[ai_enforcement.upper()]
+                enforcement_engine = AIEnforcementEngine(enforcement_level)
+
+                return enforcement_engine.apply_ai_constraints(
+                    base_constraints,
+                    [self.synthesized_recommendation]
+                )
+
+            return base_constraints
+        except Exception as e:
+            self.logger.log_exception(e, "_build_constraints")
+            return self._build_base_constraints()
+
+    def _validate_and_filter_lineups(
+        self,
+        lineups: List[Dict[str, Any]],
+        constraints: LineupConstraints
+    ) -> List[Dict[str, Any]]:
+        """Validate and filter lineups"""
+        if not lineups:
+            return []
+
+        if self.batch_validator and len(lineups) > 10:
+            is_valid_array, error_messages = (
+                self.batch_validator.validate_batch(lineups)
+            )
+
+            valid_lineups = []
+            for i, (is_valid, lineup) in enumerate(zip(is_valid_array, lineups)):
+                if is_valid:
+                    valid_lineups.append(lineup)
+
+            invalid_count = len(lineups) - len(valid_lineups)
+            if invalid_count > 0:
+                self.logger.log(
+                    f"Filtered {invalid_count} invalid",
+                    "DEBUG"
+                )
+
+            return valid_lineups
+
+        valid_lineups = []
+        for lineup in lineups:
+            salary = lineup.get('Total_Salary', 0)
+
+            if (constraints.min_salary <= salary <=
+                    constraints.max_salary):
+                team_dist = lineup.get('Team_Distribution', {})
+                if team_dist and len(team_dist) >= 2:
+                    valid_lineups.append(lineup)
+
+        return valid_lineups
+
+    def _simulate_lineups(
+        self,
+        lineups: List[Dict[str, Any]],
+        progress_callback: Optional[Callable[[str, float], None]]
+    ) -> List[Dict[str, Any]]:
+        """Add Monte Carlo simulation results"""
+        try:
+            if len(lineups) > 50:
+                batch_size = PerformanceLimits.MEMORY_BATCH_SIZE
+                all_results = {}
+
+                for batch_start in range(0, len(lineups), batch_size):
+                    batch_end = min(batch_start + batch_size, len(lineups))
+                    batch = lineups[batch_start:batch_end]
+
+                    if progress_callback:
+                        progress = 0.82 + (batch_end / len(lineups)) * 0.05
+                        try:
+                            progress_callback(
+                                f"Simulating {batch_end}/{len(lineups)}",
+                                progress
+                            )
+                        except Exception:
+                            pass
+
+                    batch_results = self.mc_engine.evaluate_multiple_lineups(
+                        batch,
+                        parallel=True
+                    )
+
+                    for i, result in batch_results.items():
+                        all_results[batch_start + i] = result
+
+                    if batch_end < len(lineups):
+                        gc.collect()
+
+                results = all_results
+            else:
+                results = self.mc_engine.evaluate_multiple_lineups(
+                    lineups,
+                    parallel=True
+                )
+
+            for idx, sim_results in results.items():
+                if idx < len(lineups):
+                    lineups[idx]['Ceiling_90th'] = sim_results.ceiling_90th
+                    lineups[idx]['Floor_10th'] = sim_results.floor_10th
+                    lineups[idx]['Sharpe_Ratio'] = sim_results.sharpe_ratio
+                    lineups[idx]['Win_Probability'] = sim_results.win_probability
+
+            return lineups
+        except Exception as e:
+            self.logger.log_exception(e, "_simulate_lineups")
+            return lineups
+
+    def _quality_filter_lineups(
+        self,
+        lineups: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Filter low-quality lineups"""
         if not lineups:
             return []
@@ -7190,27 +12066,96 @@ class MasterOptimizer:
             filtered_count = len(lineups) - len(quality_lineups)
 
             if filtered_count > 0:
-                self.logger.log(f"Quality filter: -{filtered_count} lineups", "INFO")
+                self.logger.log(
+                    f"Quality filter: -{filtered_count} lineups",
+                    "INFO"
+                )
 
             if not quality_lineups and lineups:
-                quality_lineups = [max(lineups, key=lambda x: x.get('Projected', 0))]
+                quality_lineups = [
+                    max(lineups, key=lambda x: x.get('Projected', 0))
+                ]
 
             return quality_lineups
 
         except Exception:
             return lineups
 
-    def _generate_emergency_lineup(self) -> Optional[Dict[str, Any]]:
-        """EMERGENCY: Generate one valid lineup using value-based approach"""
+    def _post_process_lineups(
+        self,
+        lineups: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Post-process and rank lineups"""
         try:
-            self.logger.log("Emergency lineup generation (value-based)", "WARNING")
+            for i, lineup in enumerate(lineups, 1):
+                lineup['Lineup'] = i
+
+            # Sort by multi-dimensional score if available, else ceiling
+            if lineups and 'MultiDim_Total' in lineups[0]:
+                lineups.sort(
+                    key=lambda x: x.get('MultiDim_Total', 0),
+                    reverse=True
+                )
+            elif lineups and 'Ceiling_90th' in lineups[0]:
+                lineups.sort(
+                    key=lambda x: x.get('Ceiling_90th', 0),
+                    reverse=True
+                )
+            else:
+                lineups.sort(
+                    key=lambda x: x.get('Projected', 0),
+                    reverse=True
+                )
+
+            for i, lineup in enumerate(lineups, 1):
+                lineup['Lineup'] = i
+
+            return lineups
+        except Exception as e:
+            self.logger.log_exception(e, "_post_process_lineups")
+            return lineups
+
+    def _tier1_emergency_smart_greedy(
+        self,
+        num_lineups: int
+    ) -> List[Dict[str, Any]]:
+        """TIER 1: Emergency Smart Greedy optimizer"""
+        try:
+            self.logger.log(
+                "TIER 1 EMERGENCY: Smart Greedy optimizer",
+                "WARNING"
+            )
+
+            emergency_constraints = LineupConstraints(
+                min_salary=int(self.salary_cap * 0.70),
+                max_salary=self.salary_cap
+            )
+
+            return self._run_smart_greedy_optimization(
+                num_lineups,
+                emergency_constraints
+            )
+
+        except Exception as e:
+            self.logger.log_exception(e, "_tier1_emergency_smart_greedy")
+            return []
+
+    def _tier2_emergency_value_based(self) -> List[Dict[str, Any]]:
+        """TIER 2: Emergency value-based lineup generation"""
+        try:
+            self.logger.log(
+                "TIER 2 EMERGENCY: Value-based generation",
+                "WARNING"
+            )
 
             df_sorted = self.df.copy()
-            df_sorted['value'] = df_sorted['Projected_Points'] / (df_sorted['Salary'] / 1000)
+            df_sorted['value'] = (
+                df_sorted['Projected_Points'] / (df_sorted['Salary'] / 1000)
+            )
             df_sorted = df_sorted.sort_values('value', ascending=False)
 
             for start_idx in range(min(5, len(df_sorted))):
-                selected = df_sorted.iloc[start_idx:start_idx+6]
+                selected = df_sorted.iloc[start_idx:start_idx + 6]
 
                 if len(selected) < 6:
                     continue
@@ -7231,69 +12176,85 @@ class MasterOptimizer:
 
                 lineup = calculate_lineup_metrics(captain, flex, self.df)
                 lineup['Lineup'] = 1
-                lineup['Emergency'] = True
+                lineup['Emergency'] = 'Tier2_ValueBased'
 
                 self.logger.log(
-                    f"Emergency lineup: ${total_sal:,.0f}, {lineup.get('Projected', 0):.1f} pts",
+                    f"Tier 2 lineup: ${total_sal:,.0f}, "
+                    f"{lineup.get('Projected', 0):.1f} pts",
                     "WARNING"
                 )
 
-                return lineup
+                return [lineup]
 
-            return None
+            return []
 
         except Exception as e:
-            self.logger.log_exception(e, "_generate_emergency_lineup")
-            return None
+            self.logger.log_exception(e, "_tier2_emergency_value_based")
+            return []
 
-    def _create_basic_lineup(self) -> Optional[Dict[str, Any]]:
-        """ABSOLUTE LAST RESORT: Create most basic valid lineup"""
+    def _tier3_basic_guaranteed(self) -> List[Dict[str, Any]]:
+        """TIER 3: Basic guaranteed lineup (GUARANTEED to return 1 lineup)"""
         try:
-            self.logger.log("Creating basic lineup (highest projections)", "ERROR")
+            self.logger.log(
+                "TIER 3 EMERGENCY: Basic guaranteed lineup",
+                "ERROR"
+            )
 
-            df_sorted = self.df.sort_values('Projected_Points', ascending=False).copy()
+            df_sorted = self.df.sort_values(
+                'Projected_Points',
+                ascending=False
+            ).copy()
 
             teams = df_sorted['Team'].unique()
 
             if len(teams) < 2:
-                self.logger.log("Cannot create: only 1 team in pool", "ERROR")
-                return None
+                self.logger.log(
+                    "Cannot create: only 1 team in pool",
+                    "ERROR"
+                )
+                selected = df_sorted.head(6)['Player'].tolist()
+                captain = selected[0]
+                flex = selected[1:]
+            else:
+                lineup_players = []
+                team_counts = {}
 
-            lineup_players = []
-            team_counts = {}
+                for _, player in df_sorted.iterrows():
+                    player_name = player['Player']
+                    player_team = player['Team']
 
-            for _, player in df_sorted.iterrows():
-                player_name = player['Player']
-                player_team = player['Team']
+                    if team_counts.get(player_team, 0) >= 5:
+                        continue
 
-                if team_counts.get(player_team, 0) >= 5:
-                    continue
+                    lineup_players.append(player_name)
+                    team_counts[player_team] = team_counts.get(player_team, 0) + 1
 
-                lineup_players.append(player_name)
-                team_counts[player_team] = team_counts.get(player_team, 0) + 1
+                    if len(lineup_players) == 6:
+                        break
 
-                if len(lineup_players) == 6:
-                    break
+                if len(lineup_players) < 6:
+                    remaining = df_sorted[
+                        ~df_sorted['Player'].isin(lineup_players)
+                    ]['Player'].tolist()
+                    lineup_players.extend(remaining[:6 - len(lineup_players)])
 
-            if len(lineup_players) < 6:
-                self.logger.log(f"Only {len(lineup_players)} players selected", "ERROR")
-                return None
+                selected_teams = set()
+                for p in lineup_players:
+                    player_row = self.df[self.df['Player'] == p].iloc[0]
+                    selected_teams.add(player_row['Team'])
 
-            selected_teams = set()
-            for p in lineup_players:
-                player_row = self.df[self.df['Player'] == p].iloc[0]
-                selected_teams.add(player_row['Team'])
+                if len(selected_teams) < 2:
+                    other_team = [t for t in teams if t not in selected_teams][0]
+                    other_team_players = df_sorted[
+                        df_sorted['Team'] == other_team
+                    ]
 
-            if len(selected_teams) < 2:
-                other_team = [t for t in teams if t not in selected_teams][0]
-                other_team_players = df_sorted[df_sorted['Team'] == other_team]
+                    if len(other_team_players) > 0:
+                        replacement = other_team_players.iloc[0]['Player']
+                        lineup_players[-1] = replacement
 
-                if len(other_team_players) > 0:
-                    replacement = other_team_players.iloc[0]['Player']
-                    lineup_players[-1] = replacement
-
-            captain = lineup_players[0]
-            flex = lineup_players[1:]
+                captain = lineup_players[0]
+                flex = lineup_players[1:]
 
             captain_row = self.df[self.df['Player'] == captain].iloc[0]
             captain_sal = captain_row['Salary']
@@ -7306,7 +12267,10 @@ class MasterOptimizer:
             total_sal = captain_sal * 1.5 + flex_sal
 
             if total_sal > DraftKingsRules.SALARY_CAP:
-                self.logger.log(f"Basic lineup exceeds cap: ${total_sal:,.0f}", "ERROR")
+                self.logger.log(
+                    f"Basic lineup exceeds cap: ${total_sal:,.0f}",
+                    "ERROR"
+                )
 
                 if len(lineup_players) >= 2:
                     captain = lineup_players[1]
@@ -7322,194 +12286,60 @@ class MasterOptimizer:
 
                     total_sal = captain_sal * 1.5 + flex_sal
 
-                    if total_sal > DraftKingsRules.SALARY_CAP:
-                        self.logger.log("Still exceeds after swap", "ERROR")
-                        return None
-
             lineup = calculate_lineup_metrics(captain, flex, self.df)
             lineup['Lineup'] = 1
-            lineup['Basic'] = True
-            lineup['Note'] = 'Basic fallback - highest projections with team diversity'
+            lineup['Emergency'] = 'Tier3_BasicGuaranteed'
+            lineup['Note'] = (
+                'Basic fallback - highest projections with team diversity'
+            )
 
             self.logger.log(
-                f"Basic lineup: Captain={captain}, ${total_sal:,.0f}, "
+                f"Tier 3 lineup: Captain={captain}, ${total_sal:,.0f}, "
                 f"{lineup.get('Projected', 0):.1f} pts",
                 "WARNING"
             )
 
-            return lineup
+            return [lineup]
 
         except Exception as e:
-            self.logger.log_exception(e, "_create_basic_lineup")
-            return None
+            self.logger.log_exception(e, "_tier3_basic_guaranteed")
 
-    def _run_ai_analysis(self) -> None:
-        """Run AI strategists"""
-        try:
-            self.ai_recommendations = []
+            try:
+                first_six = self.df.head(6)['Player'].tolist()
+                captain = first_six[0]
+                flex = first_six[1:]
 
-            for strategist, name in [
-                (self.game_theory, "Game Theory"),
-                (self.correlation, "Correlation"),
-                (self.contrarian, "Contrarian")
-            ]:
-                try:
-                    rec = strategist.analyze(self.df, self.game_info, self.field_config)
-                    self.ai_recommendations.append(rec)
-                    self.logger.log(f"{name}: {rec.confidence:.2f}", "INFO")
-                except Exception as e:
-                    self.logger.log_exception(e, f"{name}")
+                lineup = calculate_lineup_metrics(captain, flex, self.df)
+                lineup['Lineup'] = 1
+                lineup['Emergency'] = 'Tier3_AbsoluteFallback'
 
-            if self.ai_recommendations:
-                self.synthesized_recommendation = self.synthesis.synthesize(
-                    self.ai_recommendations
-                )
-        except Exception as e:
-            self.logger.log_exception(e, "_run_ai_analysis")
-
-    def _build_base_constraints(self) -> LineupConstraints:
-        """Build base constraints"""
-        if self.base_constraints:
-            return self.base_constraints
-
-        optimal_min = self.pool_analysis['recommendations'].get(
-            'optimal_min_salary',
-            int(self.salary_cap * 0.85)
-        )
-
-        return LineupConstraints(
-            min_salary=optimal_min,
-            max_salary=self.salary_cap
-        )
-
-    def _build_constraints(self, ai_enforcement: str) -> LineupConstraints:
-        """Build constraints with AI"""
-        try:
-            base_constraints = self._build_base_constraints()
-
-            if self.synthesized_recommendation and ai_enforcement != 'Advisory':
-                enforcement_level = AIEnforcementLevel[ai_enforcement.upper()]
-                enforcement_engine = AIEnforcementEngine(enforcement_level)
-
-                return enforcement_engine.apply_ai_constraints(
-                    base_constraints,
-                    [self.synthesized_recommendation]
-                )
-
-            return base_constraints
-        except Exception as e:
-            self.logger.log_exception(e, "_build_constraints")
-            return self._build_base_constraints()
-
-    def _validate_and_filter_lineups(
-        self,
-        lineups: List[Dict[str, Any]],
-        constraints: LineupConstraints
-    ) -> List[Dict[str, Any]]:
-        """Validate lineups"""
-        if not lineups:
-            return []
-
-        if self.batch_validator and len(lineups) > 10:
-            is_valid_array, error_messages = self.batch_validator.validate_batch(lineups)
-
-            valid_lineups = []
-            for i, (is_valid, lineup) in enumerate(zip(is_valid_array, lineups)):
-                if is_valid:
-                    valid_lineups.append(lineup)
-
-            invalid_count = len(lineups) - len(valid_lineups)
-            if invalid_count > 0:
-                self.logger.log(f"Filtered {invalid_count} invalid", "DEBUG")
-
-            return valid_lineups
-
-        valid_lineups = []
-        for lineup in lineups:
-            salary = lineup.get('Total_Salary', 0)
-
-            if constraints.min_salary <= salary <= constraints.max_salary:
-                team_dist = lineup.get('Team_Distribution', {})
-                if team_dist and len(team_dist) >= 2:
-                    valid_lineups.append(lineup)
-
-        return valid_lineups
-
-    def _simulate_lineups(
-        self,
-        lineups: List[Dict[str, Any]],
-        progress_callback: Optional[Callable[[str, float], None]] = None
-    ) -> List[Dict[str, Any]]:
-        """Add MC simulation"""
-        try:
-            if len(lineups) > 50:
-                batch_size = PerformanceLimits.MEMORY_BATCH_SIZE
-                all_results = {}
-
-                for batch_start in range(0, len(lineups), batch_size):
-                    batch_end = min(batch_start + batch_size, len(lineups))
-                    batch = lineups[batch_start:batch_end]
-
-                    if progress_callback:
-                        progress = 0.85 + (batch_end / len(lineups)) * 0.10
-                        try:
-                            progress_callback(f"Simulating {batch_end}/{len(lineups)}", progress)
-                        except Exception:
-                            pass
-
-                    batch_results = self.mc_engine.evaluate_multiple_lineups(batch, parallel=True)
-
-                    for i, result in batch_results.items():
-                        all_results[batch_start + i] = result
-
-                    if batch_end < len(lineups):
-                        gc.collect()
-
-                results = all_results
-            else:
-                results = self.mc_engine.evaluate_multiple_lineups(lineups, parallel=True)
-
-            for idx, sim_results in results.items():
-                if idx < len(lineups):
-                    lineups[idx]['Ceiling_90th'] = sim_results.ceiling_90th
-                    lineups[idx]['Floor_10th'] = sim_results.floor_10th
-                    lineups[idx]['Sharpe_Ratio'] = sim_results.sharpe_ratio
-                    lineups[idx]['Win_Probability'] = sim_results.win_probability
-
-            return lineups
-        except Exception as e:
-            self.logger.log_exception(e, "_simulate_lineups")
-            return lineups
-
-    def _post_process_lineups(self, lineups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Post-process and rank"""
-        try:
-            for i, lineup in enumerate(lineups, 1):
-                lineup['Lineup'] = i
-
-            if lineups and 'Ceiling_90th' in lineups[0]:
-                lineups.sort(key=lambda x: x.get('Ceiling_90th', 0), reverse=True)
-            else:
-                lineups.sort(key=lambda x: x.get('Projected', 0), reverse=True)
-
-            for i, lineup in enumerate(lineups, 1):
-                lineup['Lineup'] = i
-
-            return lineups
-        except Exception as e:
-            self.logger.log_exception(e, "_post_process_lineups")
-            return lineups
+                return [lineup]
+            except Exception:
+                return []
 
     def get_optimization_summary(self) -> Dict[str, Any]:
-        """Get summary"""
+        """Get comprehensive optimization summary with UPDATE 2 features"""
         summary = {
             'lineups_generated': len(self.final_lineups),
             'player_pool_analysis': self.pool_analysis,
             'performance_metrics': {},
-            'cache_stats': get_unified_cache().get_stats()
+            'cache_stats': get_unified_cache().get_stats(),
+            'optimizers_used': list(self.optimizer_instances.keys()),
+            'ai_decision_summary': self.ai_decision_tracker.get_summary(),
+            'game_environment': self.game_env_analyzer.get_environment_summary(),
+            'refinement_summary': self.refinement_engine.get_refinement_summary()
         }
 
-        for phase in ['ai_analysis', 'lineup_generation', 'genetic_algorithm', 'monte_carlo']:
+        for phase in [
+            'ai_analysis',
+            'lineup_generation',
+            'genetic_algorithm',
+            'monte_carlo',
+            'ensemble_optimization',
+            'simulated_annealing',
+            'smart_greedy',
+            'iterative_refinement'
+        ]:
             stats = self.perf_monitor.get_operation_stats(phase)
             if stats:
                 summary['performance_metrics'][phase] = stats
@@ -7518,8 +12348,9 @@ class MasterOptimizer:
 
 
 # ============================================================================
-# CONVENIENCE FUNCTION
+# CONVENIENCE FUNCTION (UPDATE 2)
 # ============================================================================
+
 
 def optimize_showdown(
     csv_path_or_df: Union[str, pd.DataFrame],
@@ -7531,12 +12362,38 @@ def optimize_showdown(
     use_ai: bool = True,
     optimization_mode: str = 'balanced',
     ai_enforcement: str = 'Moderate',
+    use_ensemble: bool = False,
+    use_iterative_refinement: bool = True,
+    use_bayesian_synthesis: bool = True,
     progress_callback: Optional[Callable[[str, float], None]] = None
 ) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
-    """Convenience function (GUARANTEED to return lineups)"""
+    """
+    Convenience function for showdown optimization with UPDATE 2 features
+
+    GUARANTEED to return lineups (never empty)
+
+    Args:
+        csv_path_or_df: Path to CSV or DataFrame
+        num_lineups: Number of lineups to generate
+        game_total: Game total (optional)
+        spread: Point spread (optional)
+        contest_type: Contest type string
+        api_key: API key for AI (optional)
+        use_ai: Use 5 AI strategists
+        optimization_mode: Optimization mode
+        ai_enforcement: AI enforcement level
+        use_ensemble: Force ensemble mode
+        use_iterative_refinement: Enable iterative AI refinement
+        use_bayesian_synthesis: Use Bayesian AI synthesis
+        progress_callback: Progress callback function
+
+    Returns:
+        Tuple of (lineups, processed_df)
+    """
     logger = get_logger()
 
     try:
+        # Load data
         if isinstance(csv_path_or_df, str):
             df_raw, encoding = safe_load_csv(csv_path_or_df, logger)
             if df_raw is None:
@@ -7544,18 +12401,22 @@ def optimize_showdown(
         else:
             df_raw = csv_path_or_df
 
+        # Process data
         processor = OptimizedDataProcessor()
         df, warnings = processor.process_dataframe(df_raw)
 
         for warning in warnings:
             logger.log(warning, "WARNING")
 
+        # Infer game info
         game_info = processor.infer_game_info(df, game_total, spread)
 
+        # Get field config
         field_size = CONTEST_TYPE_MAPPING.get(contest_type, 'large_field')
         field_config = OptimizerConfig.get_field_config(field_size)
         field_config['name'] = field_size
 
+        # Create master optimizer
         master = MasterOptimizer(
             df=df,
             game_info=game_info,
@@ -7563,11 +12424,15 @@ def optimize_showdown(
             api_key=api_key
         )
 
+        # Run optimization with UPDATE 2 features
         lineups = master.run_full_optimization(
             num_lineups=num_lineups,
             use_ai=use_ai,
             optimization_mode=optimization_mode,
             ai_enforcement=ai_enforcement,
+            use_ensemble=use_ensemble,
+            use_iterative_refinement=use_iterative_refinement,
+            use_bayesian_synthesis=use_bayesian_synthesis,
             progress_callback=progress_callback
         )
 
@@ -7582,6 +12447,19 @@ def optimize_showdown(
 # MAIN
 # ============================================================================
 
+
 if __name__ == "__main__":
-    print("NFL DFS Optimizer v3.1.0 - Smart Adaptive")
+    print("NFL DFS Optimizer v5.0 - Ultimate State Edition (UPDATE 2)")
+    print("=" * 60)
+    print("UPDATE 2: Advanced AI System")
+    print("  ✓ 5 AI Strategists (Game Theory, Correlation, Contrarian,")
+    print("              Stacking Expert, Leverage Specialist)")
+    print("  ✓ Bayesian Synthesis Engine")
+    print("  ✓ Iterative Refinement (AI-powered lineup improvement)")
+    print("  ✓ Multi-Dimensional Scoring (5 factors)")
+    print("  ✓ Game Environment Analysis")
+    print("  ✓ Narrative Integration")
+    print("  ✓ 10-Level Progressive Fallback")
+    print("  ✓ 3-Tier Emergency System")
+    print("  ✓ GUARANTEED Lineup Generation")
     print("=" * 60)
