@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 """
 NFL DFS Showdown Optimizer - Ultimate State (UPDATE 2)
 Professional-grade DFS lineup optimization with AI integration
