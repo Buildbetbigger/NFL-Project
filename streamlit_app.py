@@ -1,22 +1,24 @@
 """
 NFL DFS Optimizer - Complete Streamlit Application
-Version: 5.0.0 - UPDATE 2 Compatible
+Version: 5.0.1 - Production Ready with Debugging Fixes
 
-COMPLETE FILE - Replaces entire streamlit_app.py
+COMPLETE REWRITE - Incorporates all debugging recommendations
+
+FEATURES:
+✅ Granular import checking with fallbacks
+✅ Thread-safe optimization with proper locking
+✅ MasterOptimizer integration
+✅ Enhanced error messages with user guidance
+✅ Robust session state management
+✅ Pre-flight constraint checking
+✅ Progress tracking with thread safety
+✅ Comprehensive error handling
+✅ Performance optimizations
+✅ Memory-efficient file handling
 
 COMPATIBLE WITH:
 - NFL DFS Optimizer v5.0.0 (Parts 1-13)
 - UPDATE 2: Advanced AI System
-- Enhanced Monte Carlo Simulation
-- Advanced Scoring & Intelligence
-
-NEW FEATURES:
-- Pre-flight constraint checking with auto-fix buttons
-- Constraint violation diagnostics
-- Optimizer performance summaries
-- Advanced AI strategist support
-- Enhanced error messages with specific guidance
-- Support for new optimization modes
 """
 
 import streamlit as st
@@ -26,18 +28,26 @@ import time
 import threading
 import hashlib
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Callable
 from collections import defaultdict
 import traceback
 import io
 
 # ============================================================================
-# OPTIMIZER IMPORTS
+# GRANULAR OPTIMIZER IMPORTS WITH FALLBACKS
 # ============================================================================
 
-# Check if optimizer is available
+# Track what's available
+OPTIMIZER_STATUS = {
+    'core': False,
+    'algorithms': False,
+    'ai': False,
+    'advanced': False,
+    'master': False
+}
+
+# Import Core Components
 try:
-    # Core classes
     from nfl_dfs_optimizer import (
         # Data Processing
         OptimizedDataProcessor,
@@ -50,32 +60,9 @@ try:
         GeneticConfig,
         SimulationResults,
         
-        # Analyzers
-        PlayerPoolAnalyzer,
-        StackDetector,
-        OwnershipAnalyzer,
-        
-        # Validation & Constraints
+        # Validation
         ConstraintFeasibilityChecker,
         BatchLineupValidator,
-        DiversityTracker,
-        ExposureTracker,
-        
-        # Simulation
-        MonteCarloSimulationEngine,
-        
-        # Optimizers
-        GeneticAlgorithmOptimizer,
-        SimulatedAnnealingOptimizer,
-        
-        # AI Components (if available)
-        AIStrategistType,
-        AIEnforcementLevel,
-        
-        # Output
-        CSVExporter,
-        ConsoleFormatter,
-        OutputManager,
         
         # Utilities
         OptimizerLogger,
@@ -88,14 +75,78 @@ try:
         # Configuration
         OptimizerConfig,
         CONTEST_TYPE_MAPPING,
+        
+        # Helper functions
+        calculate_lineup_metrics,
+        validate_lineup_with_context,
     )
-    
-    OPTIMIZER_AVAILABLE = True
-    
+    OPTIMIZER_STATUS['core'] = True
 except ImportError as e:
-    st.error(f"Failed to import optimizer: {e}")
+    st.error(f"❌ Core optimizer imports failed: {e}")
     st.info("Please ensure nfl_dfs_optimizer.py is in the same directory")
-    OPTIMIZER_AVAILABLE = False
+
+# Import Algorithms
+try:
+    from nfl_dfs_optimizer import (
+        GeneticAlgorithmOptimizer,
+        SimulatedAnnealingOptimizer,
+        SmartGreedyOptimizer,
+        StandardLineupOptimizer,
+    )
+    OPTIMIZER_STATUS['algorithms'] = True
+except ImportError as e:
+    st.warning(f"⚠️ Some algorithms unavailable: {e}")
+
+# Import AI Components
+try:
+    from nfl_dfs_optimizer import (
+        AIStrategistType,
+        AIEnforcementLevel,
+        GameTheoryStrategist,
+        CorrelationStrategist,
+        ContrarianStrategist,
+        StackingExpertStrategist,
+        LeverageSpecialist,
+    )
+    OPTIMIZER_STATUS['ai'] = True
+except ImportError as e:
+    st.info(f"ℹ️ AI features unavailable: {e}")
+
+# Import Advanced Features
+try:
+    from nfl_dfs_optimizer import (
+        PlayerPoolAnalyzer,
+        StackDetector,
+        OwnershipAnalyzer,
+        MonteCarloSimulationEngine,
+        DiversityTracker,
+        ExposureTracker,
+    )
+    OPTIMIZER_STATUS['advanced'] = True
+except ImportError as e:
+    st.info(f"ℹ️ Advanced features unavailable: {e}")
+
+# Import Master Optimizer
+try:
+    from nfl_dfs_optimizer import (
+        MasterOptimizer,
+        optimize_showdown,
+    )
+    OPTIMIZER_STATUS['master'] = True
+except ImportError as e:
+    st.warning(f"⚠️ Master optimizer unavailable: {e}")
+
+# Import Output
+try:
+    from nfl_dfs_optimizer import (
+        CSVExporter,
+        OutputManager,
+    )
+except ImportError:
+    pass
+
+# Overall status
+OPTIMIZER_AVAILABLE = OPTIMIZER_STATUS['core']
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -125,7 +176,7 @@ class StreamlitConfig:
     
     # Progress
     INITIAL_PROGRESS_THRESHOLD_SEC = 5
-    PROGRESS_UPDATE_INTERVAL_SEC = 5
+    PROGRESS_UPDATE_INTERVAL_SEC = 2
     
     # Cache
     CSV_CACHE_TTL_SEC = 3600  # 1 hour
@@ -156,13 +207,15 @@ def init_session_state():
         'use_ai': False,
         'ai_enforcement': 'moderate',
         'api_key': '',
-        'ai_strategists': ['game_theory', 'correlation'],
+        'use_iterative_refinement': True,
+        'use_bayesian_synthesis': True,
         
         # Advanced Options
         'use_monte_carlo': True,
         'num_simulations': 10000,
         'diversity_threshold': 0.5,
         'randomness_factor': 0.15,
+        'use_ensemble': False,
         
         # UI State
         'show_advanced': False,
@@ -173,6 +226,7 @@ def init_session_state():
         # Processing flags
         'data_validated': False,
         'optimization_complete': False,
+        'optimization_running': False,
         
         # Results
         'warnings': [],
@@ -180,6 +234,9 @@ def init_session_state():
         'last_optimization_time': None,
         'optimizer_summary': None,
         'pool_analysis': None,
+        
+        # File upload
+        'last_file_hash': None,
     }
     
     for key, value in defaults.items():
@@ -203,13 +260,14 @@ class StateSnapshot:
         """Capture current state"""
         self.snapshot = {
             k: v for k, v in st.session_state.items()
-            if not k.startswith('_')
+            if not k.startswith('_') and not k.startswith('FormSubmitter')
         }
     
     def restore(self):
         """Restore captured state"""
         for k, v in self.snapshot.items():
-            st.session_state[k] = v
+            if k in st.session_state:
+                st.session_state[k] = v
 
 # ============================================================================
 # CACHING
@@ -217,7 +275,8 @@ class StateSnapshot:
 
 @st.cache_data(
     ttl=StreamlitConfig.CSV_CACHE_TTL_SEC,
-    max_entries=StreamlitConfig.MAX_CACHE_ENTRIES
+    max_entries=StreamlitConfig.MAX_CACHE_ENTRIES,
+    show_spinner=False
 )
 def cached_csv_load(
     file_bytes: bytes,
@@ -233,15 +292,12 @@ def cached_csv_load(
     warnings = []
     
     try:
-        # Load CSV
+        # Load CSV from bytes
         file_obj = io.BytesIO(file_bytes)
-        df, encoding = safe_load_csv(file_obj, logger)
+        df = pd.read_csv(file_obj)
         
-        if df is None:
-            return None, [f"Failed to load CSV: {encoding}"]
-        
-        if encoding != 'utf-8':
-            warnings.append(f"Loaded with {encoding} encoding")
+        if df is None or df.empty:
+            return None, ["CSV is empty"]
         
         # Process
         processor = OptimizedDataProcessor(logger)
@@ -255,6 +311,18 @@ def cached_csv_load(
     except Exception as e:
         logger.log_exception(e, "cached_csv_load")
         return None, [f"Error: {str(e)}"]
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def analyze_player_pool(df_hash: str, df: pd.DataFrame) -> Dict:
+    """Cache player pool analysis"""
+    if not OPTIMIZER_STATUS['advanced']:
+        return {}
+    
+    try:
+        analyzer = PlayerPoolAnalyzer(df)
+        return analyzer.analyze()
+    except Exception as e:
+        return {'error': str(e)}
 
 # ============================================================================
 # STYLING
@@ -278,36 +346,37 @@ def apply_css():
         .stButton>button:hover {
             background-color: #2563eb;
         }
-        .metric-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 1rem;
-            border-radius: 0.5rem;
-            color: white;
-        }
-        .diagnostic-box {
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin: 1rem 0;
+        .stButton>button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
         }
         .success-box {
             background-color: #dcfce7;
             border-left: 4px solid #22c55e;
             padding: 1rem;
             border-radius: 0.25rem;
+            margin: 1rem 0;
         }
         .warning-box {
             background-color: #fef3c7;
             border-left: 4px solid #eab308;
             padding: 1rem;
             border-radius: 0.25rem;
+            margin: 1rem 0;
         }
         .error-box {
             background-color: #fee2e2;
             border-left: 4px solid #ef4444;
             padding: 1rem;
             border-radius: 0.25rem;
+            margin: 1rem 0;
+        }
+        .info-box {
+            background-color: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin: 1rem 0;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -320,31 +389,54 @@ def run_constraint_check(
     df: pd.DataFrame,
     min_salary_pct: int
 ) -> Dict[str, Any]:
-    """Run constraint feasibility check"""
+    """Run constraint feasibility check with validation"""
+    
+    # Validate inputs
+    if df is None or df.empty:
+        return {
+            'is_feasible': False,
+            'error': 'No player data available',
+            'suggestions': ['Upload a valid CSV file first'],
+            'constraints': None
+        }
     
     if not OPTIMIZER_AVAILABLE:
         return {
             'is_feasible': False,
             'error': 'Optimizer not available',
-            'suggestions': []
+            'suggestions': ['Check that nfl_dfs_optimizer.py is in the same directory'],
+            'constraints': None
         }
     
-    constraints = LineupConstraints(
-        min_salary=int(DraftKingsRules.SALARY_CAP * (min_salary_pct / 100)),
-        max_salary=DraftKingsRules.SALARY_CAP
-    )
-    
-    is_feasible, error_msg, suggestions = ConstraintFeasibilityChecker.check(
-        df,
-        constraints
-    )
-    
-    return {
-        'is_feasible': is_feasible,
-        'error': error_msg,
-        'suggestions': suggestions,
-        'constraints': constraints
-    }
+    try:
+        constraints = LineupConstraints(
+            min_salary=int(DraftKingsRules.SALARY_CAP * (min_salary_pct / 100)),
+            max_salary=DraftKingsRules.SALARY_CAP
+        )
+        
+        is_feasible, error_msg, suggestions = ConstraintFeasibilityChecker.check(
+            df,
+            constraints
+        )
+        
+        return {
+            'is_feasible': is_feasible,
+            'error': error_msg,
+            'suggestions': suggestions,
+            'constraints': constraints
+        }
+        
+    except Exception as e:
+        return {
+            'is_feasible': False,
+            'error': f'Constraint check failed: {str(e)}',
+            'suggestions': [
+                'Check player data format',
+                'Ensure all required columns exist',
+                'Verify salary values are valid'
+            ],
+            'constraints': None
+        }
 
 def render_constraint_diagnostics():
     """Render constraint diagnostics with auto-fix"""
@@ -362,12 +454,12 @@ def render_constraint_diagnostics():
         
         if diag['is_feasible']:
             st.markdown(
-                '<div class="success-box">✓ All constraints feasible - optimization should succeed</div>',
+                '<div class="success-box">✅ All constraints feasible - optimization should succeed</div>',
                 unsafe_allow_html=True
             )
         else:
             st.markdown(
-                f'<div class="error-box">✗ Constraint Issue: {diag["error"]}</div>',
+                f'<div class="error-box">❌ Constraint Issue: {diag["error"]}</div>',
                 unsafe_allow_html=True
             )
             
@@ -384,7 +476,7 @@ def render_constraint_diagnostics():
                         # Auto-fix buttons
                         import re
                         match = re.search(r'(\d+)%', suggestion)
-                        if match and "lower" in suggestion.lower():
+                        if match and ("lower" in suggestion.lower() or "reduce" in suggestion.lower()):
                             pct = int(match.group(1))
                             if st.button(f"Fix: {pct}%", key=f"fix_{i}"):
                                 st.session_state.min_salary_pct = pct
@@ -402,8 +494,8 @@ def render_constraint_diagnostics():
         expensive_6 = df.nlargest(6, 'Salary')['Salary'].sum()
         expensive_6 += df['Salary'].max() * 0.5
         
-        min_threshold = diag['constraints'].min_salary
-        max_threshold = diag['constraints'].max_salary
+        min_threshold = diag['constraints'].min_salary if diag['constraints'] else 0
+        max_threshold = diag['constraints'].max_salary if diag['constraints'] else 50000
         
         with col1:
             st.metric("Players", len(df))
@@ -425,28 +517,40 @@ def render_constraint_diagnostics():
         elif cheapest_6 > min_threshold * 0.95:
             st.warning("⚠️ TIGHT: Minimal feasible range")
         else:
-            st.success("✓ Good feasible range")
+            st.success("✅ Good feasible range")
 
 # ============================================================================
 # DATA LOADING
 # ============================================================================
 
 def load_and_process_data(uploaded_file):
-    """Load and process uploaded CSV"""
+    """Load and process uploaded CSV with improved error handling"""
+    
+    if not OPTIMIZER_AVAILABLE:
+        st.error("Optimizer core not available")
+        return None, ["Optimizer not loaded"]
     
     logger = get_logger()
     
     try:
-        # Read file
-        file_bytes = uploaded_file.read()
+        # Read file bytes ONCE (more efficient)
+        file_bytes = uploaded_file.getvalue()
         file_name = uploaded_file.name
         file_hash = hashlib.md5(file_bytes).hexdigest()[:8]
+        
+        # Check if same file
+        if file_hash == st.session_state.last_file_hash:
+            st.info("Using cached data (same file)")
+            return st.session_state.processed_df, st.session_state.warnings
         
         # Process with caching
         df, warnings = cached_csv_load(file_bytes, file_name, file_hash)
         
         if df is None:
             return None, warnings
+        
+        # Update hash
+        st.session_state.last_file_hash = file_hash
         
         # Show preview
         with st.expander("📊 Data Preview", expanded=False):
@@ -469,7 +573,8 @@ def load_and_process_data(uploaded_file):
         st.error(f"Error loading data: {str(e)}")
         
         if st.session_state.show_debug:
-            st.code(traceback.format_exc())
+            with st.expander("Debug Trace"):
+                st.code(traceback.format_exc())
         
         return None, [str(e)]
 
@@ -489,12 +594,13 @@ def render_sidebar():
         uploaded_file = st.file_uploader(
             "Upload Player CSV",
             type=['csv'],
-            help="CSV with player projections"
+            help="CSV with player projections",
+            key="file_uploader"
         )
         
         if uploaded_file:
-            if st.button("📥 Load Data", type="primary"):
-                with st.spinner("Loading..."):
+            if st.button("📥 Load Data", type="primary", use_container_width=True):
+                with st.spinner("Loading and validating..."):
                     df, warnings = load_and_process_data(uploaded_file)
                     
                     if df is not None:
@@ -502,14 +608,23 @@ def render_sidebar():
                         st.session_state.processed_df = df
                         st.session_state.warnings = warnings
                         st.session_state.data_validated = True
+                        st.session_state.optimization_complete = False
+                        st.session_state.lineups = []
                         
                         # Run pool analysis
-                        analyzer = PlayerPoolAnalyzer(df)
-                        st.session_state.pool_analysis = analyzer.analyze()
+                        if OPTIMIZER_STATUS['advanced']:
+                            try:
+                                df_hash = hashlib.md5(
+                                    pd.util.hash_pandas_object(df).values
+                                ).hexdigest()
+                                st.session_state.pool_analysis = analyze_player_pool(df_hash, df)
+                            except:
+                                pass
                         
-                        st.success(f"✓ Loaded {len(df)} players")
+                        st.success(f"✅ Loaded {len(df)} players")
+                        st.rerun()
                     else:
-                        st.error("✗ Load failed")
+                        st.error("❌ Load failed")
         
         st.divider()
         
@@ -521,7 +636,8 @@ def render_sidebar():
             min_value=30.0,
             max_value=70.0,
             value=st.session_state.game_total,
-            step=0.5
+            step=0.5,
+            key="game_total_input"
         )
         
         st.session_state.spread = st.number_input(
@@ -529,7 +645,8 @@ def render_sidebar():
             min_value=-20.0,
             max_value=20.0,
             value=st.session_state.spread,
-            step=0.5
+            step=0.5,
+            key="spread_input"
         )
         
         st.divider()
@@ -542,20 +659,24 @@ def render_sidebar():
             options=list(CONTEST_TYPE_MAPPING.keys()),
             index=list(CONTEST_TYPE_MAPPING.keys()).index(
                 st.session_state.contest_type
-            )
+            ),
+            key="contest_type_select"
         )
         
         st.session_state.num_lineups = st.slider(
             "Number of Lineups",
             min_value=1,
             max_value=150,
-            value=st.session_state.num_lineups
+            value=st.session_state.num_lineups,
+            key="num_lineups_slider"
         )
         
         st.session_state.optimization_mode = st.selectbox(
             "Optimization Mode",
             options=['balanced', 'ceiling', 'floor', 'sharpe'],
-            index=0
+            index=0,
+            help="balanced: All-around | ceiling: High upside | floor: Consistent | sharpe: Risk-adjusted",
+            key="opt_mode_select"
         )
         
         st.divider()
@@ -563,27 +684,49 @@ def render_sidebar():
         # 4. AI SETTINGS
         st.header("4️⃣ AI Settings")
         
-        st.session_state.use_ai = st.checkbox(
-            "Enable AI Analysis",
-            value=st.session_state.use_ai,
-            help="Use Claude AI for strategic insights"
-        )
-        
-        if st.session_state.use_ai:
-            st.session_state.api_key = st.text_input(
-                "Anthropic API Key",
-                type="password",
-                value=st.session_state.api_key
+        if not OPTIMIZER_STATUS['ai'] or not OPTIMIZER_STATUS['master']:
+            st.info("ℹ️ AI features unavailable (module not loaded)")
+            st.session_state.use_ai = False
+        else:
+            st.session_state.use_ai = st.checkbox(
+                "Enable AI Analysis",
+                value=st.session_state.use_ai,
+                help="Use 5 AI strategists for insights (requires API key)",
+                key="use_ai_checkbox"
             )
             
-            st.session_state.ai_enforcement = st.select_slider(
-                "AI Enforcement",
-                options=['advisory', 'moderate', 'strong', 'mandatory'],
-                value=st.session_state.ai_enforcement
-            )
-            
-            if not st.session_state.api_key:
-                st.warning("⚠️ API key required")
+            if st.session_state.use_ai:
+                st.session_state.api_key = st.text_input(
+                    "Anthropic API Key",
+                    type="password",
+                    value=st.session_state.api_key,
+                    key="api_key_input"
+                )
+                
+                st.session_state.ai_enforcement = st.select_slider(
+                    "AI Enforcement",
+                    options=['advisory', 'moderate', 'strong', 'mandatory'],
+                    value=st.session_state.ai_enforcement,
+                    help="How strictly to apply AI recommendations",
+                    key="ai_enforcement_slider"
+                )
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.session_state.use_bayesian_synthesis = st.checkbox(
+                        "Bayesian Synthesis",
+                        value=st.session_state.use_bayesian_synthesis,
+                        key="bayesian_checkbox"
+                    )
+                with col2:
+                    st.session_state.use_iterative_refinement = st.checkbox(
+                        "Iterative Refinement",
+                        value=st.session_state.use_iterative_refinement,
+                        key="refinement_checkbox"
+                    )
+                
+                if not st.session_state.api_key:
+                    st.warning("⚠️ API key required for AI features")
         
         st.divider()
         
@@ -594,22 +737,34 @@ def render_sidebar():
                 min_value=50,
                 max_value=100,
                 value=st.session_state.min_salary_pct,
-                step=5
+                step=5,
+                key="min_salary_slider"
             )
             st.caption(
                 f"${int(DraftKingsRules.SALARY_CAP * st.session_state.min_salary_pct / 100):,}"
             )
             
-            st.session_state.use_monte_carlo = st.checkbox(
-                "Monte Carlo Simulation",
-                value=st.session_state.use_monte_carlo
-            )
+            if OPTIMIZER_STATUS['advanced']:
+                st.session_state.use_monte_carlo = st.checkbox(
+                    "Monte Carlo Simulation",
+                    value=st.session_state.use_monte_carlo,
+                    key="monte_carlo_checkbox"
+                )
+                
+                if st.session_state.use_monte_carlo:
+                    st.session_state.num_simulations = st.select_slider(
+                        "Simulations",
+                        options=[1000, 5000, 10000, 20000],
+                        value=st.session_state.num_simulations,
+                        key="simulations_slider"
+                    )
             
-            if st.session_state.use_monte_carlo:
-                st.session_state.num_simulations = st.select_slider(
-                    "Simulations",
-                    options=[1000, 5000, 10000, 20000],
-                    value=st.session_state.num_simulations
+            if OPTIMIZER_STATUS['algorithms']:
+                st.session_state.use_ensemble = st.checkbox(
+                    "Force Ensemble Mode",
+                    value=st.session_state.use_ensemble,
+                    help="Run all algorithms in parallel",
+                    key="ensemble_checkbox"
                 )
             
             st.session_state.diversity_threshold = st.slider(
@@ -617,12 +772,15 @@ def render_sidebar():
                 min_value=0.0,
                 max_value=1.0,
                 value=st.session_state.diversity_threshold,
-                step=0.05
+                step=0.05,
+                help="Higher = more diverse lineups",
+                key="diversity_slider"
             )
             
             st.session_state.show_debug = st.checkbox(
                 "Debug Mode",
-                value=st.session_state.show_debug
+                value=st.session_state.show_debug,
+                key="debug_checkbox"
             )
 
 # ============================================================================
@@ -634,6 +792,22 @@ def render_data_overview():
     
     if st.session_state.processed_df is None:
         st.info("📤 Upload a CSV file to begin")
+        
+        # Show optimizer status
+        with st.expander("Optimizer Status", expanded=True):
+            st.write("**Component Availability:**")
+            
+            status_icons = {True: "✅", False: "❌"}
+            
+            st.write(f"{status_icons[OPTIMIZER_STATUS['core']]} Core Components")
+            st.write(f"{status_icons[OPTIMIZER_STATUS['algorithms']]} Optimization Algorithms")
+            st.write(f"{status_icons[OPTIMIZER_STATUS['ai']]} AI Strategists")
+            st.write(f"{status_icons[OPTIMIZER_STATUS['advanced']]} Advanced Features")
+            st.write(f"{status_icons[OPTIMIZER_STATUS['master']]} Master Optimizer")
+            
+            if not all(OPTIMIZER_STATUS.values()):
+                st.warning("Some features unavailable - check console for import errors")
+        
         return
     
     df = st.session_state.processed_df
@@ -667,7 +841,7 @@ def render_data_overview():
         st.bar_chart(df['Team'].value_counts())
     
     # Top players
-    st.subheader("Top 10 Players")
+    st.subheader("Top 10 Players by Projection")
     
     top10 = df.nlargest(10, 'Projected_Points')[
         ['Player', 'Position', 'Team', 'Salary', 'Projected_Points', 'Ownership']
@@ -679,17 +853,18 @@ def render_data_overview():
     render_constraint_diagnostics()
     
     # Pool analysis
-    if st.session_state.pool_analysis:
+    if st.session_state.pool_analysis and 'error' not in st.session_state.pool_analysis:
         with st.expander("📈 Pool Analysis", expanded=False):
             analysis = st.session_state.pool_analysis
             
             st.write(f"**Pool Quality:** {analysis.get('pool_quality', 'Unknown').upper()}")
             
             recs = analysis.get('recommendations', {})
-            st.write("**Recommendations:**")
-            st.write(f"- Recommended Algorithm: {recs.get('recommended_algorithm', 'N/A')}")
-            st.write(f"- Suggested Randomness: {recs.get('suggested_randomness', 0):.2f}")
-            st.write(f"- Max Reasonable Lineups: {recs.get('max_reasonable_lineups', 0)}")
+            if recs:
+                st.write("**Recommendations:**")
+                st.write(f"- Algorithm: {recs.get('recommended_algorithm', 'N/A')}")
+                st.write(f"- Randomness: {recs.get('suggested_randomness', 0):.2f}")
+                st.write(f"- Max Lineups: {recs.get('max_reasonable_lineups', 0)}")
 
 # ============================================================================
 # OPTIMIZATION
@@ -700,6 +875,11 @@ def render_optimization():
     
     if st.session_state.processed_df is None:
         st.warning("⚠️ Load data first")
+        return
+    
+    # Prevent double-click
+    if st.session_state.optimization_running:
+        st.warning("⏳ Optimization in progress...")
         return
     
     # Settings summary
@@ -716,14 +896,29 @@ def render_optimization():
             st.write("**Optimization:**")
             st.write(f"- Lineups: {st.session_state.num_lineups}")
             st.write(f"- Mode: {st.session_state.optimization_mode}")
-            st.write(f"- AI: {st.session_state.use_ai}")
+            st.write(f"- AI: {'Enabled' if st.session_state.use_ai else 'Disabled'}")
+            st.write(f"- Monte Carlo: {'Enabled' if st.session_state.use_monte_carlo else 'Disabled'}")
     
     # Optimize button
-    if st.button("🚀 Generate Lineups", type="primary", use_container_width=True):
+    button_disabled = st.session_state.optimization_running
+    
+    if st.button(
+        "🚀 Generate Lineups",
+        type="primary",
+        use_container_width=True,
+        disabled=button_disabled
+    ):
         run_optimization()
 
 def run_optimization():
-    """Execute optimization with full error handling"""
+    """Execute optimization with full error handling and thread safety"""
+    
+    # Prevent concurrent runs
+    if st.session_state.optimization_running:
+        st.warning("Optimization already running")
+        return
+    
+    st.session_state.optimization_running = True
     
     snapshot = StateSnapshot()
     snapshot.capture()
@@ -731,9 +926,22 @@ def run_optimization():
     logger = get_logger()
     perf = get_performance_monitor()
     
+    # Progress tracking
+    progress_container = st.empty()
+    status_container = st.empty()
+    
+    progress = None
+    status = None
+    
     try:
+        # Setup progress
+        with progress_container.container():
+            progress = st.progress(0)
+        with status_container.container():
+            status = st.empty()
+        
         # Pre-flight check
-        st.info("Running pre-flight check...")
+        status.text("🔍 Running pre-flight check...")
         
         diag = run_constraint_check(
             st.session_state.processed_df,
@@ -741,158 +949,207 @@ def run_optimization():
         )
         
         if not diag['is_feasible']:
-            st.error(f"Pre-flight Failed: {diag['error']}")
+            st.error(f"❌ Pre-flight Failed: {diag['error']}")
             
             if diag['suggestions']:
-                st.warning("Suggestions:")
+                st.warning("**Suggestions:**")
                 for s in diag['suggestions']:
                     st.write(f"- {s}")
             
             return
         
-        st.success("✓ Pre-flight passed")
+        st.success("✅ Pre-flight passed")
+        progress.progress(10)
         
-        # Setup progress
-        progress = st.progress(0)
-        status = st.empty()
-        
-        # Get settings
-        df = st.session_state.processed_df.copy()
-        num_lineups = st.session_state.num_lineups
-        use_ai = st.session_state.use_ai and bool(st.session_state.api_key)
-        
-        # Infer game info
-        processor = OptimizedDataProcessor()
-        game_info = processor.infer_game_info(
-            df,
-            st.session_state.game_total,
-            st.session_state.spread
-        )
+        # Snapshot settings (avoid race conditions with session state)
+        settings = {
+            'df': st.session_state.processed_df.copy(),
+            'num_lineups': st.session_state.num_lineups,
+            'game_total': st.session_state.game_total,
+            'spread': st.session_state.spread,
+            'contest_type': st.session_state.contest_type,
+            'optimization_mode': st.session_state.optimization_mode,
+            'min_salary_pct': st.session_state.min_salary_pct,
+            'use_ai': st.session_state.use_ai and bool(st.session_state.api_key),
+            'api_key': st.session_state.api_key,
+            'ai_enforcement': st.session_state.ai_enforcement,
+            'use_monte_carlo': st.session_state.use_monte_carlo,
+            'num_simulations': st.session_state.num_simulations,
+            'use_ensemble': st.session_state.use_ensemble,
+            'use_iterative_refinement': st.session_state.use_iterative_refinement,
+            'use_bayesian_synthesis': st.session_state.use_bayesian_synthesis,
+        }
         
         progress.progress(20)
-        status.text("Initializing optimizers...")
+        status.text("⚙️ Initializing optimizer...")
         
-        # Create constraints
-        constraints = LineupConstraints(
-            min_salary=int(DraftKingsRules.SALARY_CAP * st.session_state.min_salary_pct / 100),
-            max_salary=DraftKingsRules.SALARY_CAP
-        )
+        # Result container (thread-safe)
+        result = {'lineups': None, 'error': None, 'summary': None}
+        result_lock = threading.Lock()
+        progress_lock = threading.Lock()
         
-        # Optimization mode config
-        field_size = CONTEST_TYPE_MAPPING.get(
-            st.session_state.contest_type,
-            'large_field'
-        )
-        field_config = OptimizerConfig.get_field_config(field_size)
+        # Progress callback (thread-safe)
+        def update_progress(message: str, pct: float):
+            """Thread-safe progress update"""
+            with progress_lock:
+                try:
+                    if progress:
+                        progress.progress(min(int(pct * 100), 99))
+                    if status:
+                        status.text(message)
+                except:
+                    pass  # Streamlit widgets may fail from thread
         
-        progress.progress(40)
-        status.text("Running optimization...")
-        
-        # Start optimization thread
-        perf.start_timer('full_optimization')
-        start_time = time.time()
-        
-        result = {'lineups': None, 'error': None}
-        
+        # Optimization thread
         def opt_thread():
             try:
-                # Use genetic algorithm for now
-                # (Full MasterOptimizer in Part 13)
-                
-                # Create Monte Carlo engine
-                mc_engine = None
-                if st.session_state.use_monte_carlo:
-                    mc_engine = MonteCarloSimulationEngine(
-                        df,
-                        game_info,
-                        st.session_state.num_simulations
+                # Use MasterOptimizer if available, otherwise fallback
+                if OPTIMIZER_STATUS['master']:
+                    # Use the complete optimize_showdown function
+                    lineups, _ = optimize_showdown(
+                        csv_path_or_df=settings['df'],
+                        num_lineups=settings['num_lineups'],
+                        game_total=settings['game_total'],
+                        spread=settings['spread'],
+                        contest_type=settings['contest_type'],
+                        api_key=settings['api_key'] if settings['use_ai'] else None,
+                        use_ai=settings['use_ai'],
+                        optimization_mode=settings['optimization_mode'],
+                        ai_enforcement=settings['ai_enforcement'],
+                        use_ensemble=settings['use_ensemble'],
+                        use_iterative_refinement=settings['use_iterative_refinement'],
+                        use_bayesian_synthesis=settings['use_bayesian_synthesis'],
+                        progress_callback=update_progress
                     )
-                
-                # Create genetic optimizer
-                genetic_config = OptimizerConfig.get_genetic_config(
-                    len(df),
-                    num_lineups,
-                    time_budget_seconds=180
-                )
-                
-                optimizer = GeneticAlgorithmOptimizer(
-                    df=df,
-                    game_info=game_info,
-                    constraints=constraints,
-                    config=genetic_config,
-                    mc_engine=mc_engine
-                )
-                
-                # Generate lineups
-                lineups = optimizer.generate_lineups(
-                    num_lineups,
-                    fitness_mode=st.session_state.optimization_mode
-                )
-                
-                # Calculate metrics
-                from nfl_dfs_optimizer import calculate_lineup_metrics
-                
-                detailed_lineups = []
-                for i, lineup in enumerate(lineups, 1):
-                    metrics = calculate_lineup_metrics(
-                        lineup.captain,
-                        lineup.flex,
-                        df,
-                        mc_engine
+                    
+                elif OPTIMIZER_STATUS['algorithms']:
+                    # Fallback to genetic algorithm
+                    update_progress("Using Genetic Algorithm fallback", 0.3)
+                    
+                    # Create game info
+                    processor = OptimizedDataProcessor()
+                    game_info = processor.infer_game_info(
+                        settings['df'],
+                        settings['game_total'],
+                        settings['spread']
                     )
-                    metrics['Lineup'] = i
-                    detailed_lineups.append(metrics)
+                    
+                    # Create constraints
+                    constraints = LineupConstraints(
+                        min_salary=int(DraftKingsRules.SALARY_CAP * settings['min_salary_pct'] / 100),
+                        max_salary=DraftKingsRules.SALARY_CAP
+                    )
+                    
+                    # Create Monte Carlo engine
+                    mc_engine = None
+                    if settings['use_monte_carlo'] and OPTIMIZER_STATUS['advanced']:
+                        mc_engine = MonteCarloSimulationEngine(
+                            settings['df'],
+                            game_info,
+                            settings['num_simulations']
+                        )
+                    
+                    # Create optimizer
+                    genetic_config = OptimizerConfig.get_genetic_config(
+                        len(settings['df']),
+                        settings['num_lineups'],
+                        time_budget_seconds=180
+                    )
+                    
+                    optimizer = GeneticAlgorithmOptimizer(
+                        df=settings['df'],
+                        game_info=game_info,
+                        constraints=constraints,
+                        config=genetic_config,
+                        mc_engine=mc_engine
+                    )
+                    
+                    # Generate lineups
+                    def ga_progress(gen, total, fitness):
+                        pct = 0.4 + (gen / total) * 0.4
+                        update_progress(f"GA Generation {gen}/{total}", pct)
+                    
+                    ga_lineups = optimizer.generate_lineups(
+                        settings['num_lineups'],
+                        progress_callback=ga_progress
+                    )
+                    
+                    # Convert to dicts
+                    lineups = []
+                    for i, lineup in enumerate(ga_lineups, 1):
+                        metrics = calculate_lineup_metrics(
+                            lineup.captain,
+                            lineup.flex,
+                            settings['df'],
+                            mc_engine
+                        )
+                        metrics['Lineup'] = i
+                        lineups.append(metrics)
+                    
+                else:
+                    raise Exception("No optimization algorithms available")
                 
-                result['lineups'] = detailed_lineups
-                
+                # Store result
+                with result_lock:
+                    result['lineups'] = lineups
+                    
             except Exception as e:
-                result['error'] = e
+                with result_lock:
+                    result['error'] = e
         
-        # Run thread
-        thread = threading.Thread(target=opt_thread)
-        thread.daemon = True
+        # Start thread
+        thread = threading.Thread(target=opt_thread, daemon=True)
         thread.start()
         
         # Wait with timeout
+        perf.start_timer('optimization')
+        start_time = time.time()
         timeout = StreamlitConfig.OPTIMIZATION_TIMEOUT_SEC
+        
         elapsed = 0
+        last_update = 0
         
         while thread.is_alive() and elapsed < timeout:
             thread.join(timeout=StreamlitConfig.THREAD_JOIN_SEC)
             elapsed = time.time() - start_time
             
-            # Update progress
-            pct = min(90, 40 + int((elapsed / timeout) * 50))
-            progress.progress(pct)
-            
-            if elapsed > 10 and int(elapsed) % 5 == 0:
-                status.text(f"Optimizing... ({int(elapsed)}s)")
+            # Update progress periodically
+            if elapsed - last_update >= StreamlitConfig.PROGRESS_UPDATE_INTERVAL_SEC:
+                pct = min(90, 20 + int((elapsed / timeout) * 70))
+                
+                with progress_lock:
+                    try:
+                        if progress and elapsed > StreamlitConfig.INITIAL_PROGRESS_THRESHOLD_SEC:
+                            progress.progress(pct)
+                        if status:
+                            status.text(f"🔄 Optimizing... ({int(elapsed)}s)")
+                    except:
+                        pass
+                
+                last_update = elapsed
         
         # Check timeout
         if thread.is_alive():
-            progress.empty()
-            status.empty()
             st.error(f"⏱️ Timeout after {timeout}s")
-            st.info("Try: Lower min salary %, reduce lineups, or disable AI")
+            st.info("**Try:** Lower min salary %, reduce lineups, or disable AI/Monte Carlo")
             return
         
         # Check error
-        if result['error']:
-            raise result['error']
+        with result_lock:
+            if result['error']:
+                raise result['error']
+            lineups = result['lineups']
         
-        # Get results
-        lineups = result['lineups']
-        elapsed_time = perf.stop_timer('full_optimization')
+        elapsed_time = perf.stop_timer('optimization')
         
+        # Update UI
         progress.progress(100)
-        status.text("Complete!")
+        status.text("✅ Complete!")
         time.sleep(0.5)
         
-        progress.empty()
-        status.empty()
-        
         if not lineups:
-            st.warning("No lineups generated")
+            st.warning("⚠️ No lineups generated")
+            st.info("Check constraints and try adjusting settings")
             return
         
         # Store results
@@ -900,69 +1157,144 @@ def run_optimization():
         st.session_state.optimization_complete = True
         st.session_state.last_optimization_time = elapsed_time
         
-        # Success
-        st.success(f"✓ Generated {len(lineups)} lineups in {elapsed_time:.1f}s")
+        # Success message
+        st.success(f"✅ Generated {len(lineups)} lineups in {elapsed_time:.1f}s")
         
         # Quick stats
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            avg_proj = np.mean([l['Projected'] for l in lineups])
-            st.metric("Avg Projection", f"{avg_proj:.2f}")
+            projections = [l.get('Projected', 0) for l in lineups if 'Projected' in l]
+            if projections:
+                avg_proj = np.mean(projections)
+                st.metric("Avg Projection", f"{avg_proj:.2f}")
         
         with col2:
-            avg_sal = np.mean([l['Total_Salary'] for l in lineups])
-            st.metric("Avg Salary", f"${avg_sal:,.0f}")
+            salaries = [l.get('Total_Salary', 0) for l in lineups if 'Total_Salary' in l]
+            if salaries:
+                avg_sal = np.mean(salaries)
+                st.metric("Avg Salary", f"${avg_sal:,.0f}")
         
         with col3:
-            if 'Ceiling_90th' in lineups[0]:
-                avg_ceil = np.mean([l['Ceiling_90th'] for l in lineups])
+            ceilings = [l.get('Ceiling_90th', 0) for l in lineups if 'Ceiling_90th' in l]
+            if ceilings:
+                avg_ceil = np.mean(ceilings)
                 st.metric("Avg Ceiling", f"{avg_ceil:.2f}")
         
+        with col4:
+            if projections:
+                best = max(projections)
+                st.metric("Best", f"{best:.2f}")
+        
+        # Trigger rerun to show results
+        time.sleep(0.5)
         st.rerun()
         
     except Exception as e:
+        # Restore state
         snapshot.restore()
+        
         logger.log_exception(e, "run_optimization")
-        st.error(f"❌ Error: {str(e)}")
+        
+        # Enhanced error messaging
+        error_type = type(e).__name__
+        error_msg = str(e).lower()
+        
+        if "salary" in error_msg or "constraint" in error_msg:
+            st.error(f"❌ Constraint Error: {str(e)}")
+            st.info("💡 **Try:** Lower minimum salary % in Advanced Options")
+            st.info("💡 **Or:** Run Pre-Flight Check in Data Overview tab")
+            
+        elif "infeasible" in error_msg:
+            st.error(f"❌ Infeasible Constraints: {str(e)}")
+            st.info("💡 **Try:** Check Pre-Flight diagnostics in Data Overview")
+            
+        elif "timeout" in error_msg:
+            st.error(f"❌ Timeout: {str(e)}")
+            st.info("💡 **Try:** Reduce lineups or disable Monte Carlo simulation")
+            
+        elif "api" in error_msg or "anthropic" in error_msg:
+            st.error(f"❌ API Error: {str(e)}")
+            st.info("💡 **Try:** Check API key or disable AI features")
+            
+        elif "import" in error_msg or "module" in error_msg:
+            st.error(f"❌ Module Error: {str(e)}")
+            st.info("💡 **Try:** Check that nfl_dfs_optimizer.py is in the same directory")
+            
+        else:
+            st.error(f"❌ {error_type}: {str(e)}")
+            st.info("💡 Enable Debug Mode in sidebar for detailed trace")
         
         if st.session_state.show_debug:
-            with st.expander("Debug Trace"):
+            with st.expander("🐛 Debug Trace", expanded=True):
                 st.code(traceback.format_exc())
+                
+    finally:
+        # Always cleanup
+        st.session_state.optimization_running = False
+        
+        try:
+            if progress:
+                progress_container.empty()
+            if status:
+                status_container.empty()
+        except:
+            pass
 
 # ============================================================================
 # RESULTS
 # ============================================================================
 
 def render_results():
-    """Render results tab"""
+    """Render results tab with safe metric access"""
     
     if not st.session_state.optimization_complete:
-        st.info("Complete optimization to view results")
+        st.info("💡 Complete optimization to view results")
         return
     
     lineups = st.session_state.lineups
+    
+    if not lineups:
+        st.warning("⚠️ No lineups were generated")
+        st.info("Try adjusting settings and re-running optimization")
+        return
+    
     df = st.session_state.processed_df
     
-    # Summary
+    # Summary with safe access
     st.subheader("Summary")
     
     col1, col2, col3, col4 = st.columns(4)
+    
+    # Safe metric extraction
+    projections = [l.get('Projected', 0) for l in lineups if 'Projected' in l]
+    salaries = [l.get('Total_Salary', 0) for l in lineups if 'Total_Salary' in l]
+    ceilings = [l.get('Ceiling_90th', 0) for l in lineups if 'Ceiling_90th' in l]
+    floors = [l.get('Floor_10th', 0) for l in lineups if 'Floor_10th' in l]
     
     with col1:
         st.metric("Total Lineups", len(lineups))
     
     with col2:
-        best = max(l['Projected'] for l in lineups)
-        st.metric("Best Projection", f"{best:.2f}")
+        if projections:
+            best = max(projections)
+            st.metric("Best Projection", f"{best:.2f}")
+        else:
+            st.metric("Best Projection", "N/A")
     
     with col3:
-        avg = np.mean([l['Projected'] for l in lineups])
-        st.metric("Avg Projection", f"{avg:.2f}")
+        if projections:
+            avg = np.mean(projections)
+            st.metric("Avg Projection", f"{avg:.2f}")
+        else:
+            st.metric("Avg Projection", "N/A")
     
     with col4:
-        avg_sal = np.mean([l['Total_Salary'] for l in lineups])
-        st.metric("Avg Salary", f"${avg_sal:,.0f}")
+        if salaries:
+            avg_sal = np.mean(salaries)
+            st.metric("Avg Salary", f"${avg_sal:,.0f}")
+        else:
+            st.metric("Avg Salary", "N/A")
     
     # Display options
     st.subheader("Lineup Details")
@@ -973,54 +1305,75 @@ def render_results():
         show_count = st.selectbox(
             "Show:",
             options=[5, 10, 20, 50, "All"],
-            index=1
+            index=1,
+            key="show_count_select"
         )
     
     with col2:
+        # Available sort options
+        sort_options = ['Projected']
+        if ceilings:
+            sort_options.append('Ceiling_90th')
+        if salaries:
+            sort_options.append('Total_Salary')
+        
         sort_by = st.selectbox(
             "Sort by:",
-            options=['Projected', 'Ceiling_90th', 'Total_Salary'],
-            index=0
+            options=sort_options,
+            index=0,
+            key="sort_by_select"
         )
     
     # Filter and sort
     display_count = len(lineups) if show_count == "All" else int(show_count)
-    sorted_lineups = sorted(
-        lineups,
-        key=lambda x: x.get(sort_by, 0),
-        reverse=True
-    )[:display_count]
+    
+    try:
+        sorted_lineups = sorted(
+            lineups,
+            key=lambda x: x.get(sort_by, 0),
+            reverse=True
+        )[:display_count]
+    except:
+        sorted_lineups = lineups[:display_count]
     
     # Display lineups
     for i, lineup in enumerate(sorted_lineups, 1):
         with st.container():
-            st.markdown(f"### Lineup {i}")
+            st.markdown(f"### Lineup {lineup.get('Lineup', i)}")
             
             col1, col2 = st.columns([2, 1])
             
             with col1:
-                st.write(f"**Captain:** {lineup['Captain']}")
+                captain = lineup.get('Captain', 'Unknown')
+                st.write(f"**Captain:** {captain}")
                 st.write("**FLEX:**")
                 
                 flex = lineup.get('FLEX', [])
                 if isinstance(flex, str):
-                    flex = [p.strip() for p in flex.split(',')]
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
                 
                 for player in flex:
                     player_info = df[df['Player'] == player]
                     if not player_info.empty:
                         row = player_info.iloc[0]
                         st.write(
-                            f"  - {player} ({row['Position']}) - "
+                            f"  - {player} ({row['Position']}, {row['Team']}) - "
                             f"${row['Salary']:,.0f} | {row['Projected_Points']:.1f} pts"
                         )
+                    else:
+                        st.write(f"  - {player}")
             
             with col2:
-                st.metric("Projected", f"{lineup['Projected']:.2f}")
-                st.metric("Salary", f"${lineup['Total_Salary']:,.0f}")
+                if 'Projected' in lineup:
+                    st.metric("Projected", f"{lineup['Projected']:.2f}")
+                
+                if 'Total_Salary' in lineup:
+                    st.metric("Salary", f"${lineup['Total_Salary']:,.0f}")
                 
                 if 'Ceiling_90th' in lineup:
                     st.metric("Ceiling", f"{lineup['Ceiling_90th']:.2f}")
+                
+                if 'Floor_10th' in lineup:
                     st.metric("Floor", f"{lineup['Floor_10th']:.2f}")
             
             st.divider()
@@ -1033,20 +1386,25 @@ def render_export_analytics():
     """Render export and analytics"""
     
     if not st.session_state.optimization_complete:
-        st.info("Complete optimization first")
+        st.info("💡 Complete optimization first")
         return
     
     lineups = st.session_state.lineups
     
+    if not lineups:
+        st.warning("⚠️ No lineups to export")
+        return
+    
     # EXPORT SECTION
-    st.header("Export")
+    st.header("📥 Export")
     
     col1, col2 = st.columns(2)
     
     with col1:
         format_choice = st.selectbox(
             "Format",
-            options=['Standard', 'DraftKings', 'Detailed']
+            options=['Standard', 'DraftKings', 'Detailed'],
+            key="format_select"
         )
     
     # Generate CSV
@@ -1057,10 +1415,10 @@ def render_export_analytics():
             for lineup in lineups:
                 flex = lineup.get('FLEX', [])
                 if isinstance(flex, str):
-                    flex = [p.strip() for p in flex.split(',')]
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
                 
                 row = {
-                    'CPT': lineup['Captain'],
+                    'CPT': lineup.get('Captain', ''),
                     'FLEX': flex[0] if len(flex) > 0 else '',
                     'FLEX_2': flex[1] if len(flex) > 1 else '',
                     'FLEX_3': flex[2] if len(flex) > 2 else '',
@@ -1074,18 +1432,18 @@ def render_export_analytics():
             for i, lineup in enumerate(lineups, 1):
                 flex = lineup.get('FLEX', [])
                 if isinstance(flex, str):
-                    flex = [p.strip() for p in flex.split(',')]
+                    flex = [p.strip() for p in flex.split(',') if p.strip()]
                 
                 row = {
-                    'Lineup': i,
-                    'Captain': lineup['Captain'],
+                    'Lineup': lineup.get('Lineup', i),
+                    'Captain': lineup.get('Captain', ''),
                     'FLEX_1': flex[0] if len(flex) > 0 else '',
                     'FLEX_2': flex[1] if len(flex) > 1 else '',
                     'FLEX_3': flex[2] if len(flex) > 2 else '',
                     'FLEX_4': flex[3] if len(flex) > 3 else '',
                     'FLEX_5': flex[4] if len(flex) > 4 else '',
-                    'Salary': lineup['Total_Salary'],
-                    'Projected': lineup['Projected'],
+                    'Salary': lineup.get('Total_Salary', 0),
+                    'Projected': lineup.get('Projected', 0),
                 }
                 
                 if format_choice == 'Detailed':
@@ -1093,6 +1451,7 @@ def render_export_analytics():
                         'Ownership': lineup.get('Avg_Ownership', 0),
                         'Ceiling': lineup.get('Ceiling_90th', 0),
                         'Floor': lineup.get('Floor_10th', 0),
+                        'Sharpe': lineup.get('Sharpe_Ratio', 0),
                     })
                 
                 rows.append(row)
@@ -1101,67 +1460,96 @@ def render_export_analytics():
         csv = export_df.to_csv(index=False)
         
         # Preview
-        with st.expander("Preview"):
-            st.dataframe(export_df.head(10))
+        with st.expander("👁️ Preview"):
+            st.dataframe(export_df.head(10), use_container_width=True)
         
         # Download
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"lineups_{format_choice.lower()}_{timestamp}.csv"
+        
         st.download_button(
             label=f"📥 Download {format_choice} CSV",
             data=csv,
-            file_name=f"lineups_{format_choice.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            file_name=filename,
             mime="text/csv",
-            use_container_width=True
+            use_container_width=True,
+            key="download_button"
         )
         
     except Exception as e:
-        st.error(f"Export failed: {e}")
+        st.error(f"❌ Export failed: {e}")
+        
+        if st.session_state.show_debug:
+            with st.expander("Debug"):
+                st.code(traceback.format_exc())
     
     st.divider()
     
     # ANALYTICS SECTION
-    st.header("Analytics")
+    st.header("📊 Analytics")
     
     # Player exposure
     st.subheader("Player Exposure")
     
     exposure = defaultdict(int)
     for lineup in lineups:
-        captain = lineup['Captain']
+        captain = lineup.get('Captain', '')
         flex = lineup.get('FLEX', [])
         if isinstance(flex, str):
-            flex = [p.strip() for p in flex.split(',')]
+            flex = [p.strip() for p in flex.split(',') if p.strip()]
         
         for player in [captain] + flex:
-            exposure[player] += 1
+            if player:
+                exposure[player] += 1
     
-    exposure_pct = {
-        p: (c / len(lineups)) * 100
-        for p, c in exposure.items()
-    }
-    
-    top_exposure = sorted(exposure_pct.items(), key=lambda x: x[1], reverse=True)[:15]
-    exp_df = pd.DataFrame(top_exposure, columns=['Player', 'Exposure %'])
-    
-    st.bar_chart(exp_df.set_index('Player'))
+    if exposure:
+        exposure_pct = {
+            p: (c / len(lineups)) * 100
+            for p, c in exposure.items()
+        }
+        
+        top_exposure = sorted(
+            exposure_pct.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:15]
+        
+        exp_df = pd.DataFrame(top_exposure, columns=['Player', 'Exposure %'])
+        
+        st.bar_chart(exp_df.set_index('Player'))
     
     # Captain usage
     st.subheader("Captain Usage")
     
     captain_counts = defaultdict(int)
     for lineup in lineups:
-        captain_counts[lineup['Captain']] += 1
+        captain = lineup.get('Captain', '')
+        if captain:
+            captain_counts[captain] += 1
     
-    captain_pct = {
-        c: (count / len(lineups)) * 100
-        for c, count in captain_counts.items()
-    }
+    if captain_counts:
+        captain_pct = {
+            c: (count / len(lineups)) * 100
+            for c, count in captain_counts.items()
+        }
+        
+        capt_df = pd.DataFrame(
+            list(captain_pct.items()),
+            columns=['Captain', 'Usage %']
+        ).sort_values('Usage %', ascending=False)
+        
+        st.bar_chart(capt_df.set_index('Captain'))
     
-    capt_df = pd.DataFrame(
-        list(captain_pct.items()),
-        columns=['Captain', 'Usage %']
-    ).sort_values('Usage %', ascending=False)
+    # Ownership distribution
+    st.subheader("Ownership Distribution")
     
-    st.bar_chart(capt_df.set_index('Captain'))
+    ownerships = [l.get('Avg_Ownership', 0) for l in lineups if 'Avg_Ownership' in l]
+    if ownerships:
+        own_df = pd.DataFrame({'Avg Ownership %': ownerships})
+        st.line_chart(own_df)
+        
+        st.write(f"**Average:** {np.mean(ownerships):.1f}%")
+        st.write(f"**Range:** {np.min(ownerships):.1f}% - {np.max(ownerships):.1f}%")
 
 # ============================================================================
 # MAIN APP
@@ -1170,17 +1558,25 @@ def render_export_analytics():
 def main():
     """Main application"""
     
-    if not OPTIMIZER_AVAILABLE:
-        st.error("Optimizer not available - check imports")
-        return
-    
     # Apply styling
     apply_css()
     
     # Header
     st.title("🏈 NFL DFS AI-Powered Optimizer")
     st.markdown("*Advanced DraftKings Showdown optimization with AI and Monte Carlo simulation*")
-    st.caption("Version 5.0.0 - UPDATE 2 Compatible")
+    
+    version_info = "Version 5.0.1 - Production Ready"
+    if OPTIMIZER_STATUS['master']:
+        version_info += " | UPDATE 2 Compatible"
+    
+    st.caption(version_info)
+    
+    # Status indicator
+    if not all(OPTIMIZER_STATUS.values()):
+        with st.expander("⚠️ Component Status", expanded=False):
+            for component, available in OPTIMIZER_STATUS.items():
+                status = "✅" if available else "❌"
+                st.write(f"{status} {component.title()}")
     
     # Sidebar
     render_sidebar()
@@ -1207,10 +1603,19 @@ def main():
     
     # Footer
     st.divider()
-    st.caption("NFL DFS Optimizer v5.0 | Built with Claude AI")
     
-    if st.session_state.last_optimization_time:
-        st.caption(f"Last optimization: {st.session_state.last_optimization_time:.1f}s")
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        st.caption("NFL DFS Optimizer v5.0 | Built with Claude AI")
+    
+    with col2:
+        if st.session_state.last_optimization_time:
+            st.caption(f"⏱️ Last: {st.session_state.last_optimization_time:.1f}s")
+    
+    with col3:
+        if st.session_state.optimization_complete:
+            st.caption(f"✅ {len(st.session_state.lineups)} lineups")
 
 if __name__ == "__main__":
     main()
